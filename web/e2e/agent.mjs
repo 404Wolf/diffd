@@ -8,11 +8,14 @@
 // a few minutes and uses real model calls.
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? "playwright");
-const [repo, port = "3433", shots = "/tmp/diffd-agent"] = process.argv.slice(2);
+const [repo, port = "3433", shotsArg = "/tmp/diffd-agent"] = process.argv.slice(2);
+// Absolute: Claude Code runs in the repository, not here.
+const shots = resolve(shotsArg);
 const base = `http://localhost:${port}`;
 mkdirSync(shots, { recursive: true });
 
