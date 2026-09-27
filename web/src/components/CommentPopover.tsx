@@ -202,14 +202,20 @@ export function SelectionBubble(props: {
     const lines = [ra, rb].map((r) => Number(r.dataset[key])).filter((n) => n > 0);
     const box = props.container()?.getBoundingClientRect();
     if (lines.length === 0 || !box) return props.view.setSelection(null);
-    const rect = range.getBoundingClientRect();
+    // Where the selection ends (not its bounding box, which spans whole lines).
+    const end = range.cloneRange();
+    end.collapse(false);
+    const rects = range.getClientRects();
+    const caret = end.getBoundingClientRect();
+    const at = caret.height > 0 ? caret : (rects[rects.length - 1] ?? range.getBoundingClientRect());
+    const x = caret.height > 0 ? caret.left : at.right;
     props.view.setSelection({
       file: Number(ra.dataset.f),
       side,
       start: Math.min(...lines),
       end: Math.max(...lines),
-      top: rect.bottom - box.top + 4,
-      left: Math.min(box.width - 140, rect.right - box.left - 40),
+      top: at.bottom - box.top + 4,
+      left: Math.max(4, Math.min(box.width - 150, x - box.left - 12)),
     });
   };
   onMount(() => {

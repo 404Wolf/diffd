@@ -219,7 +219,11 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     run: ({ view }) => view.setTreeMode(view.treeMode() === "diff" ? "project" : "diff"),
     help: ["Panels", "Files: the diff's or the whole project's"],
   },
-  { keys: "space t c", run: ({ view }) => view.setAllFolders(false), help: ["Panels", "Collapse all folders"] },
+  {
+    keys: "space t c",
+    run: ({ view }) => view.setAllFolders(false),
+    help: ["Panels", "Collapse all folders"],
+  },
   { keys: "space t o", run: ({ view }) => view.setAllFolders(true), help: ["Panels", "Expand all folders"] },
   { keys: "space n", run: ({ cmd }) => cmd.toggleDrawer("right"), help: ["Panels", "Activity drawer"] },
   { keys: "space f", run: ({ cmd }) => cmd.filePicker(), help: ["Panels", "Go to file"] },

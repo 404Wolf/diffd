@@ -256,6 +256,11 @@ try {
     await page.mouse.up();
     await sleep(200);
     check(await page.getByRole("button", { name: /^Comment/ }).first().isVisible(), "a mouse selection offers a Comment button");
+    const bubble = await page.getByRole("button", { name: /^Comment/ }).first().boundingBox();
+    check(
+      Math.abs(bubble.x - (end.x + 120)) < 60 && bubble.y > end.y && bubble.y < end.y + end.height + 40,
+      `it sits just below where the selection ends (${Math.round(bubble.x - end.x - 120)}px off)`,
+    );
     await page.getByRole("button", { name: /^Comment/ }).first().click();
     await page.keyboard.type("Do we need a default for reset_at?");
     await keys(page, "Control+Enter");
