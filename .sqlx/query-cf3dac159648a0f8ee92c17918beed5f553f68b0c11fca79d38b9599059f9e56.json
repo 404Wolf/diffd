@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT 1 AS \"one: i64\" FROM threads WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "one: i64",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "cf3dac159648a0f8ee92c17918beed5f553f68b0c11fca79d38b9599059f9e56"
+}

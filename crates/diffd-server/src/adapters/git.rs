@@ -76,7 +76,7 @@ impl RepoSource for GitCli {
                 entries.push(Entry { status: FileStatus::Added, old_path: None, path: path.to_owned() });
             }
         }
-        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        entries.sort_by(|a, b| tree_order(&a.path, &b.path));
 
         let mut cat = CatFile::spawn(&repo.root)?;
         let mut inputs = Vec::with_capacity(entries.len());
@@ -94,6 +94,29 @@ impl RepoSource for GitCli {
             inputs.push(to_input(e, old, new));
         }
         Ok(inputs)
+    }
+}
+
+/// Order paths the way the file tree shows them: at each level, folders
+/// before files, then by name.
+fn tree_order(a: &str, b: &str) -> std::cmp::Ordering {
+    let (mut pa, mut pb) = (a.split('/').peekable(), b.split('/').peekable());
+    loop {
+        match (pa.next(), pb.next()) {
+            (Some(x), Some(y)) => {
+                let (x_dir, y_dir) = (pa.peek().is_some(), pb.peek().is_some());
+                if x_dir != y_dir {
+                    return y_dir.cmp(&x_dir);
+                }
+                match x.cmp(y) {
+                    std::cmp::Ordering::Equal => continue,
+                    other => return other,
+                }
+            }
+            (None, Some(_)) => return std::cmp::Ordering::Less,
+            (Some(_), None) => return std::cmp::Ordering::Greater,
+            (None, None) => return std::cmp::Ordering::Equal,
+        }
     }
 }
 
@@ -194,6 +217,13 @@ impl Drop for CatFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn orders_like_the_tree() {
+        let mut paths = vec!["README.md", "src/lib.rs", "Cargo.lock", "src/a/b.rs", "web/x.ts"];
+        paths.sort_by(|a, b| tree_order(a, b));
+        assert_eq!(paths, vec!["src/a/b.rs", "src/lib.rs", "web/x.ts", "Cargo.lock", "README.md"]);
+    }
 
     #[test]
     fn parses_name_status() {

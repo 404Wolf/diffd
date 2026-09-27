@@ -88,7 +88,9 @@ async fn agent_and_page_talk_through_the_server() {
         tokio::spawn(async move { call(&client, "wait_for_feedback", json!({ "timeout_seconds": 20 })).await })
     };
     tokio::time::sleep(Duration::from_millis(200)).await;
-    let comment = json!({ "type": "comment", "anchor": { "path": "src/main.rs", "side": "new", "start": 2, "end": 2, "text": "" }, "body": "Why not \"hey\"?" });
+    let comment = json!({ "type": "comment", "threadId": "t-page-00001", "messageId": "m-page-00001", "anchor": { "path": "src/main.rs", "side": "new", "start": 2, "end": 2, "text": "" }, "body": "Why not \"hey\"?" });
+    ws.send(Message::Text(comment.to_string().into())).await.unwrap();
+    // Sent twice (as after a reconnect): acknowledged twice, applied once.
     ws.send(Message::Text(comment.to_string().into())).await.unwrap();
     let batch = waiting.await.unwrap();
     let item = &batch["items"][0];
@@ -119,7 +121,7 @@ async fn agent_and_page_talk_through_the_server() {
     }
 
     let overview = call(&client, "get_review", json!({})).await;
-    assert_eq!(overview["threads"].as_array().unwrap().len(), 2);
+    assert_eq!(overview["threads"].as_array().unwrap().len(), 2, "the repeated comment made no second thread");
     let err = CallToolRequestParams::new("reply").with_arguments(json!({ "thread_id": "nope", "body": "x" }).as_object().unwrap().clone());
     let result = client.call_tool(err).await.unwrap();
     assert_eq!(result.is_error, Some(true));

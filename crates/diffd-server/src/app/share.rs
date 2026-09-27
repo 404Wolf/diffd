@@ -6,7 +6,7 @@ use diffd_core::model::{ActivityKind, ReviewId, ReviewMeta, ReviewStatus};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::conversation::NoteInput;
+use super::conversation::{NoteInput, RegionInput, regions_from};
 use super::rebuild::{build_snapshot, read_and_build};
 use super::{App, AppError, Result, new_id};
 use crate::adapters::store::{CollapseRule, ReviewSpec};
@@ -41,6 +41,10 @@ pub struct ShareRequest {
     /// Files that should start collapsed: generated code, lockfiles, snapshots, vendored code.
     #[serde(default)]
     pub collapse: Vec<CollapseRule>,
+    /// Label ranges: `test` for test code (whole files or line ranges), `fold` to fold
+    /// mechanical or uninteresting changes behind a one-sentence summary.
+    #[serde(default)]
+    pub regions: Vec<RegionInput>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -70,6 +74,7 @@ impl App {
             paths: req.paths.clone(),
             collapse: req.collapse.clone(),
             watch: req.to.is_none(),
+            regions: Vec::new(),
         };
         let (source, engine, spec2) = (self.repo.clone(), self.engine.clone(), spec.clone());
         let (from, to) = (req.from.clone(), req.to.clone());
@@ -81,6 +86,8 @@ impl App {
         .map_err(|e| AppError::Invalid(format!("{e:#}")))?;
 
         let snap = build_snapshot(1, &inputs, files);
+        let mut spec = spec;
+        spec.regions = regions_from(&snap, req.regions)?;
         let id = ReviewId(new_id(""));
         let now = self.now();
         let meta = ReviewMeta {

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE reviews SET spec = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "9e2109be2fb6e6a93a6e26f75c6e466194485d862ceb08c9a0e38c261cecc365"
+}

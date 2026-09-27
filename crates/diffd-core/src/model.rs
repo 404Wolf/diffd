@@ -291,6 +291,33 @@ pub struct ChatMessage {
     pub delivered_at: Option<Millis>,
 }
 
+/// A range the agent labelled when sharing: tests, or code folded behind a summary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Region {
+    pub path: String,
+    pub side: Side,
+    /// 1-based inclusive line range; `None` means the whole file.
+    pub lines: Option<[u32; 2]>,
+    pub kind: RegionKind,
+    /// For folds: what changed in there, in plain language.
+    pub summary: Option<String>,
+    /// The anchored text, used to follow the lines across revisions.
+    #[serde(default)]
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum RegionKind {
+    /// Test code: marked with a line along its side.
+    Test,
+    /// Folded by default behind `summary`.
+    Fold,
+}
+
 /// What the agent is doing, as far as the page can tell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]

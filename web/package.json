@@ -1,0 +1,32 @@
+{
+  "name": "diffd-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kobalte/core": "^0.13.14",
+    "dompurify": "^3.4.16",
+    "markdown-it": "^15.0.2",
+    "solid-js": "^1.9.15",
+    "ts-pattern": "^5.9.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/markdown-it": "^14.2.0",
+    "jsdom": "^30.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^5.0.2"
+  }
+}

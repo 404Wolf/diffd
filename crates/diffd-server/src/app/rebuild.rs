@@ -136,6 +136,15 @@ impl App {
                 moved.push(t);
             }
         }
+        let mut spec = spec;
+        let regions_before = spec.regions.clone();
+        for r in &mut spec.regions {
+            follow_region(r, &prev, &snap);
+        }
+        let regions_changed = spec.regions != regions_before;
+        if regions_changed {
+            self.store.set_spec(id, &spec).await?;
+        }
         {
             let mut inner = live.inner.lock().expect("live lock");
             inner.snapshot = Arc::new(snap.clone());
@@ -144,6 +153,9 @@ impl App {
         App::broadcast(&live, ServerMsg::Revision { review: meta, snapshot: Box::new(snap) });
         for t in moved {
             App::broadcast(&live, ServerMsg::Thread { thread: t });
+        }
+        if regions_changed {
+            App::broadcast(&live, ServerMsg::Regions { regions: spec.regions });
         }
         let item = self.store.add_activity(id, now, ActivityKind::Revision { revision, paths: changed_paths }).await?;
         App::broadcast(&live, ServerMsg::Activity { item });
@@ -154,6 +166,32 @@ impl App {
     /// event doesn't count as a change.
     pub(super) fn set_fingerprint(&self, live: &super::Live, fp: u64) {
         live.inner.lock().expect("live lock").fingerprint = fp;
+    }
+}
+
+/// Follow a region's lines into a new snapshot. Whole-file regions need nothing.
+fn follow_region(r: &mut diffd_core::model::Region, prev: &Snapshot, snap: &Snapshot) {
+    let Some([start, end]) = r.lines else { return };
+    let lines_of = |s: &Snapshot| {
+        s.files.iter().find(|f| f.path == r.path).and_then(|f| match r.side {
+            Side::Old => f.old.as_ref().map(|t| t.lines.clone()),
+            Side::New => f.new.as_ref().map(|t| t.lines.clone()),
+        })
+    };
+    let Some(lines) = lines_of(snap) else { return };
+    match reanchor(&r.text, start, &lines) {
+        Reanchor::Same => {}
+        Reanchor::Moved { start, end } => r.lines = Some([start, end]),
+        Reanchor::Changed => {
+            let n = lines.len() as u32;
+            if n == 0 {
+                return;
+            }
+            let new_start = lines_of(prev).map_or(start, |before| map_line(&before, &lines, start)).clamp(1, n);
+            let new_end = (new_start + (end - start)).min(n);
+            r.lines = Some([new_start, new_end]);
+            r.text = lines[new_start as usize - 1..new_end as usize].join("\n");
+        }
     }
 }
 

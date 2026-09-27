@@ -13,7 +13,7 @@ use diffd_core::model::{Millis, Presence, ReviewId, ReviewMeta, Snapshot};
 use diffd_core::protocol::{ReviewState, ServerMsg};
 use tokio::sync::{Notify, broadcast};
 
-pub use conversation::NoteInput;
+pub use conversation::{NoteInput, RegionInput};
 pub use feedback::{FeedbackBatch, FeedbackItem, ThreadMessage};
 pub use share::{ShareRequest, ShareResult};
 
@@ -171,12 +171,13 @@ impl App {
     /// Everything the page needs, as of now.
     pub async fn state(&self, id: &ReviewId) -> Result<ReviewState> {
         let live = self.live(id).await?;
-        let (review, _) = self.meta(id).await?;
+        let (review, spec) = self.meta(id).await?;
         let presence = live.inner.lock().expect("live lock").presence;
         Ok(ReviewState {
             review,
             snapshot: (*Self::snapshot(&live)).clone(),
             threads: self.store.threads(id).await?,
+            regions: spec.regions,
             chat: self.store.chat(id).await?,
             activity: self.store.activity(id).await?,
             presence,

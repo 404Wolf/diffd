@@ -173,12 +173,26 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Resu
             incoming = rx.next() => {
                 let Some(Ok(frame)) = incoming else { break Ok(()) };
                 let WsMessage::Text(text) = frame else { continue };
-                let reply = match serde_json::from_str::<ClientMsg>(&text) {
-                    Ok(msg) => handle(&app, &id, msg, &mut drafting).await.err().map(|e| e.to_string()),
-                    Err(e) => Some(format!("bad message: {e}")),
-                };
-                if let Some(message) = reply {
-                    send(&mut tx, &ServerMsg::Error { message }).await?;
+                match serde_json::from_str::<ClientMsg>(&text) {
+                    Ok(msg) => {
+                        let ack = msg.ack_id().cloned();
+                        match handle(&app, &id, msg, &mut drafting).await {
+                            Ok(()) => {
+                                if let Some(id) = ack {
+                                    send(&mut tx, &ServerMsg::Ack { id }).await?;
+                                }
+                            }
+                            // Invalid requests can never succeed: ack them so the page stops retrying.
+                            Err(e @ (AppError::Invalid(_) | AppError::NotFound(_))) => {
+                                if let Some(id) = ack {
+                                    send(&mut tx, &ServerMsg::Ack { id }).await?;
+                                }
+                                send(&mut tx, &ServerMsg::Error { message: e.to_string() }).await?;
+                            }
+                            Err(e) => send(&mut tx, &ServerMsg::Error { message: e.to_string() }).await?,
+                        }
+                    }
+                    Err(e) => send(&mut tx, &ServerMsg::Error { message: format!("bad message: {e}") }).await?,
                 }
             }
         }
@@ -191,8 +205,12 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Resu
 
 async fn handle(app: &App, id: &ReviewId, msg: ClientMsg, drafting: &mut bool) -> Result<(), AppError> {
     match msg {
-        ClientMsg::Comment { anchor, body } => app.comment(id, anchor, &body).await.map(drop),
-        ClientMsg::Reply { thread_id, body } => app.reply(&thread_id, Author::User, &body, None).await.map(drop),
+        ClientMsg::Comment { thread_id, message_id, anchor, body } => {
+            app.comment(id, Some((thread_id, message_id)), anchor, &body).await.map(drop)
+        }
+        ClientMsg::Reply { thread_id, message_id, body } => {
+            app.reply(&thread_id, Some(message_id), Author::User, &body, None).await.map(drop)
+        }
         ClientMsg::Resolve { thread_id, resolved } => app.resolve(&thread_id, resolved).await.map(drop),
         ClientMsg::Drafting { drafting: on } => {
             if on == *drafting {
@@ -201,7 +219,7 @@ async fn handle(app: &App, id: &ReviewId, msg: ClientMsg, drafting: &mut bool) -
             *drafting = on;
             app.drafting(id, on).await
         }
-        ClientMsg::Chat { body } => app.chat_user(id, &body).await.map(drop),
+        ClientMsg::Chat { message_id, body } => app.chat_user(id, Some(message_id), &body).await,
         ClientMsg::Read { seq } => app.mark_read(id, seq).await,
     }
 }

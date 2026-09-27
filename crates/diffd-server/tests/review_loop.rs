@@ -28,6 +28,7 @@ fn share_request(repo: &common::Repo) -> ShareRequest {
             kind: None,
         }],
         collapse: vec![diffd_server::adapters::store::CollapseRule { glob: "gen/**".into(), reason: "generated".into() }],
+        regions: vec![],
     }
 }
 
@@ -67,8 +68,8 @@ async fn share_comment_wait_reply_rebuild() {
     };
     tokio::time::sleep(Duration::from_millis(100)).await;
     let anchor = Anchor { path: "src/lib.rs".into(), side: Side::New, start: 4, end: 5, text: String::new() };
-    let thread = app.comment(&id, anchor, "Why clamp here and not at the call site?").await.unwrap();
-    app.chat_user(&id, "Also: is QUIET defined yet?").await.unwrap();
+    let thread = app.comment(&id, None, anchor, "Why clamp here and not at the call site?").await.unwrap();
+    app.chat_user(&id, None, "Also: is QUIET defined yet?").await.unwrap();
     let batch = waiter.await.unwrap();
     assert_eq!(batch.items.len(), 2, "{batch:#?}");
     let json = serde_json::to_value(&batch).unwrap();
@@ -79,7 +80,7 @@ async fn share_comment_wait_reply_rebuild() {
     // Delivered messages aren't delivered twice.
     assert!(app.wait_for_feedback(&id, Duration::from_millis(50)).await.unwrap().items.is_empty());
 
-    let replied = app.reply(&thread.id, Author::Agent, "Every caller needs it, so it lives here.", None).await.unwrap();
+    let replied = app.reply(&thread.id, None, Author::Agent, "Every caller needs it, so it lives here.", None).await.unwrap();
     assert_eq!(replied.messages.len(), 2);
     let delivered = app.state(&id).await.unwrap();
     let t = delivered.threads.iter().find(|t| t.id == thread.id).unwrap();
@@ -115,7 +116,7 @@ async fn open_drafts_hold_feedback_back() {
     let id = diffd_core::model::ReviewId(app.share(req).await.unwrap().review_id);
 
     app.drafting(&id, true).await.unwrap();
-    app.chat_user(&id, "first").await.unwrap();
+    app.chat_user(&id, None, "first").await.unwrap();
     let held = app.wait_for_feedback(&id, Duration::from_millis(2000)).await.unwrap();
     assert!(held.items.is_empty(), "a draft is open");
     app.drafting(&id, false).await.unwrap();

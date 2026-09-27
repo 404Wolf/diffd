@@ -13,7 +13,7 @@ use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::app::{App, AppError, NoteInput, ShareRequest};
+use crate::app::{App, AppError, NoteInput, RegionInput, ShareRequest};
 
 const INSTRUCTIONS: &str = "\
 diffd shows your code changes to the user as a live review in their browser, and lets you talk about them there.
@@ -114,7 +114,11 @@ pub struct ReplyParams {
 pub struct AnnotateParams {
     #[serde(default)]
     pub review_id: Option<String>,
+    #[serde(default)]
     pub annotations: Vec<NoteInput>,
+    /// Test and fold regions, as in share_diff.
+    #[serde(default)]
+    pub regions: Vec<RegionInput>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -188,7 +192,10 @@ Compare any two revisions: `from` is a branch, tag or commit; leave out `to` to 
 `from: \"main\"` shows everything since the branch point, like a pull request. \
 Annotate what a reviewer would trip over: non-obvious logic, the reason behind a design choice, risky spots, anything \
 you're unsure about. Skip the obvious. 1-4 plain sentences each, tight line ranges, ordered as a tour. \
-Collapse generated code, lockfiles, snapshots and vendored files with `collapse` so the user doesn't scroll past them.")]
+Collapse generated code, lockfiles, snapshots and vendored files with `collapse` so the user doesn't scroll past them. \
+Use `regions` to mark test code (`kind: \"test\"`, whole files or line ranges; the page shows a line along them) and to \
+fold mechanical changes such as renames, moved code or reformatting (`kind: \"fold\"`, with a one-sentence `summary` \
+of what changed there), so the user reads the interesting parts first.")]
     async fn share_diff(&self, Parameters(req): Parameters<ShareRequest>) -> Result<CallToolResult, ErrorData> {
         let result = try_app!(self.app.share(req).await);
         self.remember(&ReviewId(result.review_id.clone()));
@@ -209,16 +216,17 @@ reviewing together.")]
     #[tool(description = "Reply in a thread on the review, where the code is. Use it to answer the user's comments. \
 Keep it short; if you changed code because of the comment, say what you changed. Set `resolve` when the thread is done.")]
     async fn reply(&self, Parameters(p): Parameters<ReplyParams>) -> Result<CallToolResult, ErrorData> {
-        let thread = try_app!(self.app.reply(&ThreadId(p.thread_id), Author::Agent, &p.body, p.resolve).await);
+        let thread = try_app!(self.app.reply(&ThreadId(p.thread_id), None, Author::Agent, &p.body, p.resolve).await);
         ok(&serde_json::json!({ "thread_id": thread.id.0, "resolved": thread.resolved, "messages": thread.messages.len() }))
     }
 
     #[tool(description = "Add notes to the review, anchored to lines: explanations of tricky code, the reason for a \
-decision, risks, or questions for the user. Same rules as share_diff's annotations.")]
+decision, risks, or questions for the user. Same rules as share_diff's annotations. Can also add test and fold `regions`.")]
     async fn annotate(&self, Parameters(p): Parameters<AnnotateParams>) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
         let n = try_app!(self.app.add_notes(&id, p.annotations, true).await);
-        ok(&serde_json::json!({ "added": n }))
+        let r = if p.regions.is_empty() { 0 } else { try_app!(self.app.add_regions(&id, p.regions).await) };
+        ok(&serde_json::json!({ "notes_added": n, "regions_added": r }))
     }
 
     #[tool(description = "Write in the review's chat box, for anything not tied to specific lines: answering the \

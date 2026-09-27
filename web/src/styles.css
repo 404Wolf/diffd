@@ -1,0 +1,423 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Every color lives here once, for light and dark; Tailwind
+ * utilities (bg-panel, text-muted, border-line…) and the diff styles below
+ * both read them.
+ */
+:root {
+  --page: #e4e4e7;
+  --bg: #ffffff;
+  --panel: #fafafa;
+  --inset: #f4f4f5;
+  --hover: #efeff1;
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+  --fg: #18181b;
+  --muted: #52525b;
+  --subtle: #a1a1aa;
+  --accent: #4f46e5;
+  --accent-fg: #ffffff;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --cursor: rgb(79 70 229 / 0.07);
+  --visual: rgb(79 70 229 / 0.14);
+  --add: #15803d;
+  --add-bg: #dcfce7;
+  --add-gutter: #f0fdf4;
+  --add-mark: #4ade80;
+  --del: #b91c1c;
+  --del-bg: #fee2e2;
+  --del-gutter: #fef2f2;
+  --del-mark: #f87171;
+  --mod-mark: #facc15;
+  --warn: #b45309;
+  --live: #16a34a;
+  --test: #0891b2;
+  --syn-keyword: #7e22ce;
+  --syn-string: #0369a1;
+  --syn-comment: #a1a1aa;
+  --syn-constant: #0e7490;
+  --syn-number: #0e7490;
+  --syn-function: #1d4ed8;
+  --syn-type: #a16207;
+  --syn-variable: inherit;
+  --syn-property: #334155;
+  --syn-attribute: #64748b;
+  --syn-tag: #0f766e;
+  --syn-operator: #52525b;
+  --syn-punctuation: #71717a;
+  --syn-module: #a16207;
+  --syn-escape: #c2410c;
+  --syn-heading: #1d4ed8;
+  --syn-link: #0369a1;
+  --shadow: 0 1px 2px rgb(24 24 27 / 0.06), 0 10px 28px rgb(24 24 27 / 0.13);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #000000;
+    --bg: #0c0c0e;
+    --panel: #111114;
+    --inset: #161619;
+    --hover: #1d1d21;
+    --line: #26262b;
+    --line-strong: #34343a;
+    --fg: #f4f4f5;
+    --muted: #a1a1aa;
+    --subtle: #63636b;
+    --accent: #818cf8;
+    --accent-fg: #0c0c1a;
+    --accent-soft: rgb(129 140 248 / 0.13);
+    --accent-line: rgb(129 140 248 / 0.35);
+    --cursor: rgb(129 140 248 / 0.08);
+    --visual: rgb(129 140 248 / 0.16);
+    --add: #4ade80;
+    --add-bg: rgb(74 222 128 / 0.15);
+    --add-gutter: rgb(74 222 128 / 0.05);
+    --add-mark: #16a34a;
+    --del: #f87171;
+    --del-bg: rgb(248 113 113 / 0.16);
+    --del-gutter: rgb(248 113 113 / 0.05);
+    --del-mark: #dc2626;
+    --mod-mark: #ca8a04;
+    --warn: #fbbf24;
+    --live: #4ade80;
+    --test: #22d3ee;
+    --syn-keyword: #c084fc;
+    --syn-string: #7dd3fc;
+    --syn-comment: #6b6b74;
+    --syn-constant: #67e8f9;
+    --syn-number: #67e8f9;
+    --syn-function: #93c5fd;
+    --syn-type: #fcd34d;
+    --syn-property: #cbd5e1;
+    --syn-attribute: #94a3b8;
+    --syn-tag: #5eead4;
+    --syn-operator: #a1a1aa;
+    --syn-punctuation: #8b8b94;
+    --syn-module: #fcd34d;
+    --syn-escape: #fdba74;
+    --syn-heading: #93c5fd;
+    --syn-link: #7dd3fc;
+    --shadow: 0 0 0 1px rgb(255 255 255 / 0.05), 0 12px 32px rgb(0 0 0 / 0.6);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-inset: var(--inset);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-add: var(--add);
+  --color-add-bg: var(--add-bg);
+  --color-del: var(--del);
+  --color-del-bg: var(--del-bg);
+  --color-warn: var(--warn);
+  --color-live: var(--live);
+  --font-sans: "IBM Plex Sans", "Inter var", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --shadow-pop: var(--shadow);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--fg);
+    font: 13px / 1.45 var(--font-sans);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  kbd {
+    font: 500 10.5px / 1 var(--font-mono);
+    padding: 2px 4px;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+}
+
+/*
+ * The diff itself is plain HTML built by `lib/render.ts` (fast to create for
+ * very large diffs), so it's styled with classes here rather than utilities.
+ */
+@layer components {
+  .rows {
+    font: 12px / 18px var(--font-mono);
+    font-variant-ligatures: none;
+    tab-size: 4;
+    --cols: 44px minmax(0, 1fr) 44px minmax(0, 1fr);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 400px;
+  }
+  .row {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--cols);
+    min-height: 18px;
+    scroll-margin-top: 40px;
+    scroll-margin-bottom: 20px;
+  }
+  .num {
+    position: relative;
+    padding-right: 8px;
+    text-align: right;
+    color: var(--subtle);
+    font-size: 11px;
+    user-select: none;
+    cursor: pointer;
+  }
+  .num::before {
+    content: attr(data-n);
+  }
+  .num.new {
+    border-left: 1px solid var(--line);
+  }
+  .num.del {
+    color: var(--del);
+    background: var(--del-gutter);
+    font-weight: 600;
+  }
+  .num.add {
+    color: var(--add);
+    background: var(--add-gutter);
+    font-weight: 600;
+  }
+  .code {
+    min-width: 0;
+    padding: 0 10px 0 8px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    cursor: text;
+  }
+  .code.empty,
+  .num.empty {
+    background: repeating-linear-gradient(
+      135deg,
+      transparent 0 5px,
+      color-mix(in srgb, var(--line) 55%, transparent) 5px 6px
+    );
+    cursor: default;
+  }
+  .s-keyword {
+    color: var(--syn-keyword);
+  }
+  .s-string {
+    color: var(--syn-string);
+  }
+  .s-comment {
+    color: var(--syn-comment);
+    font-style: italic;
+  }
+  .s-constant {
+    color: var(--syn-constant);
+  }
+  .s-number {
+    color: var(--syn-number);
+  }
+  .s-function {
+    color: var(--syn-function);
+  }
+  .s-type {
+    color: var(--syn-type);
+  }
+  .s-property {
+    color: var(--syn-property);
+  }
+  .s-attribute {
+    color: var(--syn-attribute);
+  }
+  .s-tag {
+    color: var(--syn-tag);
+  }
+  .s-operator {
+    color: var(--syn-operator);
+  }
+  .s-punctuation {
+    color: var(--syn-punctuation);
+  }
+  .s-module {
+    color: var(--syn-module);
+  }
+  .s-escape {
+    color: var(--syn-escape);
+  }
+  .s-heading {
+    color: var(--syn-heading);
+    font-weight: 600;
+  }
+  .s-link {
+    color: var(--syn-link);
+    text-decoration: underline;
+  }
+  /* difftastic's look: only novel tokens are colored. */
+  .nv-add,
+  .nv-del {
+    font-weight: 600;
+    font-style: normal;
+    border-radius: 2px;
+  }
+  .nv-add {
+    color: var(--add) !important;
+    background: var(--add-bg);
+  }
+  .nv-del {
+    color: var(--del) !important;
+    background: var(--del-bg);
+  }
+  .wc {
+    outline: 1.5px solid var(--accent);
+    border-radius: 2px;
+    background: var(--accent-soft);
+  }
+  .sym .ref {
+    text-decoration: underline dotted var(--accent);
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .row.cur::after,
+  .row.vsel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .row.cur::after {
+    background: var(--cursor);
+  }
+  .row.vsel::after {
+    background: var(--visual);
+  }
+  .row.cur .code.caret {
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  /* Test code, as marked by the agent: a line along the far left. */
+  .row.test::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--test);
+    opacity: 0.75;
+    z-index: 1;
+  }
+  .num.noted::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent);
+  }
+  .num.since {
+    box-shadow: inset -2px 0 0 var(--warn);
+  }
+  .row.flash .code:not(.empty) {
+    animation: flash 1.8s ease-out;
+  }
+  @keyframes flash {
+    from {
+      background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+  }
+  /* File view (g enter): one column and a thin change mark. */
+  .fv .row {
+    grid-template-columns: 5px 46px minmax(0, 1fr);
+  }
+  .mark {
+    position: relative;
+  }
+  .mark.add {
+    background: var(--add-mark);
+  }
+  .mark.mod {
+    background: var(--mod-mark);
+  }
+  .mark.del::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -4px;
+    border: 4px solid transparent;
+    border-left: 5px solid var(--del-mark);
+  }
+  .gap-body[hidden] {
+    display: none;
+  }
+  .md p {
+    margin: 0;
+  }
+  .md p + p,
+  .md pre,
+  .md ul,
+  .md ol {
+    margin-top: 6px;
+  }
+  .md ul,
+  .md ol {
+    padding-left: 18px;
+  }
+  .md ul {
+    list-style: disc;
+  }
+  .md ol {
+    list-style: decimal;
+  }
+  .md code {
+    font: 11.5px var(--font-mono);
+    background: var(--inset);
+    padding: 0 4px;
+    border-radius: 3px;
+  }
+  .md pre {
+    padding: 6px 8px;
+    border-radius: 5px;
+    background: var(--inset);
+    overflow-x: auto;
+  }
+  .md pre code {
+    padding: 0;
+    background: none;
+  }
+  .md a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid var(--accent-line);
+    cursor: pointer;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

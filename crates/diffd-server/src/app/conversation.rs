@@ -1,8 +1,8 @@
 //! Threads, notes, chat and "show me": everything said about a review.
 
 use diffd_core::model::{
-    ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, NoteKind, ReviewId, ShowRequest,
-    Side, Snapshot, Thread, ThreadId, ThreadKind,
+    ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, NoteKind, Region, RegionKind, ReviewId,
+    ShowRequest, Side, Snapshot, Thread, ThreadId, ThreadKind,
 };
 use diffd_core::protocol::ServerMsg;
 use schemars::JsonSchema;
@@ -26,6 +26,53 @@ pub struct NoteInput {
     pub kind: Option<NoteKind>,
 }
 
+/// A region the agent labels, as passed to `share_diff` or `annotate`.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RegionInput {
+    /// Path of a file in the diff.
+    pub file: String,
+    /// First and last line (1-based, inclusive). Omit to mean the whole file (tests only).
+    #[serde(default)]
+    pub lines: Option<[u32; 2]>,
+    /// Which version the lines refer to (default: new).
+    #[serde(default)]
+    pub side: Option<Side>,
+    /// `test`: test code, marked along its side. `fold`: folded by default behind `summary`.
+    pub kind: RegionKind,
+    /// Required for folds: what changed in there, in one plain sentence, e.g.
+    /// "Renamed try_acquire to acquire at every call site".
+    #[serde(default)]
+    pub summary: Option<String>,
+}
+
+/// Validate region inputs against a snapshot and turn them into regions.
+pub(super) fn regions_from(snap: &Snapshot, inputs: Vec<RegionInput>) -> Result<Vec<Region>> {
+    inputs
+        .into_iter()
+        .map(|r| {
+            let side = r.side.unwrap_or(Side::New);
+            let summary = r.summary.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+            let text = match r.lines {
+                Some([start, end]) => anchor_text(snap, &r.file, side, start, end)?,
+                None => {
+                    if r.kind == RegionKind::Fold {
+                        return Err(AppError::Invalid(format!("fold on `{}` needs `lines`; use `collapse` to fold a whole file", r.file)));
+                    }
+                    if !snap.files.iter().any(|f| f.path == r.file) {
+                        return Err(AppError::Invalid(format!("`{}` is not in this diff", r.file)));
+                    }
+                    String::new()
+                }
+            };
+            if r.kind == RegionKind::Fold && summary.is_none() {
+                return Err(AppError::Invalid(format!("fold on `{}` needs a `summary` saying what changed there", r.file)));
+            }
+            Ok(Region { path: r.file, side, lines: r.lines, kind: r.kind, summary, text })
+        })
+        .collect()
+}
+
 /// The exact text of `lines` on one side of a file, or why that's not possible.
 pub(super) fn anchor_text(snap: &Snapshot, path: &str, side: Side, start: u32, end: u32) -> Result<String> {
     let file = snap.files.iter().find(|f| f.path == path).ok_or_else(|| {
@@ -46,12 +93,19 @@ pub(super) fn anchor_text(snap: &Snapshot, path: &str, side: Side, start: u32, e
 
 impl App {
     fn message(&self, author: Author, body: &str) -> Result<Message> {
+        self.message_with_id(MessageId(new_id("m")), author, body)
+    }
+
+    fn message_with_id(&self, id: MessageId, author: Author, body: &str) -> Result<Message> {
         let body = body.trim();
         if body.is_empty() {
             return Err(AppError::Invalid("message body is empty".into()));
         }
+        if !diffd_core::protocol::valid_client_id(&id.0) {
+            return Err(AppError::Invalid("bad message id".into()));
+        }
         Ok(Message {
-            id: MessageId(new_id("m")),
+            id,
             author,
             body: body.to_owned(),
             created_at: self.now(),
@@ -67,18 +121,31 @@ impl App {
 
     // -- From the page -------------------------------------------------------
 
-    /// The user starts a thread on a selection.
-    pub async fn comment(&self, id: &ReviewId, anchor: Anchor, body: &str) -> Result<Thread> {
+    /// The user starts a thread on a selection. With page-chosen ids, a
+    /// repeated request (after a reconnect) is a no-op.
+    pub async fn comment(&self, id: &ReviewId, ids: Option<(ThreadId, MessageId)>, anchor: Anchor, body: &str) -> Result<Thread> {
         let live = self.live(id).await?;
+        if let Some((thread_id, _)) = &ids {
+            if !diffd_core::protocol::valid_client_id(&thread_id.0) {
+                return Err(AppError::Invalid("bad thread id".into()));
+            }
+            if self.store.thread_exists(thread_id).await? {
+                return self.store.thread(thread_id).await?.map(|(_, t)| t).ok_or_else(|| AppError::NotFound("thread".into()));
+            }
+        }
         let text = anchor_text(&App::snapshot(&live), &anchor.path, anchor.side, anchor.start, anchor.end)?;
+        let (thread_id, message) = match ids {
+            Some((t, m)) => (t, self.message_with_id(m, Author::User, body)?),
+            None => (ThreadId(new_id("t")), self.message(Author::User, body)?),
+        };
         let thread = Thread {
-            id: ThreadId(new_id("t")),
+            id: thread_id,
             kind: ThreadKind::Comment,
             anchor: Anchor { text, ..anchor },
             resolved: false,
             changed_in: None,
             outdated: false,
-            messages: vec![self.message(Author::User, body)?],
+            messages: vec![message],
             created_at: self.now(),
         };
         self.store.insert_thread(id, &thread).await?;
@@ -95,15 +162,30 @@ impl App {
         Ok(thread)
     }
 
-    /// A reply in a thread, from either side.
-    pub async fn reply(&self, thread_id: &ThreadId, author: Author, body: &str, resolve: Option<bool>) -> Result<Thread> {
+    /// A reply in a thread, from either side. A page-chosen `message_id`
+    /// makes a repeated request a no-op.
+    pub async fn reply(
+        &self,
+        thread_id: &ThreadId,
+        message_id: Option<MessageId>,
+        author: Author,
+        body: &str,
+        resolve: Option<bool>,
+    ) -> Result<Thread> {
         let (id, mut thread) = self
             .store
             .thread(thread_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))?;
+        if let Some(m) = &message_id
+            && self.store.message_exists(m).await? {
+                return Ok(thread);
+            }
         let live = self.live(&id).await?;
-        let msg = self.message(author, body)?;
+        let msg = match message_id {
+            Some(m) => self.message_with_id(m, author, body)?,
+            None => self.message(author, body)?,
+        };
         self.store.insert_message(&id, Some(thread_id), &msg).await?;
         thread.messages.push(msg);
         if let Some(resolved) = resolve {
@@ -152,15 +234,22 @@ impl App {
         Ok(())
     }
 
-    /// A chat message from the user.
-    pub async fn chat_user(&self, id: &ReviewId, body: &str) -> Result<ChatMessage> {
+    /// A chat message from the user; a repeated `message_id` is a no-op.
+    pub async fn chat_user(&self, id: &ReviewId, message_id: Option<MessageId>, body: &str) -> Result<()> {
         let live = self.live(id).await?;
-        let msg = self.message(Author::User, body)?;
+        if let Some(m) = &message_id
+            && self.store.message_exists(m).await? {
+                return Ok(());
+            }
+        let msg = match message_id {
+            Some(m) => self.message_with_id(m, Author::User, body)?,
+            None => self.message(Author::User, body)?,
+        };
         self.store.insert_message(id, None, &msg).await?;
         let chat = ChatMessage { id: msg.id, author: msg.author, body: msg.body, created_at: msg.created_at, delivered_at: None };
-        App::broadcast(&live, ServerMsg::Chat { message: chat.clone() });
+        App::broadcast(&live, ServerMsg::Chat { message: chat });
         self.user_activity(&live);
-        Ok(chat)
+        Ok(())
     }
 
     pub async fn mark_read(&self, id: &ReviewId, seq: u64) -> Result<()> {
@@ -213,6 +302,19 @@ impl App {
         }
         self.agent_seen(&live);
         Ok(count)
+    }
+
+    /// Add test and fold regions.
+    pub async fn add_regions(&self, id: &ReviewId, inputs: Vec<RegionInput>) -> Result<usize> {
+        let live = self.live(id).await?;
+        let regions = regions_from(&App::snapshot(&live), inputs)?;
+        let n = regions.len();
+        let (_, mut spec) = self.meta(id).await?;
+        spec.regions.extend(regions);
+        self.store.set_spec(id, &spec).await?;
+        App::broadcast(&live, ServerMsg::Regions { regions: spec.regions });
+        self.agent_seen(&live);
+        Ok(n)
     }
 
     /// The agent writes in the chat box.

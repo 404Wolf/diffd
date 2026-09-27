@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::model::{
-    ActivityItem, Anchor, ChatMessage, Presence, ReviewMeta, ShowRequest, Snapshot, Thread,
-    ThreadId,
+    ActivityItem, Anchor, ChatMessage, MessageId, Presence, Region, ReviewMeta, ShowRequest, Snapshot,
+    Thread, ThreadId,
 };
 
 /// Everything the page needs to render a review. It's embedded in the HTML so
@@ -20,6 +20,8 @@ pub struct ReviewState {
     pub review: ReviewMeta,
     pub snapshot: Snapshot,
     pub threads: Vec<Thread>,
+    /// Tests and folds the agent marked.
+    pub regions: Vec<Region>,
     pub chat: Vec<ChatMessage>,
     pub activity: Vec<ActivityItem>,
     pub presence: Presence,
@@ -36,6 +38,8 @@ pub enum ServerMsg {
     State { state: Box<ReviewState> },
     /// A new revision of the diff.
     Revision { review: ReviewMeta, snapshot: Box<Snapshot> },
+    /// The agent's region labels changed.
+    Regions { regions: Vec<Region> },
     /// A thread was created or changed.
     Thread { thread: Thread },
     Chat { message: ChatMessage },
@@ -43,6 +47,8 @@ pub enum ServerMsg {
     Presence { presence: Presence },
     /// The agent wants to point the user at some code.
     Show { request: ShowRequest },
+    /// The server applied the page's message with this id (see [`ClientMsg`]).
+    Ack { id: MessageId },
     /// A request from the page failed.
     Error { message: String },
 }
@@ -51,16 +57,19 @@ pub enum ServerMsg {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
 pub enum ClientMsg {
-    /// Start a thread on a selection.
-    Comment { anchor: Anchor, body: String },
+    /// Start a thread on a selection. The page picks the ids, so sending the
+    /// same message twice (e.g. after a reconnect) has no extra effect.
     #[serde(rename_all = "camelCase")]
-    Reply { thread_id: ThreadId, body: String },
+    Comment { thread_id: ThreadId, message_id: MessageId, anchor: Anchor, body: String },
+    #[serde(rename_all = "camelCase")]
+    Reply { thread_id: ThreadId, message_id: MessageId, body: String },
     #[serde(rename_all = "camelCase")]
     Resolve { thread_id: ThreadId, resolved: bool },
     /// The user opened or closed a comment draft; open drafts hold feedback back.
     Drafting { drafting: bool },
     /// A message in the chat box.
-    Chat { body: String },
+    #[serde(rename_all = "camelCase")]
+    Chat { message_id: MessageId, body: String },
     /// The user has seen activity up to `seq`.
     Read {
         #[ts(type = "number")]
@@ -86,4 +95,19 @@ pub enum Boot {
     Home { reviews: Vec<ReviewSummary> },
     Review { state: Box<ReviewState> },
     NotFound { message: String },
+}
+
+impl ClientMsg {
+    /// The id the server acknowledges once it has applied this message.
+    pub fn ack_id(&self) -> Option<&MessageId> {
+        match self {
+            Self::Comment { message_id, .. } | Self::Reply { message_id, .. } | Self::Chat { message_id, .. } => Some(message_id),
+            Self::Resolve { .. } | Self::Drafting { .. } | Self::Read { .. } => None,
+        }
+    }
+}
+
+/// Ids the page generates must look like ours: short, URL-safe.
+pub fn valid_client_id(id: &str) -> bool {
+    (8..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }

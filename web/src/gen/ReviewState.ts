@@ -2,6 +2,7 @@
 import type { ActivityItem } from "./ActivityItem";
 import type { ChatMessage } from "./ChatMessage";
 import type { Presence } from "./Presence";
+import type { Region } from "./Region";
 import type { ReviewMeta } from "./ReviewMeta";
 import type { Snapshot } from "./Snapshot";
 import type { Thread } from "./Thread";
@@ -10,7 +11,11 @@ import type { Thread } from "./Thread";
  * Everything the page needs to render a review. It's embedded in the HTML so
  * the page works offline, and re-sent when the socket (re)connects.
  */
-export type ReviewState = { review: ReviewMeta, snapshot: Snapshot, threads: Array<Thread>, chat: Array<ChatMessage>, activity: Array<ActivityItem>, presence: Presence, 
+export type ReviewState = { review: ReviewMeta, snapshot: Snapshot, threads: Array<Thread>, 
+/**
+ * Tests and folds the agent marked.
+ */
+regions: Array<Region>, chat: Array<ChatMessage>, activity: Array<ActivityItem>, presence: Presence, 
 /**
  * Activity up to this sequence number has been seen by the user.
  */

@@ -19,6 +19,9 @@ pub struct ReviewSpec {
     pub paths: Vec<String>,
     pub collapse: Vec<CollapseRule>,
     pub watch: bool,
+    /// Tests and folds the agent marked, following their lines across revisions.
+    #[serde(default)]
+    pub regions: Vec<diffd_core::model::Region>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -94,6 +97,12 @@ impl Store {
         sqlx::query!("UPDATE reviews SET revision = ?, updated_at = ? WHERE id = ?", rev, at, id.0)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn set_spec(&self, id: &ReviewId, spec: &ReviewSpec) -> anyhow::Result<()> {
+        let spec = json(spec);
+        sqlx::query!("UPDATE reviews SET spec = ? WHERE id = ?", spec, id.0).execute(&self.pool).await?;
         Ok(())
     }
 
@@ -268,6 +277,16 @@ impl Store {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn message_exists(&self, id: &MessageId) -> anyhow::Result<bool> {
+        let row = sqlx::query!("SELECT 1 AS \"one: i64\" FROM messages WHERE id = ?", id.0).fetch_optional(&self.pool).await?;
+        Ok(row.is_some())
+    }
+
+    pub async fn thread_exists(&self, id: &ThreadId) -> anyhow::Result<bool> {
+        let row = sqlx::query!("SELECT 1 AS \"one: i64\" FROM threads WHERE id = ?", id.0).fetch_optional(&self.pool).await?;
+        Ok(row.is_some())
     }
 
     pub async fn chat(&self, review: &ReviewId) -> anyhow::Result<Vec<ChatMessage>> {
