@@ -1392,9 +1392,14 @@ try {
     // r answers a thread on screen, and goes to one first when none is.
     await keys(page, "G");
     await keys(page, "r");
-    await sleep(400);
-    const composer = await page.getByRole("dialog", { name: "Write a comment" }).boundingBox();
-    check(composer && composer.y >= 0 && composer.y + composer.height <= page.viewportSize().height, "r opens the reply on screen, next to its thread");
+    const onScreen = await page
+      .waitForFunction(() => {
+        const r = document.querySelector('[role=dialog][aria-label="Write a comment"]')?.getBoundingClientRect();
+        return r && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight;
+      }, null, { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    check(onScreen, "r opens the reply on screen, next to its thread");
     await keys(page, "Escape");
 
     // Marks work in file view and in files outside the diff.

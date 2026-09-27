@@ -85,7 +85,9 @@ export function CommentPopover(props: {
     const h = el.offsetHeight;
     const w = el.offsetWidth;
     let top = r.bottom + 4;
-    if (top + h > buf.bottom - 4) top = Math.max(buf.top + 4, r.top - h - 4);
+    if (top + h > buf.bottom - 4) top = r.top - h - 4;
+    // Never off screen, even while what it's under is still scrolling into view.
+    top = Math.max(buf.top + 4, Math.min(top, buf.bottom - h - 4));
     const left = Math.max(buf.left + 8, Math.min(buf.right - w - 8, r.left + 12));
     setPos({ top: top - box.top, left: left - box.left });
   };
