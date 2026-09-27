@@ -1,0 +1,103 @@
+name: release
+
+# Single-file binaries, the page built in: a static Linux one per architecture
+# (musl, so any distribution runs it) and one universal macOS one. On a `v*`
+# tag they're attached to a GitHub release; run it by hand to just build them.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  # Queries are checked against the committed .sqlx data, not a live database.
+  SQLX_OFFLINE: "true"
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.arch }}-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.arch }}-musl
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # zig is the C compiler and linker for the musl targets (tree-sitter, SQLite, ring).
+      - uses: mlugg/setup-zig@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - run: npm --prefix web ci && npm --prefix web run build
+      - run: cargo zigbuild --release -p diffd --target ${{ matrix.arch }}-unknown-linux-musl
+      - name: A static binary that runs
+        run: |
+          bin=target/${{ matrix.arch }}-unknown-linux-musl/release/diffd
+          file "$bin"
+          file "$bin" | grep -Eq 'static(-pie)? linked'
+          if [ ${{ matrix.arch }} = x86_64 ]; then "$bin" --version; "$bin" config | head -3; fi
+          mkdir dist && cp "$bin" dist/diffd-linux-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diffd-linux-${{ matrix.arch }}
+          path: dist/diffd-linux-${{ matrix.arch }}
+
+  macos:
+    name: macOS (universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci && npm --prefix web run build
+      - run: |
+          cargo build --release -p diffd --target aarch64-apple-darwin
+          cargo build --release -p diffd --target x86_64-apple-darwin
+      - name: One file for Apple silicon and Intel Macs
+        run: |
+          mkdir dist
+          lipo -create -output dist/diffd-macos \
+            target/aarch64-apple-darwin/release/diffd target/x86_64-apple-darwin/release/diffd
+          lipo -info dist/diffd-macos
+          # Only system libraries: it runs on any Mac without Homebrew.
+          otool -L dist/diffd-macos | tail -n +2 | grep -Ev '^\s+(/usr/lib/|/System/)' && exit 1 || true
+          dist/diffd-macos --version
+          dist/diffd-macos config | head -3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diffd-macos
+          path: dist/diffd-macos
+
+  release:
+    name: Publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && chmod +x diffd-* && sha256sum diffd-* > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
