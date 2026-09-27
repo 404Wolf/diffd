@@ -234,15 +234,16 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   // cursor, file view, comments and marks all work on them as on any other file.
   const [context, setContext] = createSignal<FileDiff[]>([]);
   const loadingContext = new Map<string, Promise<FileDiff | null>>();
-  const fetchContext = (path: string): Promise<FileDiff | null> =>
+  /** `quiet`: a failure (the file is gone, say) resolves to null without an error on the page. */
+  const fetchContext = (path: string, quiet = false): Promise<FileDiff | null> =>
     ok(api.contextFile({ path: { id: initial.review.id }, query: { path } }), `open ${path}`).catch(
       (e: unknown) => {
-        setError(e instanceof Error ? e.message : String(e));
+        if (!quiet) setError(e instanceof Error ? e.message : String(e));
         return null;
       },
     );
   /** Open a file outside the diff; resolves to its index in the snapshot, or null. */
-  const openContext = async (path: string): Promise<number | null> => {
+  const openContext = async (path: string, quiet = false): Promise<number | null> => {
     const at = snapshot().files.findIndex((f) => f.path === path);
     if (at >= 0) return at;
     // In the diff but hidden by a label: going to it shows that label's files again.
@@ -255,7 +256,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     }
     let pending = loadingContext.get(path);
     if (!pending) {
-      pending = fetchContext(path);
+      pending = fetchContext(path, quiet);
       loadingContext.set(path, pending);
     }
     const file = await pending;
@@ -267,7 +268,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   };
   /** Files change as the agent works: read the open ones again. */
   const refreshContext = async () => {
-    const fresh = await Promise.all(context().map((f) => fetchContext(f.path)));
+    const fresh = await Promise.all(context().map((f) => fetchContext(f.path, true)));
     setContext((c) => c.map((f, i) => fresh[i] ?? f));
   };
   const [repoFiles, setRepoFiles] = createSignal<string[] | null>(null);
@@ -292,7 +293,8 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     return extra.length === 0 ? base : { ...base, files: [...base.files, ...extra] };
   });
   // Threads on files outside the review bring those files in, so the threads have somewhere to show.
-  // (Walking commits, threads on files another commit changed just aren't shown.)
+  // (Walking commits, threads on files another commit changed just aren't shown.) Quietly: a
+  // thread can outlive its file (a generated file renamed, say), and that's no error on every load.
   const triedContext = new Set<string>();
   createEffect(() => {
     const paths = new Set(whole().files.map((f) => f.path));
@@ -300,7 +302,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       const path = t.anchor.path;
       if (paths.has(path) || triedContext.has(path)) continue;
       triedContext.add(path);
-      void openContext(path);
+      void openContext(path, true);
     }
   });
   /** Files in the diff come first in `snapshot().files`; files opened for context follow. */
