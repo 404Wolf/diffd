@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use diffd_core::build::FileInput;
 use diffd_core::difft::EngineDiff;
-use diffd_core::model::{CodeAnswer, CodeQuery, Commit, Diagnostic, Millis};
+use diffd_core::model::{CodeAnswer, CodeQuery, Commit, Diagnostic, Millis, ReviewId};
 use futures::future::BoxFuture;
 use tokio::sync::broadcast;
 
@@ -84,4 +84,12 @@ pub trait CodeIntel: Send + Sync {
     fn ask<'a>(&'a self, repo_root: &'a Path, path: &'a str, query: CodeQuery, line: u32, col: u32) -> BoxFuture<'a, CodeAnswer>;
     /// Diagnostics as servers publish them, for every file they have open.
     fn diagnostics(&self) -> broadcast::Receiver<FileDiagnostics>;
+}
+
+/// Follows working trees, so reviews of them rebuild as files change.
+pub trait TreeWatch: Send + Sync {
+    /// Start following review `id`'s repository at `root`. Calling it again is harmless.
+    fn watch(&self, id: &ReviewId, root: &Path);
+    /// Stop following review `id` (it was deleted).
+    fn unwatch(&self, id: &ReviewId);
 }

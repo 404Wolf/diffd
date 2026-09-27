@@ -141,6 +141,20 @@ async fn bad_requests_explain_themselves() {
     assert!(err.contains("unknown revision"), "{err}");
 }
 
+/// The next new revision the page would hear about, if one comes within a few seconds.
+async fn next_revision(
+    events: &mut tokio::sync::broadcast::Receiver<diffd_core::protocol::ServerMsg>,
+) -> Option<diffd_core::model::Snapshot> {
+    let wait = async {
+        loop {
+            if let diffd_core::protocol::ServerMsg::Revision { snapshot, .. } = events.recv().await.ok()? {
+                return Some(*snapshot);
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), wait).await.ok().flatten()
+}
+
 #[tokio::test]
 async fn working_tree_reviews_follow_edits() {
     let repo = common::Repo::new();
@@ -148,26 +162,31 @@ async fn working_tree_reviews_follow_edits() {
     repo.commit("init");
     repo.write("a.txt", "two\n");
     let app = common::app().await;
-    let watcher = std::sync::Arc::new(diffd_server::adapters::watch::Watcher::default());
-    watcher.install(&app, tokio::runtime::Handle::current());
+    diffd_server::adapters::watch::Watcher::install(&app, tokio::runtime::Handle::current());
     let mut req = share_request(&repo);
     req.annotations.clear();
     let id = diffd_core::model::ReviewId(app.share(req).await.unwrap().review_id);
     let mut events = app.subscribe(&id).await.unwrap();
 
     repo.write("a.txt", "three\n");
-    let got = tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            if let diffd_core::protocol::ServerMsg::Revision { snapshot, .. } = events.recv().await.unwrap() {
-                return snapshot;
-            }
-        }
-    })
-    .await
-    .expect("no revision after editing a watched file");
+    let got = next_revision(&mut events).await.expect("no revision after editing a watched file");
     assert_eq!(got.revision, 2);
     assert_eq!(got.files[0].new.as_ref().unwrap().lines, vec!["three"]);
     assert_eq!(got.files[0].since, vec![1]);
+
+    // A directory made after sharing is watched too.
+    repo.write("new/dir/b.txt", "b\n");
+    let got = next_revision(&mut events).await.expect("no revision for a file in a new directory");
+    assert!(got.files.iter().any(|f| f.path == "new/dir/b.txt"));
+    repo.write("new/dir/b.txt", "b2\n");
+    let got = next_revision(&mut events).await.expect("no revision after editing inside the new directory");
+    let b = got.files.iter().find(|f| f.path == "new/dir/b.txt").unwrap();
+    assert_eq!(b.new.as_ref().unwrap().lines, vec!["b2"]);
+
+    // Deleted: the page hears so, and nothing is rebuilt any more.
+    app.delete(&id).await.unwrap();
+    let gone = async { while !matches!(events.recv().await.unwrap(), diffd_core::protocol::ServerMsg::Gone { .. }) {} };
+    tokio::time::timeout(Duration::from_secs(5), gone).await.expect("pages hear the review is gone");
 }
 
 #[tokio::test]

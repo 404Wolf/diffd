@@ -22,7 +22,7 @@ pub use history::RangeEnd;
 pub use share::{ShareRequest, ShareResult};
 
 use crate::adapters::store::Store;
-use crate::ports::{Clock, CodeIntel, DiffEngine, RepoSource};
+use crate::ports::{Clock, CodeIntel, DiffEngine, RepoSource, TreeWatch};
 
 /// Agents that haven't called a tool for this long are shown as away.
 const AWAY_AFTER_MS: Millis = 10 * 60 * 1000;
@@ -39,8 +39,8 @@ pub enum AppError {
 
 pub type Result<T> = std::result::Result<T, AppError>;
 
-/// Starts watching a review's worktree for changes.
-type WatchFn = Box<dyn Fn(Weak<App>, &ReviewMeta) + Send + Sync>;
+/// Reviews updated within this long are watched again right after a restart.
+const RESUME_WITHIN_MS: Millis = 7 * 24 * 60 * 60 * 1000;
 
 pub struct App {
     store: Store,
@@ -49,8 +49,8 @@ pub struct App {
     clock: Arc<dyn Clock>,
     base_url: String,
     live: Mutex<HashMap<ReviewId, Arc<Live>>>,
-    /// Starts watching a review's worktree; set by whoever owns the watcher.
-    watcher: Mutex<Option<WatchFn>>,
+    /// Follows working trees; set by whoever owns the watcher.
+    watcher: Mutex<Option<Arc<dyn TreeWatch>>>,
     /// Language servers, when configured (see [`App::set_code_intel`]).
     code: Mutex<Option<Arc<dyn CodeIntel>>>,
     me: Weak<App>,
@@ -107,27 +107,32 @@ impl App {
         })
     }
 
-    /// Register how reviews get watched (see `adapters::watch`).
-    pub fn set_watcher(&self, f: impl Fn(Weak<App>, &ReviewMeta) + Send + Sync + 'static) {
-        *self.watcher.lock().expect("watcher lock") = Some(Box::new(f));
+    /// Register how reviews of the working tree follow edits (see `adapters::watch`).
+    pub fn set_watcher(&self, watcher: Arc<dyn TreeWatch>) {
+        *self.watcher.lock().expect("watcher lock") = Some(watcher);
     }
 
-    /// Resume watching every open review that asked for it (after a restart).
+    /// Resume following the working tree for reviews touched lately (after a
+    /// restart). Older ones resume when someone opens them.
     pub async fn resume_watches(&self) -> Result<()> {
+        let since = self.now().saturating_sub(RESUME_WITHIN_MS);
         for (meta, _) in self.store.recent(200).await? {
-            if let Some((meta, spec)) = self.store.review(&meta.id).await?
-                && spec.watch
-                && meta.to.is_none()
-            {
-                self.start_watch(&meta);
+            if meta.updated_at < since {
+                break;
+            }
+            match self.store.review(&meta.id).await {
+                Ok(Some((meta, spec))) if spec.watch && meta.to.is_none() => self.start_watch(&meta),
+                Ok(_) => {}
+                // One unreadable review mustn't keep the server from starting.
+                Err(e) => tracing::warn!(review = %meta.id, error = %e, "can't resume watching"),
             }
         }
         Ok(())
     }
 
     fn start_watch(&self, meta: &ReviewMeta) {
-        if let Some(f) = self.watcher.lock().expect("watcher lock").as_ref() {
-            f(self.me.clone(), meta);
+        if let Some(w) = self.watcher.lock().expect("watcher lock").as_ref() {
+            w.watch(&meta.id, std::path::Path::new(&meta.repo_path));
         }
     }
 
@@ -149,6 +154,13 @@ impl App {
             return Ok(l.clone());
         }
         let snapshot = self.store.latest_snapshot(id).await?.ok_or_else(|| AppError::NotFound(format!("no review with id `{id}`")))?;
+        // First use since a restart: a review of the working tree follows it again.
+        if let Ok((meta, spec)) = self.meta(id).await
+            && spec.watch
+            && meta.to.is_none()
+        {
+            self.start_watch(&meta);
+        }
         Ok(self.insert_live(id, snapshot, 0))
     }
 
@@ -264,6 +276,9 @@ impl App {
     pub async fn delete(&self, id: &ReviewId) -> Result<()> {
         self.meta(id).await?;
         self.store.delete_review(id).await?;
+        if let Some(w) = self.watcher.lock().expect("watcher lock").as_ref() {
+            w.unwatch(id);
+        }
         let live = self.live.lock().expect("live lock").remove(id);
         // Open pages hear it now, even while something else still holds the review.
         if let Some(live) = live {

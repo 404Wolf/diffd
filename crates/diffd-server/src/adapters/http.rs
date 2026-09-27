@@ -16,6 +16,7 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use tokio::sync::broadcast::error::RecvError;
 use tokio_tungstenite::WebSocketStream;
+use tokio_util::sync::CancellationToken;
 use tungstenite::Message as WsMessage;
 use tungstenite::extensions::compression::deflate::DeflateConfig;
 use tungstenite::handshake::derive_accept_key;
@@ -31,15 +32,20 @@ const BOOT_MARKER: &str = "<!--diffd-boot-->";
 struct Web {
     app: Arc<App>,
     template: &'static str,
+    /// Cancelled when the server stops: long-lived connections end then.
+    shutdown: CancellationToken,
 }
 
-/// Build the router. `template` is the single-file page bundle.
-pub fn router(app: Arc<App>, template: &'static str) -> Router {
+/// Build the router. `template` is the single-file page bundle. Cancelling
+/// `shutdown` closes WebSockets and MCP sessions (an agent waiting for
+/// feedback, say), so a graceful shutdown doesn't wait on them.
+pub fn router(app: Arc<App>, template: &'static str, shutdown: CancellationToken) -> Router {
     let mcp_app = app.clone();
     // The default config already only accepts loopback `Host`s.
-    let mcp_config = StreamableHttpServerConfig::default();
+    let mut mcp_config = StreamableHttpServerConfig::default();
+    mcp_config.cancellation_token = shutdown.child_token();
     let mcp = StreamableHttpService::new(move || Ok(DiffdMcp::new(mcp_app.clone())), Arc::new(LocalSessionManager::default()), mcp_config);
-    let web = Web { app, template };
+    let web = Web { app, template, shutdown };
     Router::new()
         .route("/", get(home))
         .route("/r/{id}", get(review_page))
@@ -194,7 +200,7 @@ async fn ws(State(web): State<Web>, Path(id): Path<String>, mut req: Request) ->
             config.extensions.permessage_deflate = Some(DeflateConfig::default());
         }
         let socket = WebSocketStream::from_raw_socket(io, Role::Server, Some(config)).await;
-        if let Err(e) = session(web.app, ReviewId(id), socket).await {
+        if let Err(e) = session(web.app, ReviewId(id), socket, web.shutdown).await {
             tracing::debug!(error = %format!("{e:#}"), "websocket closed");
         }
     });
@@ -228,7 +234,7 @@ async fn send(tx: &mut futures::stream::SplitSink<WebSocket, WsMessage>, msg: &S
 }
 
 /// One page's connection: push review events, apply what the page sends.
-async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Result<()> {
+async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket, shutdown: CancellationToken) -> anyhow::Result<()> {
     let (mut tx, mut rx) = socket.split();
     let mut events = match app.subscribe(&id).await {
         Ok(events) => events,
@@ -249,6 +255,10 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Resu
     let mut drafting = false;
     let result = loop {
         tokio::select! {
+            () = shutdown.cancelled() => {
+                let _ = tx.send(WsMessage::Close(None)).await;
+                break Ok(());
+            }
             Some(msg) = answers.recv() => send(&mut tx, &msg).await?,
             event = events.recv() => match event {
                 Ok(msg) => {

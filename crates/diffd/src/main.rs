@@ -16,6 +16,10 @@ use diffd_server::adapters::store::Store;
 use diffd_server::adapters::watch::Watcher;
 use diffd_server::config::{Config, DEFAULT_CONFIG};
 use diffd_server::ports::{DiffEngine, SystemClock};
+use tokio_util::sync::CancellationToken;
+
+/// How long a stop waits for open connections after telling them to close.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 
 /// The review page, built by `web/` and embedded at compile time.
 const PAGE: &str = include_str!(concat!(env!("OUT_DIR"), "/index.html"));
@@ -115,8 +119,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     if config.lsp.enabled {
         app.set_code_intel(LspPool::new(config.clone()));
     }
-    let watcher = Arc::new(Watcher::default());
-    watcher.install(&app, tokio::runtime::Handle::current());
+    let watcher = Watcher::install(&app, tokio::runtime::Handle::current());
     app.resume_watches().await?;
     {
         let app = app.clone();
@@ -134,11 +137,21 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("port {port} is taken; is diffd already running? (--port to pick another)"))?;
     tracing::info!(db = %db.display(), "diffd is running at {base_url}  ·  MCP: {base_url}/mcp");
-    axum::serve(listener, http::router(app, PAGE))
-        .with_graceful_shutdown(async {
+    let shutdown = CancellationToken::new();
+    let serve = axum::serve(listener, http::router(app, PAGE, shutdown.clone())).with_graceful_shutdown({
+        let shutdown = shutdown.clone();
+        async move {
             let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+            shutdown.cancel();
+        }
+    });
+    tokio::select! {
+        served = serve => served?,
+        // Everything long-lived was told to close; don't wait forever on a stuck connection.
+        () = async { shutdown.cancelled().await; tokio::time::sleep(SHUTDOWN_GRACE).await } => {
+            tracing::warn!("stopping with connections still open");
+        }
+    }
     drop(watcher);
     Ok(())
 }

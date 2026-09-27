@@ -18,7 +18,12 @@ async fn serve() -> u16 {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move {
-        axum::serve(listener, http::router(app, "<!doctype html><title>t</title><!--diffd-boot-->")).await.unwrap();
+        axum::serve(
+            listener,
+            http::router(app, "<!doctype html><title>t</title><!--diffd-boot-->", tokio_util::sync::CancellationToken::new()),
+        )
+        .await
+        .unwrap();
     });
     port
 }
