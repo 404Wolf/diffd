@@ -82,6 +82,7 @@ pub fn router_with_access(app: Arc<App>, template: &'static str, shutdown: Cance
         .route("/api/reviews/{id}/files", get(repo_files))
         .route("/api/reviews/{id}/context", get(context_file))
         .route("/api/reviews/{id}/ws", get(ws))
+        .route("/api/wake", get(wake).delete(cancel_wake))
         .with_state(web)
         .nest_service("/mcp", mcp)
         .layer(middleware::from_fn(move |req, next| local_only(access.clone(), req, next)))
@@ -94,9 +95,15 @@ pub fn router_with_access(app: Arc<App>, template: &'static str, shutdown: Cance
 async fn local_only(access: Access, req: Request, next: Next) -> Response {
     let host = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("");
     let hostname = host.rsplit_once(':').map_or(host, |(h, port)| if port.chars().all(|c| c.is_ascii_digit()) { h } else { host });
-    let is_mcp = req.uri().path().starts_with("/mcp");
+    let path = req.uri().path();
+    let is_mcp = path.starts_with("/mcp");
     if is_mcp && !is_loopback(hostname) {
         return (StatusCode::FORBIDDEN, "diffd only answers MCP requests for localhost").into_response();
+    }
+    // The agents' hooks (`diffd hook`) run on this machine, like MCP; and the
+    // wake notice quotes the user's comments.
+    if path.starts_with("/api/wake") && !is_loopback(hostname) {
+        return (StatusCode::FORBIDDEN, "diffd only answers agent hooks for localhost").into_response();
     }
     if !access.allows(hostname) {
         return (StatusCode::FORBIDDEN, "diffd only answers requests for localhost and its configured hosts").into_response();
@@ -183,6 +190,43 @@ async fn repo_files(State(web): State<Web>, Path(id): Path<String>) -> Response 
         Ok(paths) => axum::Json(paths).into_response(),
         Err(e) => error_response(e),
     }
+}
+
+/// Waits longer than this are cut short (the hook just waits again).
+const MAX_WAKE_WAIT: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+#[derive(serde::Deserialize)]
+struct WakeQuery {
+    /// The agent's working directory: reviews of that repository wake it.
+    cwd: String,
+    /// The harness session, e.g. `claude:<session id>`; a newer wait replaces an older one.
+    waiter: String,
+    timeout_secs: Option<u64>,
+}
+
+/// Long-poll until the user leaves feedback an agent here should hear about
+/// (200, with the notice), or the wait ends (204). Used by `diffd hook`.
+async fn wake(State(web): State<Web>, Query(q): Query<WakeQuery>) -> Response {
+    let timeout = q.timeout_secs.map_or(MAX_WAKE_WAIT, std::time::Duration::from_secs).min(MAX_WAKE_WAIT);
+    let wait = web.app.wait_for_wake(std::path::Path::new(&q.cwd), &q.waiter, timeout);
+    tokio::select! {
+        result = wait => match result {
+            Ok(Some(notice)) => axum::Json(notice).into_response(),
+            Ok(None) => StatusCode::NO_CONTENT.into_response(),
+            Err(e) => error_response(e),
+        },
+        () = web.shutdown.cancelled() => StatusCode::NO_CONTENT.into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct CancelWakeQuery {
+    waiter: String,
+}
+
+async fn cancel_wake(State(web): State<Web>, Query(q): Query<CancelWakeQuery>) -> Response {
+    web.app.cancel_wake(&q.waiter);
+    StatusCode::NO_CONTENT.into_response()
 }
 
 #[derive(serde::Deserialize)]

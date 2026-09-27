@@ -136,6 +136,8 @@ impl App {
             live: spec.watch,
             next_step: if snap.files.is_empty() {
                 "The diff is empty: nothing changed between those two sides. If you meant the other direction, share again with `from` and `to` swapped; for a branch, `merge_base: false` compares directly.".into()
+            } else if self.hooks_active(&repo.root) {
+                "Send the user the url, and end your turn when you're done: diffd wakes you when the user comments. Then call wait_for_feedback to read the comments; reply in threads with reply, and use say for anything not tied to lines.".into()
             } else {
                 "Send the user the url. Then call wait_for_feedback to hear their comments; reply in threads with reply, and use say for anything not tied to lines.".into()
             },

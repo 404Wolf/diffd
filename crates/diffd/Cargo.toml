@@ -19,3 +19,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 clap = { version = "4", features = ["derive", "env"] }
 axum = "0.8"
+serde.workspace = true
+serde_json.workspace = true
+# Only for `diffd hook`, which talks to the local server over plain HTTP.
+reqwest = { version = "0.12", default-features = false, features = ["json"] }

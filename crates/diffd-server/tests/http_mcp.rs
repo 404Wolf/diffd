@@ -172,6 +172,9 @@ async fn allowed_hosts_reach_the_pages_but_not_mcp() {
     // MCP only answers loopback, even for a listed host.
     let mcp = client.post(format!("{base}/mcp")).header("host", "box.tailnet.ts.net").body("{}").send().await.unwrap();
     assert_eq!(mcp.status(), 403);
+    // So do the agents' wake-up hooks, which quote the user's comments.
+    assert_eq!(get("box.tailnet.ts.net", "/api/wake?cwd=/&waiter=x&timeout_secs=0").await.unwrap().status(), 403);
+    assert_eq!(get("localhost", "/api/wake?cwd=/&waiter=x&timeout_secs=0").await.unwrap().status(), 204);
     // A listed host still can't be written to from another origin.
     let cross = client
         .delete(format!("{base}/api/reviews/missing"))

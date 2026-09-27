@@ -64,11 +64,9 @@ impl App {
     /// Wait until the user leaves feedback (and pauses), or `timeout` passes.
     pub async fn wait_for_feedback(&self, id: &ReviewId, timeout: Duration) -> Result<FeedbackBatch> {
         let live = self.live(id).await?;
-        live.inner.lock().expect("live lock").listeners += 1;
-        self.agent_seen(&live);
         // Stop counting as a listener however this ends, including when the
         // client cancels the call and this future is dropped.
-        let _listening = Listening { app: self, live: &live };
+        let _listening = Listening::start(self, &live);
         let deadline = tokio::time::Instant::now() + timeout;
         let outcome = async {
             loop {
@@ -85,14 +83,12 @@ impl App {
                     (ready, wait)
                 };
                 if ready {
-                    // Another wait may have taken these meanwhile: read again while holding the lock.
+                    // Another wait may have taken these meanwhile: read again while holding the lock,
+                    // and keep holding it until they're marked delivered.
                     let guard = live.deliver.lock().await;
                     let pending = self.store.undelivered(id).await?;
                     if !pending.is_empty() {
-                        let ids: Vec<MessageId> = pending.iter().map(|p| p.message.id.clone()).collect();
-                        self.store.mark_delivered(&ids, self.now()).await?;
-                        drop(guard);
-                        return Ok::<_, super::AppError>(pending);
+                        return Ok::<_, super::AppError>(Some((pending, guard)));
                     }
                 }
                 let sleep_until = match wait {
@@ -104,17 +100,33 @@ impl App {
                     _ = tokio::time::sleep_until(sleep_until) => {}
                 }
                 if tokio::time::Instant::now() >= deadline {
-                    return Ok(Vec::new());
+                    return Ok(None);
                 }
             }
         }
         .await;
         drop(_listening);
-        let pending = outcome?;
+        let Some((pending, _deliver)) = outcome? else {
+            return Ok(FeedbackBatch {
+                review_id: id.0.clone(),
+                url: self.url(id),
+                items: Vec::new(),
+                next_step: if self.hooks_active_for(id).await {
+                    "No feedback yet. You don't need to keep waiting: diffd wakes you when the user writes, so carry on \
+                     or end your turn."
+                        .into()
+                } else {
+                    "No feedback yet. Call wait_for_feedback again to keep listening, or carry on working.".into()
+                },
+            });
+        };
         let ids: Vec<MessageId> = pending.iter().map(|p| p.message.id.clone()).collect();
 
+        // Read everything first: once the messages are marked delivered, nothing may
+        // stop this call from returning them (an agent that gave up would lose them).
         let snap = App::snapshot(&live);
-        let threads = self.store.threads(id).await?;
+        let mut threads = self.store.threads(id).await?;
+        let mut chat: Vec<_> = self.store.chat(id).await?.into_iter().filter(|c| ids.contains(&c.id)).collect();
         let mut items: Vec<FeedbackItem> = Vec::new();
         let mut touched: Vec<ThreadId> = Vec::new();
         for p in &pending {
@@ -129,23 +141,41 @@ impl App {
                 }
             }
         }
+        let now = self.now();
+        self.store.mark_delivered(&ids, now).await?;
         // Tell pages the messages were delivered.
-        for t in threads.into_iter().filter(|t| touched.contains(&t.id)) {
-            App::broadcast(&live, ServerMsg::Thread { thread: t });
+        let delivered = |m: &mut diffd_core::model::Message| {
+            if ids.contains(&m.id) {
+                m.delivered_at = Some(now);
+            }
+        };
+        for t in threads.iter_mut().filter(|t| touched.contains(&t.id)) {
+            t.messages.iter_mut().for_each(delivered);
+            App::broadcast(&live, ServerMsg::Thread { thread: t.clone() });
         }
-        for c in self.store.chat(id).await?.into_iter().filter(|c| ids.contains(&c.id)) {
-            App::broadcast(&live, ServerMsg::Chat { message: c });
+        for c in &mut chat {
+            delivered(c);
+            App::broadcast(&live, ServerMsg::Chat { message: c.clone() });
         }
 
-        let next_step = if items.is_empty() {
-            "No feedback yet. Call wait_for_feedback again to keep listening, or carry on working.".to_owned()
+        let then = if self.hooks_active_for(id).await {
+            "When you're done, end your turn: diffd wakes you when the user writes again, and meanwhile they can \
+             talk to you directly."
         } else {
-            "Answer each thread with reply (thread_id), in the thread, where the code is. Answer chat items with say. \
-             If you change code, the review updates by itself; say what you changed in your reply. \
-             Then call wait_for_feedback again."
-                .to_owned()
+            "Then call wait_for_feedback again."
         };
+        let next_step = format!(
+            "Answer each thread with reply (thread_id), in the thread, where the code is. Answer chat items with say. \
+             If you change code, the review updates by itself; say what you changed in your reply. {then}"
+        );
         Ok(FeedbackBatch { review_id: id.0.clone(), url: self.url(id), items, next_step })
+    }
+
+    async fn hooks_active_for(&self, id: &ReviewId) -> bool {
+        match self.meta(id).await {
+            Ok((meta, _)) => self.hooks_active(std::path::Path::new(&meta.repo_path)),
+            Err(_) => false,
+        }
     }
 
     /// How many user messages are waiting for the agent.
@@ -154,9 +184,18 @@ impl App {
     }
 }
 
-struct Listening<'a> {
+/// Counts as an agent listening on a review for as long as it's held.
+pub(super) struct Listening<'a> {
     app: &'a App,
     live: &'a super::Live,
+}
+
+impl<'a> Listening<'a> {
+    pub(super) fn start(app: &'a App, live: &'a super::Live) -> Self {
+        live.inner.lock().expect("live lock").listeners += 1;
+        app.agent_seen(live);
+        Self { app, live }
+    }
 }
 
 impl Drop for Listening<'_> {

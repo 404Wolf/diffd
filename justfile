@@ -83,6 +83,11 @@ e2e-agent port="3433": build
     sleep 1
     node web/e2e/agent.mjs "$repo" {{port}} target/e2e-agent-shots
 
+# An agent's terminal UI hears review feedback without polling (see scripts/e2e-wake.sh):
+# `just e2e-wake codex` (a stand-in model, no network) or `just e2e-wake claude` (signed in).
+e2e-wake agent="codex": build
+    scripts/e2e-wake.sh {{agent}}
+
 # Check reviews of real repositories against git: `just verify ~/src/ripgrep 13.0.0 14.0.0`.
 verify repo from to="" port="3433":
     python3 scripts/verify-review.py {{repo}} {{from}} {{to}} --port {{port}}

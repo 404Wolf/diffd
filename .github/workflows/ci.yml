@@ -55,6 +55,11 @@ jobs:
       - run: npm --prefix web ci
       - run: cd web && npx playwright install --with-deps chromium
       - run: just e2e
+      - name: Agents hear feedback while idle (real Codex TUI, stand-in model)
+        run: |
+          sudo apt-get install -y tmux
+          npm install -g @openai/codex
+          just e2e-wake codex
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

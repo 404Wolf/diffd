@@ -9,7 +9,8 @@ use std::time::Duration;
 use diffd_core::model::{Author, ReviewId, ShowRequest, Side, ThreadId, ThreadKind};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
-use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
+use rmcp::service::RequestContext;
+use rmcp::{ErrorData, RoleServer, ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,14 @@ Then call wait_for_feedback to hear the user's comments. Each comment is anchore
 in its thread, and keep it short; if you change code, the review updates by itself, so say what you changed. Messages from the
 chat box arrive too: answer those with say. If the user asks where something is, or code outside the diff would help, call show:
 it can open any file in the repository. Comments can be on those files too.
-Keep calling wait_for_feedback while you're in a review conversation.";
+Keep calling wait_for_feedback while you're in a review conversation. When you finish your turn instead, diffd can still reach
+you: with its hooks set up (`diffd setup claude` / `diffd setup codex`), a message saying \"New feedback on your diffd review\"
+arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.";
+
+/// The longest `wait_for_feedback` waits. Agents give up on a tool call after
+/// their own timeout (60 s in Claude Code and Codex by default); feedback
+/// handed to a call the agent already abandoned would be lost.
+const MAX_WAIT_SECS: u64 = 50;
 
 #[derive(Clone)]
 pub struct DiffdMcp {
@@ -96,7 +104,8 @@ pub struct WaitParams {
     /// Defaults to the review you shared last.
     #[serde(default)]
     pub review_id: Option<String>,
-    /// Give up after this many seconds and return no items (default 240, at most 3600).
+    /// Give up after this many seconds and return no items (default and most: 50, so the call ends before
+    /// agents' own tool timeouts; call again to keep listening).
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
@@ -209,10 +218,19 @@ of what changed there), so the user reads the interesting parts first.")]
 commented and paused (so several comments arrive together), or with no items when the timeout passes. Each item \
 carries the code it's about, some context and the thread so far. Call it again after answering, for as long as you're \
 reviewing together.")]
-    async fn wait_for_feedback(&self, Parameters(p): Parameters<WaitParams>) -> Result<CallToolResult, ErrorData> {
+    async fn wait_for_feedback(
+        &self,
+        Parameters(p): Parameters<WaitParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
-        let timeout = Duration::from_secs(p.timeout_seconds.unwrap_or(240).clamp(1, 3600));
-        let batch = try_app!(self.app.wait_for_feedback(&id, timeout).await);
+        let timeout = Duration::from_secs(p.timeout_seconds.unwrap_or(MAX_WAIT_SECS).clamp(1, MAX_WAIT_SECS));
+        // An agent that stopped waiting must not have feedback marked delivered to it:
+        // dropping the wait before it returns leaves the feedback pending.
+        let batch = tokio::select! {
+            batch = self.app.wait_for_feedback(&id, timeout) => try_app!(batch),
+            () = context.ct.cancelled() => return Err(ErrorData::internal_error("cancelled", None)),
+        };
         ok(&batch)
     }
 

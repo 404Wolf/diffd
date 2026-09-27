@@ -1,7 +1,11 @@
 //! `diffd`: the local server agents share their changes through.
 
+mod hook;
+mod setup;
+
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -39,18 +43,60 @@ enum Command {
     Serve(ServeArgs),
     /// Print the default configuration (a documented config.toml to start from).
     Config,
-    /// Register diffd as an MCP server with an agent.
+    /// Register diffd with an agent: its MCP server, and hooks that wake the
+    /// agent when you leave feedback while it's idle.
     Setup {
         #[command(subcommand)]
         agent: Agent,
+    },
+    /// Run by an agent's hooks (see `diffd setup`): wait for your feedback, then wake the agent.
+    Hook {
+        #[arg(long, env = "DIFFD_PORT", default_value_t = 3433)]
+        port: u16,
+        #[command(subcommand)]
+        action: HookAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum HookAction {
+    /// Claude Code's hook (async, asyncRewake): exits 2 with the feedback notice, which wakes Claude.
+    Claude,
+    /// Codex's hook (async): queues the feedback notice into the session with `codex queue`.
+    Codex,
+    /// A SessionEnd hook: stop waiting for that session.
+    End {
+        #[arg(value_enum)]
+        harness: hook::Harness,
+    },
+    /// For any other agent or script: wait for feedback on reviews of a
+    /// directory, then print the notice to stderr and exit 2.
+    Wait {
+        /// The agent's working directory (default: the current one).
+        #[arg(long)]
+        cwd: Option<PathBuf>,
+        /// Names the waiter: a newer wait with the same name replaces this one.
+        #[arg(long, default_value = "default")]
+        session: String,
+        /// Print the notice as JSON on stdout and exit 0 instead.
+        #[arg(long)]
+        json: bool,
     },
 }
 
 #[derive(Subcommand)]
 enum Agent {
-    /// Claude Code: runs `claude mcp add --transport http --scope user diffd <url>`.
+    /// Claude Code: `claude mcp add` (user scope), and hooks in ~/.claude/settings.json.
     Claude {
-        /// Print the command instead of running it.
+        /// Print what it would do instead of doing it.
+        #[arg(long)]
+        print: bool,
+        #[arg(long, env = "DIFFD_PORT", default_value_t = 3433)]
+        port: u16,
+    },
+    /// Codex: `codex mcp add`, and hooks in ~/.codex/hooks.json (trust them once with /hooks).
+    Codex {
+        /// Print what it would do instead of doing it.
         #[arg(long)]
         print: bool,
         #[arg(long, env = "DIFFD_PORT", default_value_t = 3433)]
@@ -91,20 +137,32 @@ fn default_db() -> anyhow::Result<PathBuf> {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> anyhow::Result<ExitCode> {
+    let cli = Cli::parse();
+    // Hooks answer through their exit code and stderr: no logging, no chatter.
+    if let Some(Command::Hook { port, action }) = cli.command {
+        return match action {
+            HookAction::Claude => hook::wait_and_wake(hook::Harness::Claude, port).await,
+            HookAction::Codex => hook::wait_and_wake(hook::Harness::Codex, port).await,
+            HookAction::End { harness } => hook::end(harness, port).await,
+            HookAction::Wait { cwd, session, json } => hook::wait_generic(port, cwd, session, json).await,
+        };
+    }
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "diffd=info,diffd_server=info".into()))
         .init();
-    let cli = Cli::parse();
     match cli.command {
-        Some(Command::Setup { agent: Agent::Claude { print, port } }) => setup_claude(print, port),
+        Some(Command::Setup { agent: Agent::Claude { print, port } }) => setup::claude(print, port),
+        Some(Command::Setup { agent: Agent::Codex { print, port } }) => setup::codex(print, port),
         Some(Command::Config) => {
             print!("{DEFAULT_CONFIG}");
             Ok(())
         }
+        Some(Command::Hook { .. }) => unreachable!("handled above"),
         Some(Command::Serve(args)) => serve(args).await,
         None => serve(cli.serve).await,
     }
+    .map(|()| ExitCode::SUCCESS)
 }
 
 async fn serve(args: ServeArgs) -> anyhow::Result<()> {
@@ -193,20 +251,4 @@ async fn stop_signal() {
         }
     }
     let _ = tokio::signal::ctrl_c().await;
-}
-
-fn setup_claude(print: bool, port: u16) -> anyhow::Result<()> {
-    let url = format!("http://localhost:{port}/mcp");
-    let args = ["mcp", "add", "--transport", "http", "--scope", "user", "diffd", url.as_str()];
-    if print {
-        println!("claude {}", args.join(" "));
-        return Ok(());
-    }
-    let status = std::process::Command::new("claude")
-        .args(args)
-        .status()
-        .context("running `claude` (is Claude Code installed? use --print to see the command)")?;
-    anyhow::ensure!(status.success(), "`claude mcp add` failed");
-    println!("Added diffd to Claude Code. Start the server with `diffd`, then ask Claude to share its changes.");
-    Ok(())
 }

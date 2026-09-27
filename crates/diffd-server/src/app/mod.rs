@@ -7,6 +7,7 @@ mod feedback;
 mod history;
 mod rebuild;
 mod share;
+mod wake;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -20,6 +21,7 @@ pub use conversation::{NoteInput, RegionInput};
 pub use feedback::{FeedbackBatch, FeedbackItem, ThreadMessage};
 pub use history::RangeEnd;
 pub use share::{ShareRequest, ShareResult};
+pub use wake::{WakeNotice, WakeReview};
 
 use crate::adapters::store::Store;
 use crate::ports::{Clock, CodeIntel, DiffEngine, RepoSource, TreeWatch};
@@ -53,6 +55,8 @@ pub struct App {
     watcher: Mutex<Option<Arc<dyn TreeWatch>>>,
     /// Language servers, when configured (see [`App::set_code_intel`]).
     code: Mutex<Option<Arc<dyn CodeIntel>>>,
+    /// Harness hooks waiting to wake their agent (see `wake`).
+    waiters: Mutex<wake::Waiters>,
     me: Weak<App>,
 }
 
@@ -70,8 +74,10 @@ struct LiveInner {
     gate: FeedbackGate,
     /// Pages with an open comment draft.
     drafting: u32,
-    /// `wait_for_feedback` calls in progress.
+    /// `wait_for_feedback` calls and harness wake waits in progress.
     listeners: u32,
+    /// User messages a harness hook already woke the agent for (see `wake`).
+    told: std::collections::HashSet<diffd_core::model::MessageId>,
     last_agent: Option<Millis>,
     presence: Presence,
     snapshot: Arc<Snapshot>,
@@ -105,6 +111,7 @@ impl App {
             live: Mutex::new(HashMap::new()),
             watcher: Mutex::new(None),
             code: Mutex::new(None),
+            waiters: Mutex::default(),
             me: me.clone(),
         })
     }
@@ -179,6 +186,7 @@ impl App {
                         gate: FeedbackGate::default(),
                         drafting: 0,
                         listeners: 0,
+                        told: Default::default(),
                         last_agent: None,
                         presence: Presence::Away,
                         snapshot: Arc::new(snapshot),

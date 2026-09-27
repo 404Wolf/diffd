@@ -2,7 +2,8 @@
 
 A live code review of your agent's changes, in your browser.
 
-Your agent (Claude Code, over MCP) shares a diff and gives you a link. You
+Your agent (Claude Code, Codex, or anything that speaks MCP) shares a diff
+and gives you a link. You
 read it in a fast, vim-driven, difftastic-powered split view, comment on
 lines like on a pull request, and the agent answers inline while it keeps
 working. The diff updates as the code changes. There's no "submit review":
@@ -54,18 +55,32 @@ any language servers you have installed.
 ```sh
 diffd                   # start the server (http://localhost:3433)
 diffd setup claude      # register it with Claude Code (once)
+diffd setup codex       # or with Codex (once; then trust its hooks when Codex asks)
 ```
 
-Then ask Claude to show you its changes ("share your changes with diffd").
-It calls `share_diff` and gives you a link. Leave comments; Claude answers
-in the threads. Press `?` on the page for every key.
+Then ask the agent to show you its changes ("share your changes with
+diffd"). It calls `share_diff` and gives you a link. Leave comments; the
+agent answers in the threads. Press `?` on the page for every key.
+
+**The agent hears you even when it's idle.** An agent in its terminal ends
+its turn and waits for you, so it can't be listening for comments.
+`diffd setup` also installs hooks that wait in the background (whenever a
+session starts, you write to the agent, or a turn ends) and wake the agent
+when you comment: Claude Code through an `asyncRewake` hook, Codex by
+queueing a message into the session with `codex queue`. You can keep
+talking to the agent in its terminal at the same time; feedback that
+arrives mid-turn is picked up with that turn or right after it. For any
+other agent, `diffd hook wait` blocks until there's feedback on a review of
+the current directory, then prints what to do and exits 2
+(`--json` for scripts). `diffd setup claude --print` shows everything setup
+would do.
 
 ### The MCP tools
 
 | Tool | What it's for |
 | --- | --- |
 | `share_diff` | Start a review: `from`/`to` revisions (default: the working tree), a title and summary, notes on tricky code, files to collapse, test regions and folds. |
-| `wait_for_feedback` | Wait for your comments and chat messages, batched once you pause. |
+| `wait_for_feedback` | Wait (up to 50 s) for your comments and chat messages, batched once you pause. |
 | `reply` | Answer in a thread, where the code is. |
 | `say` | Answer in the chat. |
 | `annotate` | Add notes, test marks or folds later. |
@@ -219,6 +234,9 @@ just dev-web            # the page with hot reload, against `just dev`
 just demo               # make a demo repository and share it with the running server
 just check              # formatting, lints, types, unit and integration tests
 just e2e                # the whole thing in a browser, with an MCP client as the agent
+just e2e-wake codex     # a real Codex TUI hears feedback while idle (stand-in model, no network)
+just e2e-wake claude    # the same with a real Claude Code TUI (signed in)
+just e2e-agent          # a real Claude Code does a task and reviews it with you
 ```
 
 `just e2e` drives a real review end to end: Playwright plays you, a small

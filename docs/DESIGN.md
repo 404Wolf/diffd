@@ -95,8 +95,10 @@ What's still open is in §15.
 
 ```sh
 diffd                      # = diffd serve: one local server on localhost:3433
-diffd setup claude         # runs: claude mcp add --transport http --scope user diffd http://localhost:3433/mcp
-diffd setup claude --print # just prints that command
+diffd setup claude         # claude mcp add --transport http --scope user diffd http://localhost:3433/mcp,
+                           # plus the wake-up hooks in ~/.claude/settings.json (§5.3)
+diffd setup codex          # codex mcp add diffd --url …, plus the hooks in ~/.codex/hooks.json
+diffd setup claude --print # just prints what it would do
 diffd config               # prints the default config, documented
 ```
 
@@ -263,7 +265,11 @@ listing the files, so the agent can fix the call.
 **`wait_for_feedback` long-polls.** It works with every MCP client.
 
 - It returns as soon as there's feedback, or with no items after
-  `timeout_seconds` (default 240, at most 3600) with a hint to call again.
+  `timeout_seconds` (default and most: 50) with a hint. Agents give up on a
+  tool call after their own timeout (60 s in Claude Code and Codex), so a
+  longer wait could hand feedback to a call nobody is listening to any more.
+  For the same reason a wait stops when the client cancels the call, and
+  messages are marked delivered only as the very last step.
 - It waits for the user to be idle for 1.5 s, and for any open comment draft to
   be saved, before returning. So writing three comments in a row wakes the
   agent once, not three times.
@@ -279,6 +285,38 @@ listing the files, so the agent can fix the call.
 - While the agent waits, the page shows "Claude is listening". While it's off
   editing, "Claude is working". After 10 minutes without a tool call, "Claude
   hasn't checked in". Comments queue in the meantime.
+
+**Waking an agent that isn't listening.** An agent in its terminal UI ends
+its turn and waits for its user, so no `wait_for_feedback` is running when a
+comment arrives. The MCP spec has no way to wake a model: servers can send
+notifications, but clients don't turn them into turns (Codex logs them and
+nothing more). Claude Code's research-preview "channels" can, but only for
+stdio servers it spawns, behind a flag. So diffd uses each harness's hooks,
+installed by `diffd setup claude|codex`:
+
+- The hook (`diffd hook claude|codex`) runs in the background on
+  SessionStart, UserPromptSubmit and Stop. It long-polls `GET /api/wake`
+  with the session id and working directory. One waiter per session: each
+  new one replaces the last (`DELETE /api/wake` on SessionEnd).
+- The wait ends when there's feedback, on an open review of that repository
+  touched in the last week, that no hook has woken anyone for yet, and once
+  the user has paused (the same gate as `wait_for_feedback`). While hooks
+  wait, the page shows the agent as listening.
+- **Claude Code:** the hook is `async` with `asyncRewake`; exiting 2 wakes
+  Claude with the notice on stderr.
+- **Codex:** the hook is `async`; it runs `codex queue --thread <session>`,
+  which adds the notice to the session's queue on Codex's shared app-server
+  daemon (on by default): an idle session starts a turn, a busy one takes it
+  after the current turn. Codex asks the user to trust new hooks once.
+- The notice names the review (`review_id=…`), counts comments and chat
+  messages, quotes the first few, and says to call `wait_for_feedback`.
+- Either way the user can keep talking to the agent in its terminal. Once a
+  hook has been seen for a repository, tool results tell the agent to end its
+  turn when done instead of waiting in `wait_for_feedback`.
+- Other agents: `diffd hook wait [--cwd] [--session] [--json]`.
+- `scripts/e2e-wake.sh` tests both in their real terminal UIs, in tmux:
+  Codex against a scripted stand-in for the OpenAI API
+  (`scripts/mock-responses.py`, no network), Claude Code on a real model.
 
 ## 6. Data model and storage
 
