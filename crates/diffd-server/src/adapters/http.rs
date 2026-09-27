@@ -255,7 +255,7 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Resu
                 let Some(Ok(frame)) = incoming else { break Ok(()) };
                 let WsMessage::Text(text) = frame else { continue };
                 let text = text.as_str();
-                match serde_json::from_str::<ClientMsg>(&text) {
+                match serde_json::from_str::<ClientMsg>(text) {
                     // Language servers can take a while: answer in the background, in any order.
                     Ok(ClientMsg::Code { request_id, query, path, line, col }) => {
                         let (app, id, direct) = (app.clone(), id.clone(), direct.clone());
