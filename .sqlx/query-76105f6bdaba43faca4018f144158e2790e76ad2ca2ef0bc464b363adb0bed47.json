@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO revisions (review_id, number, snapshot, created_at) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "76105f6bdaba43faca4018f144158e2790e76ad2ca2ef0bc464b363adb0bed47"
+}

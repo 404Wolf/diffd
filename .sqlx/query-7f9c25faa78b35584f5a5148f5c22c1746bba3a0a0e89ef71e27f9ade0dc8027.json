@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, title, summary, repo_path, repo_name, from_rev, to_rev, spec, revision, status, created_at, updated_at\n             FROM reviews WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "summary",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "repo_path",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "repo_name",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_rev",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "to_rev",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "spec",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "revision",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "status",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 10,
+        "type_info": "Integer"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 11,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7f9c25faa78b35584f5a5148f5c22c1746bba3a0a0e89ef71e27f9ade0dc8027"
+}

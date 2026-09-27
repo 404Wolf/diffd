@@ -67,3 +67,23 @@ pub enum ClientMsg {
         seq: u64,
     },
 }
+
+/// A review in the recent list on the home page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReviewSummary {
+    pub review: ReviewMeta,
+    /// Agent activity the user hasn't seen.
+    pub unread: u32,
+}
+
+/// What the server embeds in each page it serves; the page renders from it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "page", rename_all = "camelCase")]
+#[ts(export)]
+pub enum Boot {
+    Home { reviews: Vec<ReviewSummary> },
+    Review { state: Box<ReviewState> },
+    NotFound { message: String },
+}

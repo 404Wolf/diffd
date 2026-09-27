@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, kind, anchor, resolved AS \"resolved: bool\", changed_in, outdated AS \"outdated: bool\", created_at FROM threads\n             WHERE review_id = ? ORDER BY created_at, id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "kind",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "anchor",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "resolved: bool",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "changed_in",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "outdated: bool",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 6,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "073fd1667078effb615bdffdd68ef14ee7e2ecd9fd8b7d594b61905a09525acd"
+}

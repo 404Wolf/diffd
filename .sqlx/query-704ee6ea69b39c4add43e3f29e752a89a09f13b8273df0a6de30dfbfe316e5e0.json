@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT snapshot FROM revisions WHERE review_id = ? ORDER BY number DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "snapshot",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "704ee6ea69b39c4add43e3f29e752a89a09f13b8273df0a6de30dfbfe316e5e0"
+}

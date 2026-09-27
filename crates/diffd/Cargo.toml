@@ -1,0 +1,20 @@
+[package]
+name = "diffd"
+description = "Live code review of your agent's changes, in your browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+diffd-server.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap = { version = "4", features = ["derive", "env"] }
+axum = "0.8"

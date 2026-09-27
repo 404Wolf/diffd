@@ -1,0 +1,250 @@
+//! Use cases. Everything the page or the agent can do goes through [`App`].
+
+mod conversation;
+mod feedback;
+mod rebuild;
+mod share;
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, Weak};
+
+use diffd_core::feedback::FeedbackGate;
+use diffd_core::model::{Millis, Presence, ReviewId, ReviewMeta, Snapshot};
+use diffd_core::protocol::{ReviewState, ServerMsg};
+use tokio::sync::{Notify, broadcast};
+
+pub use conversation::NoteInput;
+pub use feedback::{FeedbackBatch, FeedbackItem, ThreadMessage};
+pub use share::{ShareRequest, ShareResult};
+
+use crate::adapters::store::Store;
+use crate::ports::{Clock, DiffEngine, RepoSource};
+
+/// Agents that haven't called a tool for this long are shown as away.
+const AWAY_AFTER_MS: Millis = 10 * 60 * 1000;
+
+#[derive(Debug, thiserror::Error)]
+pub enum AppError {
+    #[error("{0}")]
+    NotFound(String),
+    #[error("{0}")]
+    Invalid(String),
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+
+pub type Result<T> = std::result::Result<T, AppError>;
+
+/// Starts watching a review's worktree for changes.
+type WatchFn = Box<dyn Fn(Weak<App>, &ReviewMeta) + Send + Sync>;
+
+pub struct App {
+    store: Store,
+    repo: Arc<dyn RepoSource>,
+    engine: Arc<dyn DiffEngine>,
+    clock: Arc<dyn Clock>,
+    base_url: String,
+    live: Mutex<HashMap<ReviewId, Arc<Live>>>,
+    /// Starts watching a review's worktree; set by whoever owns the watcher.
+    watcher: Mutex<Option<WatchFn>>,
+    me: Weak<App>,
+}
+
+/// In-memory state for a review that someone is looking at or working on.
+pub(crate) struct Live {
+    pub(crate) tx: broadcast::Sender<ServerMsg>,
+    pub(crate) feedback: Notify,
+    pub(crate) rebuild: tokio::sync::Mutex<()>,
+    inner: Mutex<LiveInner>,
+}
+
+struct LiveInner {
+    gate: FeedbackGate,
+    /// Pages with an open comment draft.
+    drafting: u32,
+    /// `wait_for_feedback` calls in progress.
+    listeners: u32,
+    last_agent: Option<Millis>,
+    presence: Presence,
+    snapshot: Arc<Snapshot>,
+    fingerprint: u64,
+}
+
+impl App {
+    pub async fn new(
+        store: Store,
+        repo: Arc<dyn RepoSource>,
+        engine: Arc<dyn DiffEngine>,
+        clock: Arc<dyn Clock>,
+        base_url: String,
+    ) -> Arc<Self> {
+        Arc::new_cyclic(|me| Self {
+            store,
+            repo,
+            engine,
+            clock,
+            base_url,
+            live: Mutex::new(HashMap::new()),
+            watcher: Mutex::new(None),
+            me: me.clone(),
+        })
+    }
+
+    /// Register how reviews get watched (see `adapters::watch`).
+    pub fn set_watcher(&self, f: impl Fn(Weak<App>, &ReviewMeta) + Send + Sync + 'static) {
+        *self.watcher.lock().expect("watcher lock") = Some(Box::new(f));
+    }
+
+    /// Resume watching every open review that asked for it (after a restart).
+    pub async fn resume_watches(&self) -> Result<()> {
+        for (meta, _) in self.store.recent(200).await? {
+            if let Some((meta, spec)) = self.store.review(&meta.id).await?
+                && spec.watch && meta.to.is_none() {
+                    self.start_watch(&meta);
+                }
+        }
+        Ok(())
+    }
+
+    fn start_watch(&self, meta: &ReviewMeta) {
+        if let Some(f) = self.watcher.lock().expect("watcher lock").as_ref() {
+            f(self.me.clone(), meta);
+        }
+    }
+
+    pub fn url(&self, id: &ReviewId) -> String {
+        format!("{}/r/{id}", self.base_url)
+    }
+
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
+    fn now(&self) -> Millis {
+        self.clock.now()
+    }
+
+    /// Live state for a review, loading its latest snapshot on first use.
+    pub(crate) async fn live(&self, id: &ReviewId) -> Result<Arc<Live>> {
+        if let Some(l) = self.live.lock().expect("live lock").get(id) {
+            return Ok(l.clone());
+        }
+        let snapshot = self
+            .store
+            .latest_snapshot(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("no review with id `{id}`")))?;
+        Ok(self.insert_live(id, snapshot, 0))
+    }
+
+    fn insert_live(&self, id: &ReviewId, snapshot: Snapshot, fingerprint: u64) -> Arc<Live> {
+        let mut map = self.live.lock().expect("live lock");
+        map.entry(id.clone())
+            .or_insert_with(|| {
+                Arc::new(Live {
+                    tx: broadcast::channel(256).0,
+                    feedback: Notify::new(),
+                    rebuild: tokio::sync::Mutex::new(()),
+                    inner: Mutex::new(LiveInner {
+                        gate: FeedbackGate::default(),
+                        drafting: 0,
+                        listeners: 0,
+                        last_agent: None,
+                        presence: Presence::Away,
+                        snapshot: Arc::new(snapshot),
+                        fingerprint,
+                    }),
+                })
+            })
+            .clone()
+    }
+
+    pub(crate) fn snapshot(live: &Live) -> Arc<Snapshot> {
+        live.inner.lock().expect("live lock").snapshot.clone()
+    }
+
+    /// Subscribe to a review's page messages.
+    pub async fn subscribe(&self, id: &ReviewId) -> Result<broadcast::Receiver<ServerMsg>> {
+        Ok(self.live(id).await?.tx.subscribe())
+    }
+
+    /// Everything the page needs, as of now.
+    pub async fn state(&self, id: &ReviewId) -> Result<ReviewState> {
+        let live = self.live(id).await?;
+        let (review, _) = self.meta(id).await?;
+        let presence = live.inner.lock().expect("live lock").presence;
+        Ok(ReviewState {
+            review,
+            snapshot: (*Self::snapshot(&live)).clone(),
+            threads: self.store.threads(id).await?,
+            chat: self.store.chat(id).await?,
+            activity: self.store.activity(id).await?,
+            presence,
+            read_seq: self.store.read_seq(id).await?,
+        })
+    }
+
+    async fn meta(&self, id: &ReviewId) -> Result<(ReviewMeta, crate::adapters::store::ReviewSpec)> {
+        self.store.review(id).await?.ok_or_else(|| AppError::NotFound(format!("no review with id `{id}`")))
+    }
+
+    fn broadcast(live: &Live, msg: ServerMsg) {
+        // No subscribers is fine: nobody has the page open.
+        let _ = live.tx.send(msg);
+    }
+
+    /// Recompute presence and tell pages if it changed.
+    fn update_presence(&self, live: &Live) {
+        let now = self.now();
+        let changed = {
+            let mut inner = live.inner.lock().expect("live lock");
+            let presence = if inner.listeners > 0 {
+                Presence::Listening
+            } else if inner.last_agent.is_some_and(|t| now.saturating_sub(t) < AWAY_AFTER_MS) {
+                Presence::Working
+            } else {
+                Presence::Away
+            };
+            let changed = presence != inner.presence;
+            inner.presence = presence;
+            changed.then_some(presence)
+        };
+        if let Some(presence) = changed {
+            Self::broadcast(live, ServerMsg::Presence { presence });
+        }
+    }
+
+    /// Note that the agent did something.
+    fn agent_seen(&self, live: &Live) {
+        live.inner.lock().expect("live lock").last_agent = Some(self.now());
+        self.update_presence(live);
+    }
+}
+
+/// Short random ids like `k3f9x2ab`, readable in URLs.
+pub(crate) fn new_id(prefix: &str) -> String {
+    const ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyz23456789";
+    let mut id = String::from(prefix);
+    for _ in 0..10 {
+        id.push(ALPHABET[rand::random_range(0..ALPHABET.len())] as char);
+    }
+    id
+}
+
+impl App {
+    /// Delete a review and everything said about it.
+    pub async fn delete(&self, id: &ReviewId) -> Result<()> {
+        self.meta(id).await?;
+        self.store.delete_review(id).await?;
+        self.live.lock().expect("live lock").remove(id);
+        Ok(())
+    }
+
+    /// Recompute presence for every live review; call periodically so idle agents show as away.
+    pub fn tick(&self) {
+        let lives: Vec<Arc<Live>> = self.live.lock().expect("live lock").values().cloned().collect();
+        for live in lives {
+            self.update_presence(&live);
+        }
+    }
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO read_marks (review_id, seq) VALUES (?, ?)\n             ON CONFLICT (review_id) DO UPDATE SET seq = MAX(seq, excluded.seq)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3a008118c7d08bd230c388596acf799f4da37994e3ea26438938e044d3918fa3"
+}

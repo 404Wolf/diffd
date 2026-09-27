@@ -1,0 +1,35 @@
+[package]
+name = "diffd-server"
+description = "diffd's local server: reviews, SQLite storage, the review page, WebSocket and MCP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+diffd-core.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+rayon.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tempfile.workspace = true
+axum = { version = "0.8", features = ["ws"] }
+futures = "0.3"
+rmcp = { version = "3.4", features = ["server", "macros", "schemars", "transport-streamable-http-server"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+zstd = "0.13"
+globset = "0.4"
+notify = "8"
+notify-debouncer-mini = "0.7"
+rand = "0.9"
+
+[dev-dependencies]
+rmcp = { version = "3.4", features = ["client", "transport-streamable-http-client-reqwest"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio-tungstenite = "0.28"

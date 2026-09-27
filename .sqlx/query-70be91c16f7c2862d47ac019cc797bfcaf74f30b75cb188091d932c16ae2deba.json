@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT seq AS \"seq!: i64\", at, kind FROM activity WHERE review_id = ? ORDER BY seq",
+  "describe": {
+    "columns": [
+      {
+        "name": "seq!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "at",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "70be91c16f7c2862d47ac019cc797bfcaf74f30b75cb188091d932c16ae2deba"
+}

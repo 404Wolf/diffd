@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT review_id FROM threads WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "review_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8babacf16a44e1fe8663390d7cce5cce62dc4b4c5bcac56b3d6791099207f650"
+}

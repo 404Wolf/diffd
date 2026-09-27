@@ -50,3 +50,41 @@ mod tests {
         assert_eq!(reanchor("x", 5, &lines("x\na\na\na\na\nx")), Reanchor::Moved { start: 6, end: 6 });
     }
 }
+
+/// Where 1-based `line` of `prev` ends up in `cur`, following the line diff
+/// between them: unchanged lines keep their place, edited or removed lines
+/// map to the start of whatever replaced them.
+pub fn map_line(prev: &[String], cur: &[String], line: u32) -> u32 {
+    use similar::{Algorithm, DiffOp, capture_diff_slices};
+    let target = line.saturating_sub(1) as usize;
+    for op in capture_diff_slices(Algorithm::Patience, prev, cur) {
+        let (old, new) = (op.old_range(), op.new_range());
+        if !old.contains(&target) {
+            continue;
+        }
+        let mapped = match op {
+            DiffOp::Equal { .. } => new.start + (target - old.start),
+            _ => new.start + (target - old.start).min(new.len().saturating_sub(1)),
+        };
+        return (mapped.min(cur.len().saturating_sub(1)) + 1) as u32;
+    }
+    (line as usize).min(cur.len().max(1)) as u32
+}
+
+#[cfg(test)]
+mod map_tests {
+    use super::map_line;
+
+    fn lines(s: &str) -> Vec<String> {
+        s.lines().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn follows_insertions_and_edits() {
+        let prev = lines("a\nb\nc\nd");
+        let cur = lines("x\ny\na\nb\nC\nd");
+        assert_eq!(map_line(&prev, &cur, 1), 3);
+        assert_eq!(map_line(&prev, &cur, 3), 5);
+        assert_eq!(map_line(&prev, &cur, 4), 6);
+    }
+}
