@@ -547,7 +547,6 @@ dependencies = [
  "hyper",
  "hyper-util",
  "notify",
- "notify-debouncer-mini",
  "rand 0.9.5",
  "rayon",
  "reqwest 0.12.28",
@@ -1459,18 +1458,6 @@ dependencies = [
  "notify-types",
  "walkdir",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "notify-debouncer-mini"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17849edfaabd9a5fef1c606d99cfc615a8e99f7ac4366406d86c7942a3184cf2"
-dependencies = [
- "log",
- "notify",
- "notify-types",
- "tempfile",
 ]
 
 [[package]]

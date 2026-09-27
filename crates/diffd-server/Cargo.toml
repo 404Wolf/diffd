@@ -26,7 +26,6 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 zstd = "0.13"
 globset = "0.4"
 notify = "8"
-notify-debouncer-mini = "0.7"
 rand = "0.9"
 toml = "0.9"
 # The page's WebSocket, compressed with permessage-deflate (tungstenite is Signal's fork, patched in the workspace).

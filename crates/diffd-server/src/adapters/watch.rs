@@ -3,8 +3,10 @@
 //! One watcher per repository, shared by all its reviews. Directories whose
 //! churn never matters (build output, dependencies, git's object store, and
 //! whatever the repository ignores) aren't watched at all, which keeps big
-//! repositories within the system's limit on watches. A burst of changes
-//! while a review is rebuilding leads to one more rebuild, not one per change.
+//! repositories within the system's limit on watches. Only writes count:
+//! reading a file (as a rebuild does) must not trigger another rebuild.
+//! Changes are debounced, and a burst of them while a review is rebuilding
+//! leads to one more rebuild, not one per change.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -13,12 +15,15 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use diffd_core::model::ReviewId;
-use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer};
+use notify::event::{MetadataKind, ModifyKind};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 use tokio::runtime::Handle;
 
 use crate::app::App;
 use crate::ports::TreeWatch;
+
+/// How long to wait for more changes before rebuilding.
+const DEBOUNCE: Duration = Duration::from_millis(300);
 
 /// Directory names whose contents never affect a review.
 const SKIPPED_DIRS: &[&str] = &["node_modules", "target", ".direnv", ".venv", "__pycache__"];
@@ -44,11 +49,14 @@ pub struct Watcher {
     /// By canonical repository root.
     repos: Mutex<HashMap<PathBuf, RepoWatch>>,
     rebuilds: Mutex<Rebuilds>,
+    /// Changes, by repository root, for the thread that handles them. (Not
+    /// handled on notify's own thread: adding a watch from there deadlocks.)
+    events: std::sync::mpsc::Sender<(PathBuf, Vec<PathBuf>)>,
     me: Weak<Watcher>,
 }
 
 struct RepoWatch {
-    debouncer: Debouncer<RecommendedWatcher>,
+    watcher: RecommendedWatcher,
     reviews: HashSet<ReviewId>,
     /// Directories being watched (each one non-recursively).
     dirs: HashSet<PathBuf>,
@@ -66,34 +74,47 @@ struct Rebuilds {
 impl Watcher {
     /// Watch working trees for `app`, so reviews of them follow edits.
     pub fn install(app: &Arc<App>, runtime: Handle) -> Arc<Self> {
+        let (events, rx) = std::sync::mpsc::channel::<(PathBuf, Vec<PathBuf>)>();
         let watcher = Arc::new_cyclic(|me| Self {
             app: Arc::downgrade(app),
             runtime,
             repos: Mutex::new(HashMap::new()),
             rebuilds: Mutex::new(Rebuilds::default()),
+            events,
             me: me.clone(),
         });
+        let me = Arc::downgrade(&watcher);
+        // Ends when the watcher (which holds every sender) is dropped.
+        std::thread::Builder::new()
+            .name("diffd-watch".into())
+            .spawn(move || {
+                while let Ok((root, paths)) = rx.recv() {
+                    let Some(me) = me.upgrade() else { return };
+                    me.changed(&root, &paths);
+                }
+            })
+            .expect("starting the file watcher thread");
         app.set_watcher(watcher.clone());
         watcher
     }
 
     fn start(&self, root: &Path) -> Option<RepoWatch> {
-        let me = self.me.clone();
-        let watched = root.to_owned();
-        let handler = move |res: DebounceEventResult| {
-            let Ok(events) = res else { return };
-            if let Some(me) = me.upgrade() {
-                me.changed(&watched, events.iter().map(|e| e.path.as_path()));
+        let (events, watched) = (self.events.clone(), root.to_owned());
+        let handler = move |res: notify::Result<Event>| {
+            if let Ok(event) = res
+                && writes(&event.kind)
+            {
+                let _ = events.send((watched.clone(), event.paths));
             }
         };
-        let debouncer = match new_debouncer(Duration::from_millis(300), handler) {
-            Ok(d) => d,
+        let watcher = match notify::recommended_watcher(handler) {
+            Ok(w) => w,
             Err(e) => {
                 tracing::warn!(error = %e, "can't watch files; reviews won't update live");
                 return None;
             }
         };
-        let mut repo = RepoWatch { debouncer, reviews: HashSet::new(), dirs: HashSet::new(), ignored: ignored_dirs(root) };
+        let mut repo = RepoWatch { watcher, reviews: HashSet::new(), dirs: HashSet::new(), ignored: ignored_dirs(root) };
         repo.add_tree(root, root);
         if repo.dirs.is_empty() {
             tracing::warn!(path = %root.display(), "can't watch the repository; its reviews won't update live");
@@ -103,12 +124,12 @@ impl Watcher {
     }
 
     /// Files changed under `root`: watch new directories, rebuild its reviews.
-    fn changed<'a>(&self, root: &Path, paths: impl Iterator<Item = &'a Path>) {
+    fn changed(&self, root: &Path, paths: &[PathBuf]) {
         let reviews = {
             let mut repos = self.repos.lock().expect("watch lock");
             let Some(repo) = repos.get_mut(root) else { return };
             let mut any = false;
-            for path in paths.filter(|p| relevant(root, p)) {
+            for path in paths.iter().filter(|p| relevant(root, p)) {
                 any = true;
                 if path.is_dir() && !repo.dirs.contains(path) {
                     repo.add_tree(root, path);
@@ -124,7 +145,8 @@ impl Watcher {
         }
     }
 
-    /// Rebuild a review now, or once more after the rebuild already running.
+    /// Rebuild a review once changes settle, or once more after the rebuild
+    /// already on its way.
     fn rebuild(&self, id: ReviewId) {
         {
             let mut r = self.rebuilds.lock().expect("rebuild lock");
@@ -137,6 +159,11 @@ impl Watcher {
         let (app, me) = (self.app.clone(), self.me.clone());
         self.runtime.spawn(async move {
             loop {
+                tokio::time::sleep(DEBOUNCE).await;
+                // Whatever changed while waiting, this rebuild covers.
+                if let Some(me) = me.upgrade() {
+                    me.rebuilds.lock().expect("rebuild lock").again.remove(&id);
+                }
                 let Some(app) = app.upgrade() else { return };
                 match app.rebuild(&id).await {
                     Ok(Some(rev)) => tracing::info!(review = %id, rev, "review updated"),
@@ -186,7 +213,7 @@ impl RepoWatch {
             if !relevant(root, &dir) || self.ignored.contains(&dir) || !self.dirs.insert(dir.clone()) {
                 continue;
             }
-            if let Err(e) = self.debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive) {
+            if let Err(e) = self.watcher.watch(&dir, RecursiveMode::NonRecursive) {
                 tracing::debug!(error = %e, path = %dir.display(), "can't watch a directory");
                 self.dirs.remove(&dir);
                 continue;
@@ -196,6 +223,11 @@ impl RepoWatch {
             stack.extend(entries.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.path()));
         }
     }
+}
+
+/// Whether an event is a change to the files, not someone reading them.
+fn writes(kind: &EventKind) -> bool {
+    !matches!(kind, EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(MetadataKind::AccessTime)))
 }
 
 /// Directories the repository ignores (`.gitignore` and friends), as absolute paths.
@@ -223,5 +255,14 @@ mod tests {
         assert!(relevant(root, Path::new("/home/me/target/demo/.git/refs/heads/main")), "commits count");
         assert!(relevant(root, Path::new("/home/me/target/demo/.git/index")), "staging counts");
         assert!(relevant(root, Path::new("/home/me/target/demo/src/targets.rs")), "only whole names match");
+    }
+
+    #[test]
+    fn reading_files_is_not_a_change() {
+        use notify::event::{AccessKind, AccessMode, CreateKind, DataChange};
+        assert!(!writes(&EventKind::Access(AccessKind::Open(AccessMode::Read))));
+        assert!(!writes(&EventKind::Access(AccessKind::Close(AccessMode::Read))));
+        assert!(writes(&EventKind::Modify(ModifyKind::Data(DataChange::Any))));
+        assert!(writes(&EventKind::Create(CreateKind::File)));
     }
 }

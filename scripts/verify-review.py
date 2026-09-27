@@ -80,7 +80,7 @@ def check_snapshot(repo: str, snap: dict, base: str, to: str | None, label: str)
         fail(f"{label}: files differ. only in diffd: {sorted(set(got) - set(want))[:5]} only in git: {sorted(set(want) - set(got))[:5]}")
     checked = 0
     for path, f in got.items():
-        if f["binary"]:
+        if f["omitted"]:
             continue
         old_path = f["oldPath"] or path
         new_text = (open(os.path.join(repo, path), "rb").read() if os.path.exists(os.path.join(repo, path)) else None) if to is None else show(repo, to, path)
