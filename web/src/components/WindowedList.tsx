@@ -34,6 +34,12 @@ const BEHIND_PX = 600;
 const MIN_AHEAD_PX = 1500;
 const MIN_BEHIND_PX = 100;
 /**
+ * After a jump (nothing rendered is near the new place), the first frame
+ * renders only this far around the screen, so it shows quickly; the rest of
+ * the window follows in the next frame.
+ */
+const JUMP_MARGIN_PX = 200;
+/**
  * A list this short (a few hundred rows) is rendered whole: windowing it
  * would save little, and every row being in the page keeps things simple.
  */
@@ -182,6 +188,8 @@ export function WindowedList(props: Props) {
     update();
   };
 
+  /** A jump rendered only the screen; the rest of the window comes next frame. */
+  let filling = false;
   /** Which way the reader last scrolled, to render further ahead that way. */
   let down = true;
   let lastTop = 0;
@@ -194,7 +202,12 @@ export function WindowedList(props: Props) {
     const total = heights.total();
     if (top !== lastTop) down = top > lastTop;
     lastTop = top;
-    const [above, below] = down ? [MIN_BEHIND_PX, MIN_AHEAD_PX] : [MIN_AHEAD_PX, MIN_BEHIND_PX];
+    // Until a jump's fill arrives next frame, the screen itself is enough.
+    const [above, below] = filling
+      ? [JUMP_MARGIN_PX, JUMP_MARGIN_PX]
+      : down
+        ? [MIN_BEHIND_PX, MIN_AHEAD_PX]
+        : [MIN_AHEAD_PX, MIN_BEHIND_PX];
     const pin = pinnedIndex();
     const covered =
       range.end > range.start &&
@@ -202,7 +215,24 @@ export function WindowedList(props: Props) {
       heights.offset(range.start) <= Math.max(0, top - above) &&
       heights.offset(range.end) >= Math.min(total, bottom + below);
     if (force || !covered) {
-      const [before, after] = down ? [BEHIND_PX, AHEAD_PX] : [AHEAD_PX, BEHIND_PX];
+      // A jump: what's rendered is nowhere near. Show the screen first, fill around it next frame.
+      const jumped =
+        !force &&
+        range.end > range.start &&
+        (heights.offset(range.end) < top - JUMP_MARGIN_PX ||
+          heights.offset(range.start) > bottom + JUMP_MARGIN_PX);
+      if (jumped && !filling) {
+        filling = true;
+        requestAnimationFrame(() => {
+          filling = false;
+          if (!disposed) update(true);
+        });
+      }
+      const [before, after] = filling
+        ? [JUMP_MARGIN_PX, JUMP_MARGIN_PX]
+        : down
+          ? [BEHIND_PX, AHEAD_PX]
+          : [AHEAD_PX, BEHIND_PX];
       const whole = total <= RENDER_ALL_PX;
       let start = list.length && !whole ? heights.indexAt(Math.max(0, top - before)) : 0;
       let end =
