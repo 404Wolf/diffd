@@ -57,6 +57,9 @@ pub struct App {
     code: Mutex<Option<Arc<dyn CodeIntel>>>,
     /// Harness hooks waiting to wake their agent (see `wake`).
     waiters: Mutex<wake::Waiters>,
+    /// Held while diffing commits ahead of time (see `history`), so background
+    /// work never takes more than one diff's worth of the machine.
+    prefetching: tokio::sync::Mutex<()>,
     me: Weak<App>,
 }
 
@@ -112,6 +115,7 @@ impl App {
             watcher: Mutex::new(None),
             code: Mutex::new(None),
             waiters: Mutex::default(),
+            prefetching: tokio::sync::Mutex::new(()),
             me: me.clone(),
         })
     }
