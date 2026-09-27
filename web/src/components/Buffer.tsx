@@ -111,7 +111,7 @@ export function Buffer(props: Props) {
 function Summary(props: { review: Review; cmd: Commands }) {
   return (
     <Show when={props.review.meta().summary || props.review.notes().length > 0}>
-      <div class="mx-2.5 mt-2.5 mb-0.5 rounded-md border border-accent-line bg-bg px-3 py-2 text-[12.5px]">
+      <div class="mx-2 mt-2 mb-0.5 rounded-md border border-accent-line bg-bg px-2.5 py-1.5 text-[12.5px]">
         <Show when={props.review.meta().summary}>
           {(summary) => (
             <div class="flex gap-2">

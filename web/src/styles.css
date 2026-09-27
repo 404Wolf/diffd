@@ -166,7 +166,8 @@
  */
 @layer components {
   .rows {
-    font: 12px / 18px var(--font-mono);
+    --row: 17px;
+    font: 12px / var(--row) var(--font-mono);
     font-variant-ligatures: none;
     tab-size: 4;
     --cols: 44px minmax(0, 1fr) 44px minmax(0, 1fr);
@@ -176,11 +177,11 @@
   /* Long runs of rows, so a 100k-line diff only lays out what's near the screen. */
   .chunk {
     content-visibility: auto;
-    contain-intrinsic-size: auto calc(var(--n) * 18px);
+    contain-intrinsic-size: auto calc(var(--n) * var(--row));
   }
   /* Not filled in yet: the code as plain text, a row's height per line. */
   .chunk.lazy {
-    height: calc(var(--n) * 18px);
+    height: calc(var(--n) * var(--row));
     overflow: hidden;
     padding-left: 52px;
     white-space: pre;
@@ -190,8 +191,8 @@
     position: relative;
     display: grid;
     grid-template-columns: var(--cols);
-    min-height: 18px;
-    scroll-margin-top: 40px;
+    min-height: var(--row);
+    scroll-margin-top: 36px;
     scroll-margin-bottom: 20px;
   }
   .num {
@@ -388,7 +389,7 @@
   .mk {
     position: absolute;
     left: 3px;
-    font: 600 10px / 18px var(--font-sans);
+    font: 600 10px / var(--row) var(--font-sans);
     font-style: normal;
     color: var(--accent);
   }

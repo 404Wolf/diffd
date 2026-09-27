@@ -36,7 +36,7 @@ export function TopBar(props: { review: Review }) {
       .with(["live", "away"], () => ({ dot: "bg-subtle", text: `${AGENT} hasn't checked in` }))
       .exhaustive();
   return (
-    <header class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-panel px-3 py-1.5">
+    <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-panel px-2.5 py-1">
       <a
         href="/"
         class="flex items-center gap-1.5 font-mono text-[12.5px] font-semibold text-fg no-underline"

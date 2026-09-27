@@ -23,7 +23,7 @@ function delivery(msg: Message, thread: Thread, review: Review): string {
 function Avatar(props: { agent: boolean }) {
   return (
     <div
-      class="row-span-2 grid size-5 place-items-center rounded-full text-[10px] font-semibold"
+      class="row-span-2 grid size-[18px] place-items-center rounded-full text-[9.5px] font-semibold"
       classList={{ "bg-accent-soft text-accent": props.agent, "bg-inset text-muted": !props.agent }}
     >
       {props.agent ? "✦" : "Y"}
@@ -40,7 +40,7 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
   return (
     <div
       data-thread={t().id}
-      class="max-w-[720px] scroll-mt-11 overflow-hidden rounded-md border bg-bg font-sans text-[12.5px] leading-normal"
+      class="max-w-[720px] scroll-mt-11 overflow-hidden rounded-md border bg-bg font-sans text-[12px] leading-snug"
       classList={{
         "border-accent-line": note() !== null,
         "border-line-strong": note() === null,
@@ -54,7 +54,7 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
             : `These lines changed in revision ${t().changedIn} after the thread started.`}
         </div>
       </Show>
-      <div class="flex flex-wrap items-center gap-x-2 px-2.5 pt-1.5 text-[11.5px] text-muted">
+      <div class="flex flex-wrap items-center gap-x-2 px-2 pt-1 text-[11px] text-muted">
         <Show when={note()}>
           {(n) => (
             <span
@@ -78,7 +78,7 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
       <For each={t().messages}>
         {(m) => (
           <div
-            class="grid grid-cols-[20px_minmax(0,1fr)] gap-x-2 border-line px-2.5 py-1.5 [&+&]:border-t"
+            class="grid grid-cols-[18px_minmax(0,1fr)] gap-x-2 border-line px-2 py-1 [&+&]:border-t"
             classList={{ "opacity-75": props.review.isPending(m.id) }}
             data-pending={props.review.isPending(m.id) ? "" : undefined}
           >
@@ -103,7 +103,7 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
           </div>
         )}
       </For>
-      <div class="flex gap-0.5 border-t border-line px-1.5 py-0.5">
+      <div class="flex gap-0.5 border-t border-line px-1 py-px">
         <FootButton onClick={() => props.cmd.replyTo(t())}>
           Reply <kbd>r</kbd>
         </FootButton>

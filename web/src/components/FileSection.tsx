@@ -151,11 +151,11 @@ export function FileSection(props: Props) {
   return (
     <section
       data-file-section={props.index}
-      class="mx-2.5 my-2 overflow-clip rounded-md border border-line-strong bg-bg"
+      class="mx-2 my-1.5 overflow-clip rounded-md border border-line-strong bg-bg"
     >
       <div
         data-file-head
-        class="sticky top-0 z-[3] flex h-[30px] items-center gap-2 border-line bg-panel px-2 text-xs"
+        class="sticky top-0 z-[3] flex h-[26px] items-center gap-2 border-line bg-panel px-2 text-xs"
         classList={{ "border-b": !props.view.hidden(props.index) }}
       >
         <button
@@ -262,7 +262,7 @@ export function FileSection(props: Props) {
                   </Match>
                   <Match when={b.kind === "after" && b}>
                     {(a) => (
-                      <div class="grid grid-cols-[var(--cols)] border-y border-line bg-inset py-1.5">
+                      <div class="grid grid-cols-[var(--cols)] border-y border-line bg-inset py-1">
                         <For each={threadsByRow().get(a().row) ?? []}>
                           {(t) => (
                             <div
@@ -315,7 +315,7 @@ function Gap(props: {
   const button = "cursor-pointer rounded px-1.5 text-[11.5px] font-medium text-accent hover:bg-accent-soft";
   return (
     <>
-      <div class="flex h-[22px] items-center gap-0.5 border-y border-line bg-panel px-1.5 font-sans text-[11.5px] text-muted">
+      <div class="flex h-5 items-center gap-0.5 border-y border-line bg-panel px-1.5 font-sans text-[11.5px] text-muted">
         <Show when={!top() && n() > 5}>
           <button
             type="button"

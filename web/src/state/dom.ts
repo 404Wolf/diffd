@@ -91,7 +91,8 @@ export function hunkStarts(): readonly HTMLElement[] {
 /** The first row whose bottom is below the top of the viewport (under sticky headers). */
 export function topVisibleRow(buf: HTMLElement | null = bufferEl()): HTMLElement | null {
   if (!buf) return null;
-  const top = buf.getBoundingClientRect().top + 34;
+  // Below the sticky file header.
+  const top = buf.getBoundingClientRect().top + 30;
   const rows = rowIndex(buf)?.rows ?? [];
   // Rows are in document order, so their positions only grow: binary search
   // touches ~17 rows even in huge diffs (and lays out only their chunks).

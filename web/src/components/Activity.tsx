@@ -65,7 +65,7 @@ export function Activity(props: { review: Review; cmd: Commands }) {
               <li>
                 <button
                   type="button"
-                  class="grid w-full cursor-pointer grid-cols-[10px_minmax(0,1fr)] gap-x-2 rounded px-1.5 py-1 text-left text-xs hover:bg-hover"
+                  class="grid w-full cursor-pointer grid-cols-[10px_minmax(0,1fr)] gap-x-2 rounded px-1.5 py-0.5 text-left text-xs hover:bg-hover"
                   onClick={() => props.cmd.activityGo(item)}
                 >
                   <span

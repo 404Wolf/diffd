@@ -56,7 +56,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
             <div class="group flex items-center rounded hover:bg-hover">
               <button
                 type="button"
-                class="flex h-[22px] min-w-0 flex-1 cursor-pointer items-center gap-1 px-1 text-left text-[12.5px] whitespace-nowrap text-muted"
+                class="flex h-5 min-w-0 flex-1 cursor-pointer items-center gap-1 px-1 text-left text-[12.5px] whitespace-nowrap text-muted"
                 aria-expanded={!closed[dir().path]}
                 onClick={() => setClosed(dir().path, (c) => !c)}
               >
@@ -99,7 +99,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
           <li>
             <button
               type="button"
-              class="flex h-[22px] w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap text-subtle italic hover:bg-hover hover:text-fg"
+              class="flex h-5 w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap text-subtle italic hover:bg-hover hover:text-fg"
               title={`${f().path} · not changed; open to read or comment`}
               data-neighbour={f().path}
               onClick={() => void props.cmd.openPath(f().path)}
@@ -118,7 +118,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
             <li>
               <button
                 type="button"
-                class="flex h-[22px] w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap hover:bg-hover"
+                class="flex h-5 w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap hover:bg-hover"
                 classList={{ "bg-accent-soft": props.current() === f().index }}
                 aria-current={props.current() === f().index}
                 data-tree-file={f().path}
@@ -176,7 +176,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
 
   return (
     <nav aria-label="Changed files">
-      <div class="sticky top-0 z-[2] bg-panel px-2.5 pt-2 pb-1.5">
+      <div class="sticky top-0 z-[2] bg-panel px-2 pt-1.5 pb-1">
         <div class="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
           Files <span class="font-medium tracking-normal text-subtle">{props.review.diffCount()}</span>
         </div>

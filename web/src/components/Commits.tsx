@@ -90,7 +90,7 @@ function Item(props: {
     <li>
       <button
         type="button"
-        class="relative flex min-h-[22px] w-full cursor-pointer items-center gap-1.5 rounded py-0.5 pr-1 pl-2 text-left text-[12.5px] whitespace-nowrap hover:bg-hover"
+        class="relative flex min-h-5 w-full cursor-pointer items-center gap-1.5 rounded py-0.5 pr-1 pl-2 text-left text-[12.5px] whitespace-nowrap hover:bg-hover"
         classList={{ "bg-accent-soft": props.selected, "animate-pulse": props.loading }}
         aria-current={props.selected}
         title={props.title}

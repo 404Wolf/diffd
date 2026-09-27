@@ -49,14 +49,14 @@ export function Chat(props: { review: Review; view: View }) {
           </For>
         </div>
       </Show>
-      <form class="flex items-center gap-2 px-2.5 py-1.5" onSubmit={send}>
+      <form class="flex items-center gap-2 px-2 py-1" onSubmit={send}>
         <input
           ref={input}
           id="chat-input"
           autocomplete="off"
           placeholder={`Ask ${AGENT} about this diff`}
           aria-label={`Message ${AGENT}`}
-          class="h-7 min-w-0 flex-1 rounded-md border border-line-strong bg-bg px-2.5 text-[12.5px] focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
+          class="h-6 min-w-0 flex-1 rounded-md border border-line-strong bg-bg px-2.5 text-[12.5px] focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.currentTarget.blur();
