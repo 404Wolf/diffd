@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FileDiff } from "../gen/FileDiff";
+import { fromRuns, toRuns } from "../state/persist";
+import { diagnosticSpan, diagnosticsOn, wordAt } from "./code";
 import { blocks, expandGap, fileModel, initialVisible, nearestGap } from "./diffModel";
 import { carrySpan, locate, points, rangeOf, spanLabel, step, steps } from "./history";
 import { JumpList } from "./jumps";
@@ -287,5 +289,64 @@ describe("text objects", () => {
     expect(definition(spans, FUNCTION_KINDS, 4, false)).toEqual([4, 5]);
     expect(definition(spans, CLASS_KINDS, 4, true)).toEqual([1, 10]);
     expect(definition(spans, FUNCTION_KINDS, 8, true)).toBeNull();
+  });
+});
+
+describe("positions in code", () => {
+  it("finds the word under a column", () => {
+    expect(wordAt("let foo_bar = baz;", 5)).toEqual({ text: "foo_bar", col: 4 });
+    expect(wordAt("let foo_bar = baz;", 12)).toBeNull();
+    expect(wordAt("$el.x", 0)).toEqual({ text: "$el", col: 0 });
+    // Columns are UTF-16 units, like JS strings and language servers.
+    expect(wordAt("🦀 crab", 3)).toEqual({ text: "crab", col: 3 });
+  });
+  it("spans diagnostics over lines, and gives zero-width ones a character", () => {
+    const d = {
+      line: 2,
+      col: 4,
+      endLine: 3,
+      endCol: 2,
+      severity: "error" as const,
+      message: "",
+      source: null,
+    };
+    expect(diagnosticSpan(d, 1, 10)).toBeNull();
+    expect(diagnosticSpan(d, 2, 10)).toEqual([4, 10]);
+    expect(diagnosticSpan(d, 3, 10)).toEqual([0, 2]);
+    const point = { ...d, line: 1, endLine: 1, col: 3, endCol: 3 };
+    expect(diagnosticSpan(point, 1, 10)).toEqual([3, 4]);
+    expect(diagnosticSpan({ ...point, col: 10, endCol: 10 }, 1, 10)).toEqual([9, 10]);
+    expect(diagnosticSpan({ ...point, col: 0, endCol: 0 }, 1, 0)).toBeNull();
+  });
+  it("orders diagnostics on a line worst first", () => {
+    const at = (severity: "error" | "warning" | "hint", line: number) => ({
+      line,
+      col: 0,
+      endLine: line,
+      endCol: 1,
+      severity,
+      message: severity,
+      source: null,
+    });
+    expect(
+      diagnosticsOn([at("hint", 1), at("error", 1), at("warning", 1), at("error", 2)], 1).map(
+        (d) => d.message,
+      ),
+    ).toEqual(["error", "warning", "hint"]);
+  });
+});
+
+describe("remembered folds", () => {
+  it("round-trips visible rows as runs, only for a file of the same shape", () => {
+    const v = new Uint8Array([0, 1, 1, 0, 1, 0, 0, 1]);
+    const runs = toRuns(v);
+    expect(runs).toEqual([
+      [1, 3],
+      [4, 5],
+      [7, 8],
+    ]);
+    expect(fromRuns({ rows: 8, runs }, 8)).toEqual(v);
+    expect(fromRuns({ rows: 8, runs }, 9)).toBeNull();
+    expect(toRuns(new Uint8Array())).toEqual([]);
   });
 });
