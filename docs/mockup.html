@@ -964,7 +964,7 @@ function hintFor(mode) {
   if (mode === "SYMBOL") return "w b next / previous symbol · gd or enter to definition · ctrl-o back · esc";
   if (mode === "FILE") return "ctrl-o back to the diff · gd definition · w symbol mode";
   if (mode === "VISUAL") return "j k extend · gc comment · esc";
-  return "]c hunk · ]f file · w symbols · gc comment · g enter file · ? keys";
+  return "]c hunk · ]f file · ge expand · w symbols · gc comment · g enter file · ? keys";
 }
 let msgTimer = 0;
 function say(m) { state.message = m; renderStatus(); clearTimeout(msgTimer); msgTimer = setTimeout(() => { state.message = ""; renderStatus(); }, 2800); }
@@ -1162,8 +1162,13 @@ function expandNearest() {
   const cur = cursorRow();
   if (!cur || state.mode !== "diff") return;
   const gaps = [...$("#file-" + cur.dataset.f).querySelectorAll(".gap")];
-  const below = gaps.find((g) => follows(cur, g)), above = [...gaps].reverse().find((g) => follows(g, cur)), g = below || above;
-  if (!g) return say("No hidden lines in this file");
+  const below = gaps.find((g) => follows(cur, g)), above = [...gaps].reverse().find((g) => follows(g, cur));
+  if (!below && !above) return say("No hidden lines in this file");
+  // Pick whichever collapsed region is closer to the cursor, measured in rows.
+  const i = +cur.dataset.i, gapRange = (g) => g.dataset.gapctl.split(":").map(Number);
+  const distBelow = below ? gapRange(below)[1] - i : Infinity;
+  const distAbove = above ? i - gapRange(above)[2] : Infinity;
+  const g = distBelow <= distAbove ? below : above;
   const [fi, a, b] = g.dataset.gapctl.split(":");
   expandGap(`${fi}:${a}:${b}:${g === below ? "down" : "up"}`);
 }
@@ -1525,7 +1530,7 @@ const KEYMAP = {
   "] c": () => hunk(1), "[ c": () => hunk(-1), "] f": () => fileJump(1), "[ f": () => fileJump(-1),
   "] a": () => noteJump(1), "[ a": () => noteJump(-1), "] t": () => threadJump(1), "[ t": () => threadJump(-1),
   "] n": () => unreadJump(), "[ n": () => unreadJump(),
-  "shift-enter": () => expandNearest(),
+  "g e": () => expandNearest(), "shift-enter": () => expandNearest(),
   "z a": () => toggleFold(state.currentFile ?? 0),
   "z R": () => setAll((st) => { st.visible.fill(true); st.collapsed = false; }, "Showing every line"),
   "z M": () => setAll((st, fi) => { st.visible = initialVisible(state.files[fi], fi); st.collapsed = Boolean(state.files[fi].collapsedBy); }, "Back to hunks"),
@@ -1552,7 +1557,7 @@ const HELP = [
   ["Move", [["j k", "Line down / up (5j works)"], ["gg G", "First / last line"], ["ctrl-d ctrl-u", "Half a page"], ["tab", "Switch old / new side"], ["ctrl-o ctrl-i", "Jump back / forward"]]],
   ["Symbols", [["w b", "Next / previous symbol on the line"], ["gd enter", "Go to definition (or ctrl-click)"], ["grr", "Find references"], ["gs gS", "Symbols in file / in diff"]]],
   ["Review", [["]c [c", "Next / previous hunk"], ["]f [f", "Next / previous file, skipping collapsed ones"], ["]a [a", "Claude's notes, in order"], ["]t [t", "Next / previous thread"], ["]n", "Next unread activity"], ["space v", "Mark viewed, go to next file"]]],
-  ["Context", [["shift-enter", "Show more lines near the cursor"], ["za", "Collapse / expand file"], ["zR zM", "Everything / back to hunks"], ["g enter", "The plain file here, no diff"]]],
+  ["Context", [["g e", "Expand the nearest collapsed region, toward the cursor"], ["za", "Collapse / expand file"], ["zR zM", "Everything / back to hunks"], ["g enter", "The plain file here, no diff"]]],
   ["Talk", [["gcc", "Comment on this line"], ["V … gc", "Comment on selected lines"], ["gc", "Comment on a mouse selection"], ["r x", "Reply / resolve next thread"], ["space i", "Ask Claude anything"]]],
   ["Panels", [["space e", "Files drawer"], ["space n", "Activity drawer"], ["space f ctrl-p", "Go to file"], ["/", "Search every line"], ["ctrl-f", "Browser find, never intercepted"]]],
 ];

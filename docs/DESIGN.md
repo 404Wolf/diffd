@@ -508,7 +508,7 @@ The connection state is always visible.
 ### 8.6 Context expansion, file view, Ctrl+F
 
 - **Excerpts** start with 3 context lines. Gap rows offer `↑5 · all N · ↓5`,
-  and `shift-enter` expands around the cursor (Zed's `ExpandExcerpts`).
+  and `g e` expands whichever collapsed region is nearest the cursor, in the direction that grows toward it.
 - **`g enter`** leaves the diff for **file view**: the plain file at the
   cursor, at the current revision, with no red and green. Slight marks in the
   gutter show what changed: green for added lines, yellow for changed lines,
@@ -559,7 +559,7 @@ The leader key is `space`. Bindings come from Zed's
 | `]a` / `[a` | next / previous annotation (tour) | diffd |
 | `]t` / `[t` | next / previous thread | diffd |
 | `]n` / `[n` | next / previous unread activity | diffd |
-| `shift-enter` | expand context around the cursor | Zed `editor::ExpandExcerpts` |
+| `g e` (or `shift-enter`) | expand the nearest collapsed region by 5 lines: a region below the cursor grows downward from the code above it, a region above grows upward toward the cursor | diffd (Zed `editor::ExpandExcerpts`) |
 | `za` · `zR` · `zM` | toggle fold/file · expand all · collapse to hunks | Zed |
 | `g enter` | file view: the plain file at the cursor, with change marks | diffd |
 | `gd` / `ctrl-]` · `grr` | definition · references | Zed |
