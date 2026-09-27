@@ -131,6 +131,14 @@ async function cursorTo(page, fileName, line, side = "new", pane = ".buffer.focu
   const selector = `[data-file-section]:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`;
   await scrollUntil(page, selector, pane);
   const cell = page.locator(`${pane} ${selector}`).first();
+  if ((await cell.count()) === 0) {
+    const rows = await page.evaluate(
+      ({ pane, fileName }) =>
+        [...document.querySelectorAll(`${pane} [data-file-section]:has([data-path$="${fileName}"]) .row`)].map((r) => `${r.dataset.ol}/${r.dataset.nl}`).join(" "),
+      { pane, fileName },
+    );
+    throw new Error(`FAILED: no ${side} line ${line} of ${fileName} to click (rows: ${rows || "none"})`);
+  }
   // Rows far from the screen are filled in as they come near it, which can
   // replace the element being scrolled to: look it up again then.
   for (let attempt = 0; ; attempt++) {

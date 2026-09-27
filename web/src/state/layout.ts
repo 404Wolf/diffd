@@ -11,10 +11,11 @@
  * items and a rendered item stays rendered.
  */
 
-import { type Accessor, createMemo, createRoot } from "solid-js";
+import { type Accessor, createMemo, createRoot, onCleanup, untrack } from "solid-js";
+import type { FileDiff } from "../gen/FileDiff";
 import type { Side } from "../gen/Side";
 import type { Thread } from "../gen/Thread";
-import { blocks, regionRows, rowOf } from "../lib/diffModel";
+import { blocks, type FileModel, regionRows, rowOf } from "../lib/diffModel";
 import type { RowMarks } from "../lib/render";
 import type { Review } from "./review";
 import type { View } from "./view";
@@ -117,9 +118,13 @@ export function createLayout(review: Review, view: View) {
     Boolean(review.meta().summary) || review.notes().length > 0 || review.groups().length > 0;
   const summaryItem: Item = { kind: "summary" };
 
-  const fileState = (index: number): FileState => {
-    const file = () => review.snapshot().files[index];
-    const model = () => review.models()[index];
+  /**
+   * One file's memos. They see the file itself, not the snapshot: a revision
+   * keeps the objects of the files it didn't touch, and so their items too.
+   */
+  const fileState = (f: FileDiff, index: number, m: FileModel | undefined, context: boolean): FileState => {
+    const file = () => f;
+    const model = () => m;
 
     // Unchanged unless this file's threads change: a comment elsewhere doesn't lay this file out again.
     const threadsByRow = createMemo(
@@ -194,7 +199,7 @@ export function createLayout(review: Review, view: View) {
     const layout = createMemo<FileLayout>(() => {
       const f = file();
       const rowItem = new Int32Array(f?.rows.length ?? 0).fill(-1);
-      if (!f || review.isContext(index)) return { items: [], rowItem };
+      if (!f || context) return { items: [], rowItem };
       const next = new Map<string, Item>();
       const items: Item[] = [];
       const add = (key: string, make: () => Item) => {
@@ -229,14 +234,36 @@ export function createLayout(review: Review, view: View) {
     return { layout, marks, threadsByRow };
   };
 
-  /** Per-file memos, rebuilt when the snapshot changes (a revision, another part of the history). */
-  const perFile = createMemo<{ states: FileState[]; dispose: () => void }>((prev) => {
-    prev?.dispose();
-    const count = review.snapshot().files.length;
-    return createRoot((dispose) => ({
-      states: Array.from({ length: count }, (_, i) => fileState(i)),
-      dispose,
-    }));
+  /**
+   * Per-file memos. A new snapshot keeps those of the files it shares with
+   * the last one (the same object at the same place): a revision that touched
+   * one file lays out, and re-renders, only that file.
+   */
+  let kept: { file: FileDiff; index: number; state: FileState; dispose: () => void }[] = [];
+  const perFile = createMemo<{ states: FileState[] }>(() => {
+    const files = review.snapshot().files;
+    const models = review.models();
+    const old = new Map(kept.map((k) => [k.file, k]));
+    const next = files.map((f, i) => {
+      const same = old.get(f);
+      if (same && same.index === i) {
+        old.delete(f);
+        return same;
+      }
+      const context = untrack(() => review.isContext(i));
+      return createRoot((dispose) => ({
+        file: f,
+        index: i,
+        state: fileState(f, i, models[i], context),
+        dispose,
+      }));
+    });
+    for (const k of old.values()) k.dispose();
+    kept = next;
+    return { states: next.map((k) => k.state) };
+  });
+  onCleanup(() => {
+    for (const k of kept) k.dispose();
   });
 
   const layout = createMemo<Layout>(() => {

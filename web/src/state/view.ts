@@ -200,7 +200,12 @@ export function createView(review: Review) {
   const markFoldsApplied = () => {
     for (const r of review.regions()) if (r.kind === "fold") appliedFolds.add(foldKey(r));
   };
-  const resetVisibility = (prev: Snapshot | null, next: Snapshot) => {
+  /**
+   * Rows shown for a new snapshot. A file that's the very same object (a
+   * revision that didn't touch it) keeps its signal, so nothing about it is
+   * laid out again. Whether files moved (and every file must be looked at again).
+   */
+  const resetVisibility = (prev: Snapshot | null, next: Snapshot): boolean => {
     const keep = new Map<string, Uint8Array>();
     if (prev) {
       prev.files.forEach((f, i) => {
@@ -209,8 +214,18 @@ export function createView(review: Review) {
           keep.set(f.path, sig[0]());
       });
     }
+    const sameFiles =
+      prev !== null &&
+      prev.files.length === next.files.length &&
+      prev.files.every((f, i) => f.path === next.files[i]?.path);
+    const old = visibleSignals.slice();
     visibleSignals.length = 0;
     next.files.forEach((f, i) => {
+      const sig = sameFiles ? old[i] : undefined;
+      if (sig && prev?.files[i] === f) {
+        visibleSignals.push(sig);
+        return;
+      }
       const model = review.models()[i];
       const pinned = pinnedRows(i);
       const saved = prev === null && review.span() === null ? persist.session.visibility[f.path] : undefined;
@@ -221,8 +236,12 @@ export function createView(review: Review) {
       // keeps the row count can still change which rows differ, and those must show.
       const kept = keep.get(f.path) ?? (saved ? fromRuns(saved, f.rows.length) : null);
       const initial = kept && kept.length === fresh.length ? fresh.map((v, r) => v | (kept[r] ?? 0)) : fresh;
-      visibleSignals.push(createSignal(initial));
+      if (sig) {
+        sig[1](initial);
+        visibleSignals.push(sig);
+      } else visibleSignals.push(createSignal(initial));
     });
+    return !sameFiles;
   };
   resetVisibility(null, review.snapshot());
   markFoldsApplied();
@@ -245,8 +264,7 @@ export function createView(review: Review) {
   createEffect(
     on(review.snapshot, (next, prev) => {
       if (prev) {
-        resetVisibility(prev, next);
-        bumpVisibility((v) => v + 1);
+        if (resetVisibility(prev, next)) bumpVisibility((v) => v + 1);
         followFiles(prev, next);
       }
     }),

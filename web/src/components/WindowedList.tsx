@@ -228,15 +228,39 @@ export function WindowedList(props: Props) {
   };
 
   let measuring = false;
+  /** A measurement waiting for the DOM to catch up. */
   let deferred = false;
+  let disposed = false;
+  onCleanup(() => {
+    disposed = true;
+  });
   /**
-   * Measure what's rendered. Items above the top of the viewport that differ
-   * from their estimate move the scroll position by the difference, so the
-   * reader sees nothing move.
+   * Measure what's rendered, once it is: rendering from inside an effect
+   * happens after it. Try again in a microtask (before the frame is drawn),
+   * then once a frame for a few frames: retrying only in microtasks would
+   * never yield if the DOM never caught up (a list being taken down).
    */
   const measure = () => {
+    if (measureNow() || deferred) return;
+    deferred = true;
+    let frames = 10;
+    const retry = () => {
+      if (disposed || measureNow() || --frames <= 0) deferred = false;
+      else requestAnimationFrame(retry);
+    };
+    queueMicrotask(() => {
+      if (disposed || measureNow()) deferred = false;
+      else requestAnimationFrame(retry);
+    });
+  };
+  /**
+   * Measure what's rendered; false when the DOM hasn't caught up yet. Items
+   * above the top of the viewport that differ from their estimate move the
+   * scroll position by the difference, so the reader sees nothing move.
+   */
+  const measureNow = (): boolean => {
     const buf = props.buf();
-    if (!buf || measuring) return;
+    if (!buf || measuring || disposed) return true;
     const { start, end } = range;
     const kids: HTMLElement[] = [];
     for (let i = start; i < end; i++) {
@@ -244,17 +268,7 @@ export function WindowedList(props: Props) {
       if (!el?.isConnected) break;
       kids.push(el);
     }
-    // Rendering from inside an effect happens after it; measure once the DOM has caught up.
-    if (kids.length !== end - start) {
-      if (!deferred) {
-        deferred = true;
-        queueMicrotask(() => {
-          deferred = false;
-          measure();
-        });
-      }
-      return;
-    }
+    if (kids.length !== end - start) return false;
     measuring = true;
     const top = viewTop(buf);
     const first = heights.indexAt(Math.max(0, top));
@@ -276,6 +290,7 @@ export function WindowedList(props: Props) {
     announceRows();
     // Shorter than estimated: what's rendered may no longer reach past the viewport.
     if (changed) update();
+    return true;
   };
 
   // -- What the rest of the page asks of this buffer ------------------------------------
