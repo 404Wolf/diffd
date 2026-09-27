@@ -285,7 +285,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
       type="button"
       role="tab"
       aria-selected={mode() === p.value}
-      class="-mb-px cursor-pointer border-b-2 px-1.5 pb-0.5 text-[11px] font-semibold tracking-wider uppercase"
+      class="-mb-px cursor-pointer border-b-2 px-1 pb-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap uppercase"
       classList={{
         "border-accent text-fg": mode() === p.value,
         "border-transparent text-muted hover:text-fg": mode() !== p.value,
@@ -349,7 +349,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         </div>
         <input
           type="search"
-          placeholder={mode() === "diff" ? "Filter files" : "Find a file in the project"}
+          placeholder={mode() === "project" ? "Find a file in the project" : "Filter files"}
           aria-label="Filter files"
           autocomplete="off"
           class="h-6 w-full rounded border border-line bg-bg px-2 text-xs"

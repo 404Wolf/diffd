@@ -2,7 +2,7 @@
  * Everything about how the review is being looked at, as opposed to what it
  * contains: folds, cursor, mode, drawers, overlays.
  */
-import { type Accessor, createEffect, createSignal, on, onCleanup, type Setter } from "solid-js";
+import { type Accessor, createEffect, createSignal, on, onCleanup, type Setter, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { match } from "ts-pattern";
 import type { Anchor } from "../gen/Anchor";
@@ -132,6 +132,24 @@ function save(key: string, value: unknown): void {
 
 export function createView(review: Review) {
   const id = review.meta().id;
+  // Per review: one the agent made a tour of starts on the tour; others as you last left the drawer.
+  const treeModeKey = `diffd:tree-mode:${id}`;
+  const [treeMode, setTreeMode] = createSignal<TreeMode>(
+    load<TreeMode | null>(treeModeKey, null) ??
+      (review.groups().length > 0 ? "groups" : load<TreeMode>("diffd:tree-mode", "diff")),
+  );
+  createEffect(
+    on(
+      treeMode,
+      (mode) => {
+        save(treeModeKey, mode);
+        if (mode !== "groups") save("diffd:tree-mode", mode);
+      },
+      { defer: true },
+    ),
+  );
+  // Before anything reads the files: they're in the tour's order when reading it.
+  review.setGrouped(untrack(treeMode) === "groups");
   const persist = sessionWriter(id, loadSession(id));
   /** Expanded lines are remembered for the whole review, not for walks through its commits. */
   const rememberVisible = (file: number, v: Uint8Array) => {
@@ -384,22 +402,6 @@ export function createView(review: Review) {
   createEffect(() => save("diffd:drawers", { left: { ...drawers.left }, right: { ...drawers.right } }));
   const [rightTab, setRightTab] = createSignal<RightTab>(load<RightTab>("diffd:right-tab", "activity"));
   createEffect(() => save("diffd:right-tab", rightTab()));
-  // Per review: one the agent made a tour of starts on the tour; others as you last left the drawer.
-  const treeModeKey = `diffd:tree-mode:${id}`;
-  const [treeMode, setTreeMode] = createSignal<TreeMode>(
-    load<TreeMode | null>(treeModeKey, null) ??
-      (review.groups().length > 0 ? "groups" : load<TreeMode>("diffd:tree-mode", "diff")),
-  );
-  createEffect(
-    on(
-      treeMode,
-      (mode) => {
-        save(treeModeKey, mode);
-        if (mode !== "groups") save("diffd:tree-mode", mode);
-      },
-      { defer: true },
-    ),
-  );
   const [folders, setFolders] = createStore<Record<TreeMode, Folders>>({
     diff: { all: null, open: {} },
     project: { all: null, open: {} },
