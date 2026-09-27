@@ -20,6 +20,8 @@ diffd shows your code changes to the user as a live review in their browser, and
 
 When you've made a meaningful change, or the user asks to review something, call share_diff and give the user the url.
 Annotate the parts a reviewer would trip over, in plain language. Mark generated files, lockfiles and vendored code to collapse.
+When your work spans several commits, share the whole range (e.g. from `main`): the user can step through it one commit at a
+time. Write commit messages a reviewer can follow. Comments made on one commit tell you which (`commented_on`).
 
 Then call wait_for_feedback to hear the user's comments. Each comment is anchored to lines of code. Answer each one with reply,
 in its thread, and keep it short; if you change code, the review updates by itself, so say what you changed. Messages from the

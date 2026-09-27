@@ -3,8 +3,10 @@
 
     scripts/demo-repo.py /tmp/diffd-demo
 
-The base is committed; the change is left in the working tree, so a review of
-`from: HEAD` shows it and follows further edits live.
+The base is committed on `main`. The change is on a `demo` branch: three
+commits, then more left uncommitted in the working tree. A review `from: main`
+shows all of it, lets you walk the commits one at a time, and follows further
+edits live.
 """
 import os
 import subprocess
@@ -520,6 +522,15 @@ CHANGES = {
 }
 
 
+# The branch's history: which changed files each commit takes.
+COMMITS = [
+    (["src/lib.rs", "src/bucket.rs", "tests/limiter.rs", "Cargo.lock"], "Add burst capacity and wait times to the limiter"),
+    (["web/src/api.ts", "web/src/api.test.ts", "web/src/QuotaBadge.tsx", "web/src/badge.css", "web/src/gen/quota.ts"],
+     "Show typed quota errors in the badge"),
+    (["cmd/probe/main.go", "db/schema.sql"], "Probe timeout flag and reset_at column"),
+]
+
+
 def main() -> None:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/diffd-demo").resolve()
     if root.exists() and any(root.iterdir()):
@@ -536,15 +547,29 @@ def main() -> None:
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "Initial limiter")
 
+    git(root, "checkout", "-q", "-b", "demo")
+    for group, message in COMMITS:
+        for path in group:
+            w(root, path, CHANGES[path])
+        if "src/lib.rs" in group:
+            os.remove(root / "src/legacy.rs")
+        if "cmd/probe/main.go" in group:
+            git(root, "mv", "tools/report.py", "tools/logreport.py")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", message)
+
+    # The rest stays uncommitted.
+    committed = {p for group, _ in COMMITS for p in group}
     for path, text in CHANGES.items():
-        w(root, path, text)
+        if path == "tools/report.py":
+            w(root, "tools/logreport.py", text)
+        elif path not in committed:
+            w(root, path, text)
     big = BIG.replace('"/api/v1/resource17" => 13,', '"/api/v1/resource17" => 40,')
     big = big.replace('"/api/v1/resource200" => 14,', '"/api/v1/resource200" => 14,\n        "/api/v2/stream" => 100,')
     assert big.count("/api/v2/stream") == 1 and '"/api/v1/resource17" => 40' in big
     (root / "src/routes.rs").write_text(big)
     (root / "assets/logo.png").write_bytes(bytes(range(256)) * 5)
-    os.remove(root / "src/legacy.rs")
-    git(root, "mv", "tools/report.py", "tools/logreport.py")
     print(root)
 
 

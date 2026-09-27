@@ -1,6 +1,7 @@
 import { Dialog } from "@kobalte/core/dialog";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { match } from "ts-pattern";
+import { spanLabel } from "../lib/history";
 import { helpEntries } from "../state/bindings";
 import type { Commands } from "../state/commands";
 import { bufferEl, follows, navigableRows, rowEl } from "../state/dom";
@@ -48,6 +49,20 @@ export function TopBar(props: { review: Review }) {
         <Rev>{meta().from}</Rev>→<Rev>{meta().to ?? "working tree"}</Rev>
         <span>· rev {meta().revision}</span>
       </span>
+      <Show when={props.review.span() !== null}>
+        <span class="inline-flex h-[22px] items-center gap-1 rounded-full border border-accent-line bg-accent-soft pr-0.5 pl-2 text-xs text-accent">
+          <span class="font-mono text-[11px]">{spanLabel(props.review.history(), props.review.span())}</span>
+          <button
+            type="button"
+            title="Back to all changes"
+            aria-label="Back to all changes"
+            class="grid size-[18px] cursor-pointer place-items-center rounded-full hover:bg-bg"
+            onClick={() => void props.review.showSpan(null)}
+          >
+            ×
+          </button>
+        </span>
+      </Show>
       <span class="flex gap-2 font-mono text-[11.5px] text-muted tabular-nums">
         <span>{props.review.snapshot().files.length} files</span>
         <span class="text-add">+{totals().add}</span>

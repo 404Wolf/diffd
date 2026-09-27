@@ -14,7 +14,7 @@ repo = os.path.abspath(sys.argv[1])
 port = sys.argv[2] if len(sys.argv) > 2 else "3433"
 m = Mcp(f"http://localhost:{port}/mcp")
 r = m.call("share_diff", {
-  "repo_path": repo, "from": "HEAD", "title": "Add burst capacity to the limiter",
+  "repo_path": repo, "from": "main", "title": "Add burst capacity to the limiter",
   "summary": "Limiters now allow a short **burst** on top of capacity, and `acquire` says how long to wait instead of returning false. The web badge and the log report show the new fields.",
   "annotations": [
     {"file": "src/lib.rs", "lines": [45, 54], "kind": "why", "body": "`acquire` takes `now` so tests can control time, and returns how long to wait so callers can back off instead of spinning."},

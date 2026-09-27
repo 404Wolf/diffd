@@ -2,6 +2,7 @@
  * Everything the user can do, written once and bound to keys, clicks and
  * server events alike.
  */
+
 import { batch } from "solid-js";
 import { match } from "ts-pattern";
 import type { ActivityItem } from "../gen/ActivityItem";
@@ -10,6 +11,7 @@ import type { Side } from "../gen/Side";
 import type { Symbol as Definition } from "../gen/Symbol";
 import type { Thread } from "../gen/Thread";
 import { type ExpandDirection, expandGap, initialVisible, nearestGap, rowOf } from "../lib/diffModel";
+import { step, steps } from "../lib/history";
 import { buildTree, treeOrder } from "../lib/tree";
 import {
   bufferEl,
@@ -424,6 +426,46 @@ export function createCommands(review: Review, view: View) {
         })),
     });
   };
+  // -- Commits -------------------------------------------------------------------
+
+  /** Step through the commits one at a time; past either end is the whole review again. */
+  const stepCommit = (dir: 1 | -1) => {
+    const h = review.history();
+    const n = steps(h);
+    if (h.commits.length === 0) return view.say("This review has no commits to walk");
+    const span = review.loadingSpan() ?? review.span();
+    const next =
+      span === null
+        ? dir > 0
+          ? 0
+          : n - 1
+        : span.to - span.from > 1
+          ? dir > 0
+            ? span.to - 1
+            : span.from
+          : span.from + dir;
+    void review.showSpan(next >= 0 && next < n ? step(next) : null);
+  };
+  const commitPicker = () => {
+    const h = review.history();
+    if (h.commits.length === 0) return view.say("This review has no commits to walk");
+    const items: PickerItem[] = [
+      { label: "All changes", detail: `${h.commits.length} commits`, run: () => void review.showSpan(null) },
+      ...h.commits.map((c, i) => ({
+        label: c.subject,
+        detail: `${c.short} · ${c.author}`,
+        run: () => void review.showSpan(step(i)),
+      })),
+    ];
+    if (h.worktree)
+      items.push({
+        label: "Uncommitted changes",
+        detail: "working tree",
+        run: () => void review.showSpan(step(h.commits.length)),
+      });
+    view.setPicker({ title: "Commits", items: () => items });
+  };
+
   const filePicker = () =>
     view.setPicker({
       title: "Go to file",
@@ -462,10 +504,9 @@ export function createCommands(review: Review, view: View) {
     const f = files()[file];
     const text = side === "old" ? f?.old : f?.new;
     if (!f || !text) return null;
-    return {
-      anchor: { path: f.path, side, start, end, text: "" },
-      quote: text.lines.slice(start - 1, end).join("\n"),
-    };
+    const quote = text.lines.slice(start - 1, end).join("\n");
+    // On part of the history, the server finds the same code in the whole diff by its text.
+    return { anchor: { path: f.path, side, start, end, text: quote, range: review.range() }, quote };
   };
   const openComposer = (file: number, side: Side, start: number, end: number) => {
     const a = anchorFrom(file, side, start, end);
@@ -598,6 +639,8 @@ export function createCommands(review: Review, view: View) {
     references,
     outline,
     filePicker,
+    stepCommit,
+    commitPicker,
     search,
     jumpBack,
     jumpForward,

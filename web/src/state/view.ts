@@ -116,12 +116,13 @@ export function createView(review: Review) {
     const model = review.models()[file];
     const path = review.snapshot().files[file]?.path;
     if (!model) return [];
-    return review.conv.regions
+    return review
+      .regions()
       .filter((r) => r.kind === "fold" && r.path === path && (!onlyNew || !appliedFolds.has(foldKey(r))))
       .map((r) => regionRows(model, r));
   };
   const markFoldsApplied = () => {
-    for (const r of review.conv.regions) if (r.kind === "fold") appliedFolds.add(foldKey(r));
+    for (const r of review.regions()) if (r.kind === "fold") appliedFolds.add(foldKey(r));
   };
   const resetVisibility = (prev: Snapshot | null, next: Snapshot) => {
     const keep = new Map<string, Uint8Array>();
@@ -149,7 +150,7 @@ export function createView(review: Review) {
   // Folds the agent adds later hide their rows once, as they arrive.
   createEffect(
     on(
-      () => review.conv.regions,
+      () => review.regions(),
       () => {
         review.snapshot().files.forEach((_, i) => {
           const folds = foldsFor(i, true);
@@ -186,6 +187,13 @@ export function createView(review: Review) {
     viewed: load(`diffd:viewed:${id}`, {}),
   });
   createEffect(() => save(`diffd:viewed:${id}`, { ...flags.viewed }));
+  // Files the agent asked to collapse start collapsed in every part of the history too.
+  createEffect(
+    on(review.snapshot, (snap) => {
+      for (const f of snap.files)
+        if (f.collapsed && !(f.path in flags.collapsed)) setFlags("collapsed", f.path, true);
+    }),
+  );
   const hidden = (file: number): boolean => {
     const path = review.snapshot().files[file]?.path ?? "";
     return Boolean(flags.collapsed[path] || flags.viewed[path]);

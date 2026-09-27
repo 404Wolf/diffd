@@ -120,7 +120,7 @@ try {
     await sleep(400);
     check((await page.locator("header").innerText()).includes("Add burst capacity"), "title in the top bar");
     const sections = await page.$$eval("[data-file-section] [data-path]", (els) => els.map((e) => e.dataset.path));
-    const tree = await page.$$eval("nav button[title]", (els) => els.map((e) => e.getAttribute("title").split(" · ")[0]));
+    const tree = await page.$$eval("nav[aria-label='Changed files'] button[title]", (els) => els.map((e) => e.getAttribute("title").split(" · ")[0]));
     check(JSON.stringify(sections) === JSON.stringify(tree), "the diff lists files in tree order");
     check((await page.locator(".nv-add").count()) > 20, "novel tokens are highlighted");
     check((await page.locator(".s-keyword").count()) > 20, "syntax is highlighted");
@@ -399,6 +399,72 @@ try {
     check(copies === 1, "after a reload the comment exists exactly once");
   });
 
+  await section("Walking the commits one at a time", async () => {
+    const commits = page.locator("nav[aria-label='Commits'] li button");
+    check((await commits.count()) === 5, "the commits panel lists all changes, three commits and uncommitted changes");
+    const paths = () => page.$$eval("[data-file-section] [data-path]", (els) => els.map((e) => e.dataset.path));
+    const chip = () => page.locator("header").innerText();
+    const all = (await paths()).length;
+
+    await page.locator("#buffer").focus();
+    await keys(page, "]", "r");
+    await page.waitForFunction(() => document.querySelector("header").innerText.includes("×"));
+    let shown = await paths();
+    check(
+      JSON.stringify(shown) === JSON.stringify(["src/bucket.rs", "src/legacy.rs", "src/lib.rs", "tests/limiter.rs", "Cargo.lock"]),
+      `]r shows only the first commit's files: ${shown.join(", ")}`,
+    );
+    check((await page.locator("nav[aria-label='Changed files'] button[title]").count()) === 5, "the file tree follows");
+    check((await page.locator("[data-thread]").count()) > 0, "Claude's notes on that code still show");
+    await shot(page, "commit-1");
+
+    await keys(page, "]", "r");
+    await page.waitForFunction(() => document.querySelector("[data-path='web/src/api.ts']"));
+    shown = await paths();
+    check(shown.every((p) => p.startsWith("web/")), "]r again shows the second commit");
+    check(await page.getByText("Should an aborted request count").first().isVisible().catch(() => false) || (await page.getByText("Should an aborted request count").count()) > 0,
+      "an earlier comment shows where its code is in this commit");
+
+    await cursorTo(page, "web/src/api.ts", 3);
+    await keys(page, "g", "c", "c");
+    await page.keyboard.type("Commented while looking at just this commit.");
+    await keys(page, "Control+Enter");
+    await page.waitForFunction(() => document.body.innerText.includes("Commented while looking at just this commit."));
+    const got = await agent.call("wait_for_feedback", { review_id: reviewId, timeout_seconds: 20 });
+    const item = got.items.find((i) => i.type === "thread");
+    check(item && /\.\./.test(item.commented_on ?? "") && item.path === "web/src/api.ts", `the agent hears which commit it was on (${item?.commented_on})`);
+    await agent.call("reply", { thread_id: item.thread_id, body: "Noted, that's from the badge commit." });
+    await page.waitForFunction(() => document.body.innerText.includes("from the badge commit"));
+    check(true, "the reply shows up while you're still on that commit");
+
+    await commits.nth(3).click({ modifiers: ["Shift"] });
+    await page.waitForFunction(() => document.querySelector("[data-path='cmd/probe/main.go']"));
+    shown = await paths();
+    check(shown.some((p) => p.startsWith("web/")) && shown.includes("db/schema.sql"), "shift-click takes in the next commit too");
+    check((await chip()).includes(".."), "the top bar shows the range");
+
+    await keys(page, "]", "r");
+    await keys(page, "]", "r");
+    await page.waitForFunction(() => document.querySelector("header").innerText.includes("Uncommitted"));
+    shown = await paths();
+    check(shown.includes("flake.nix") && !shown.includes("cmd/probe/main.go"), "the last step is the uncommitted changes");
+    await shot(page, "uncommitted");
+
+    await keys(page, "]", "r");
+    await page.waitForFunction(() => !document.querySelector("header").innerText.includes("×"));
+    check((await paths()).length === all, "past the last step it's all changes again");
+
+    // The agent commits: the review's diff stays the same, the history grows.
+    execFileSync("git", ["-C", repo, "commit", "-q", "-am", "Tidy up the README and flake"]);
+    await page.waitForFunction(() => document.querySelectorAll("nav[aria-label='Commits'] li button").length === 6, null, { timeout: 15000 });
+    check(true, "a new commit appears in the panel by itself");
+    check((await paths()).length === all, "and the whole diff is unchanged");
+
+    await keys(page, "Space", "c");
+    check(await page.getByText("Tidy up the README and flake").last().isVisible(), "space c picks from the commits");
+    await keys(page, "Escape");
+  });
+
   await section("Home page", async () => {
     await page.goto(base);
     check(await page.getByText("Add burst capacity to the limiter").isVisible(), "recent reviews are listed");
@@ -414,5 +480,4 @@ try {
   process.exitCode = 1;
 } finally {
   await browser.close();
-  void execFileSync;
 }

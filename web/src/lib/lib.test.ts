@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FileDiff } from "../gen/FileDiff";
 import { blocks, expandGap, fileModel, initialVisible, nearestGap } from "./diffModel";
+import { carrySpan, locate, points, rangeOf, spanLabel, step, steps } from "./history";
 import { JumpList } from "./jumps";
 import { KeyEngine, keyToken } from "./keymap";
 import { renderMarkdown, resolveRef } from "./markdown";
@@ -190,5 +191,42 @@ describe("regions", () => {
     expect(regionRows(model, { ...region, lines: [2, 3] })).toEqual([1, 2]);
     expect(regionRows(model, { ...region, lines: null })).toEqual([0, 1, 2, 3]);
     expect([...applyFolds(Uint8Array.from([1, 1, 1, 1]), [[1, 2]], new Set([2]))]).toEqual([1, 0, 1, 1]);
+  });
+});
+
+describe("history", () => {
+  const commit = (sha: string) => ({ sha, short: sha.slice(0, 3), subject: sha, author: "a", time: 0 });
+  const h = { base: "base", commits: [commit("aaa1"), commit("bbb2")], worktree: true, truncated: false };
+
+  it("lists points and steps, with the working tree last", () => {
+    expect(points(h)).toEqual(["base", "aaa1", "bbb2", null]);
+    expect(steps(h)).toBe(3);
+    expect(rangeOf(h, step(0))).toEqual({ from: "base", to: "aaa1" });
+    expect(rangeOf(h, step(2))).toEqual({ from: "bbb2", to: null });
+    expect(rangeOf(h, null)).toBeNull();
+  });
+
+  it("labels spans", () => {
+    expect(spanLabel(h, null)).toBe("All changes");
+    expect(spanLabel(h, step(1))).toBe("bbb");
+    expect(spanLabel(h, { from: 0, to: 2 })).toBe("aaa..bbb");
+    expect(spanLabel(h, step(2))).toBe("Uncommitted changes");
+    expect(spanLabel(h, { from: 1, to: 3 })).toBe("bbb + uncommitted");
+  });
+
+  it("keeps the same commits in view as the history grows", () => {
+    const grown = { ...h, commits: [...h.commits, commit("ccc3")] };
+    expect(carrySpan(h, grown, step(1))).toEqual(step(1));
+    // Uncommitted changes ended at the working tree before and still do.
+    expect(carrySpan(h, grown, step(2))).toEqual({ from: 2, to: 4 });
+    const rewritten = { ...h, commits: [commit("zzz9")] };
+    expect(carrySpan(h, rewritten, step(1))).toBeNull();
+  });
+
+  it("finds anchored code nearest where it was", () => {
+    const lines = ["a", "b", "x", "a", "b"];
+    expect(locate("a\nb", 4, lines)).toBe(4);
+    expect(locate("a\nb", 1, lines)).toBe(1);
+    expect(locate("q", 1, lines)).toBeNull();
   });
 });

@@ -63,6 +63,13 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "[ t", run: ({ cmd }) => cmd.threadJump(-1) },
   { keys: "] n", run: ({ cmd }) => cmd.unreadNext(), help: ["Review", "Next unread activity"] },
   {
+    keys: "] r",
+    run: ({ cmd }) => cmd.stepCommit(1),
+    help: ["Review", "Next / previous commit, one at a time"],
+  },
+  { keys: "[ r", run: ({ cmd }) => cmd.stepCommit(-1) },
+  { keys: "space c", run: ({ cmd }) => cmd.commitPicker(), help: ["Review", "Pick a commit to look at"] },
+  {
     keys: "space v",
     run: ({ cmd }) => cmd.markViewedAndNext(),
     help: ["Review", "Mark viewed, go to the next file"],

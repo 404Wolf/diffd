@@ -10,6 +10,8 @@ import type { ActivityItem } from "../gen/ActivityItem";
 import type { Anchor } from "../gen/Anchor";
 import type { ChatMessage } from "../gen/ChatMessage";
 import type { ClientMsg } from "../gen/ClientMsg";
+import type { CommitRange } from "../gen/CommitRange";
+import type { History } from "../gen/History";
 import type { Message } from "../gen/Message";
 import type { MessageId } from "../gen/MessageId";
 import type { Presence } from "../gen/Presence";
@@ -22,6 +24,7 @@ import type { Snapshot } from "../gen/Snapshot";
 import type { Thread } from "../gen/Thread";
 import type { ThreadId } from "../gen/ThreadId";
 import { type FileModel, fileModel } from "../lib/diffModel";
+import { carrySpan, rangeOf, relocate, type Span } from "../lib/history";
 import { type Connection, connect, type Socket } from "../lib/socket";
 
 interface Conversation {
@@ -39,11 +42,15 @@ export interface ReviewEvents {
   /** A new revision arrived; the view keeps the reader's place. */
   onRevision?: (prev: Snapshot, next: Snapshot) => void;
   onShow?: (request: ShowRequest) => void;
+  /** Now showing a different part of the history. */
+  onSpan?: () => void;
 }
 
 export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   const [meta, setMeta] = createSignal<ReviewMeta>(initial.review);
-  const [snapshot, setSnapshot] = createSignal<Snapshot>(initial.snapshot);
+  /** The whole review's diff, as the server keeps it. */
+  const [whole, setWhole] = createSignal<Snapshot>(initial.snapshot);
+  const [history, setHistory] = createSignal<History>(initial.history);
   const [conv, setConv] = createStore<Conversation>({
     threads: initial.threads,
     regions: initial.regions,
@@ -65,8 +72,53 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
         ),
       ),
   );
+  // -- Walking the history ---------------------------------------------------------
+  const [span, setSpan] = createSignal<Span>(null);
+  const [spanSnapshot, setSpanSnapshot] = createSignal<Snapshot | null>(null);
+  const [loadingSpan, setLoadingSpan] = createSignal<Span | undefined>(undefined);
+  /** Diffs of parts of the history, by range. Ranges ending at the working tree are dropped on every revision. */
+  const spanCache = new Map<string, Snapshot>();
+  const rangeKey = (r: CommitRange) => `${r.from}..${r.to ?? ""}`;
+  let spanRequest = 0;
+  /** Show part of the history (`null`: the whole review). */
+  const showSpan = async (next: Span) => {
+    const request = ++spanRequest;
+    const range = rangeOf(history(), next);
+    if (next === null || range === null) {
+      setLoadingSpan(undefined);
+      batch(() => {
+        setSpan(null);
+        setSpanSnapshot(null);
+      });
+      events.onSpan?.();
+      return;
+    }
+    let snap = spanCache.get(rangeKey(range));
+    if (!snap) {
+      setLoadingSpan(next);
+      try {
+        snap = await fetchRange(initial.review.id, range);
+      } catch (e) {
+        if (request === spanRequest) setLoadingSpan(undefined);
+        setError(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      spanCache.set(rangeKey(range), snap);
+    }
+    if (request !== spanRequest) return;
+    setLoadingSpan(undefined);
+    batch(() => {
+      setSpan(next);
+      setSpanSnapshot(snap);
+    });
+    events.onSpan?.();
+  };
+  /** What's on screen: the whole review, or the part of its history being walked. */
+  const snapshot = createMemo<Snapshot>(() => spanSnapshot() ?? whole());
+  const range = createMemo(() => rangeOf(history(), span()));
+
   /** The server's threads with anything still in the outbox folded in, so nothing written disappears. */
-  const threads = createMemo<Thread[]>(() => {
+  const allThreads = createMemo<Thread[]>(() => {
     const queued = outbox();
     if (queued.length === 0) return conv.threads;
     const known = new Set(conv.threads.flatMap((t) => t.messages.map((m) => m.id)));
@@ -100,6 +152,26 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     }
     return merged;
   });
+  /** Threads where they are in what's shown: moved into part of the history by their code, when it's there. */
+  const threads = createMemo<Thread[]>(() => {
+    const snap = spanSnapshot();
+    if (!snap) return allThreads();
+    return allThreads().flatMap((t) => {
+      const anchor = relocate(t.anchor, snap);
+      return anchor ? [{ ...t, anchor }] : [];
+    });
+  });
+  const regions = createMemo<Region[]>(() => {
+    const snap = spanSnapshot();
+    if (!snap) return conv.regions;
+    return conv.regions.flatMap((r) => {
+      if (!snap.files.some((f) => f.path === r.path)) return [];
+      if (r.lines === null) return [r];
+      const [start, end] = r.lines;
+      const at = relocate({ path: r.path, side: r.side, start, end, text: r.text, range: null }, snap);
+      return at ? [{ ...r, side: at.side, lines: [at.start, at.end] as [number, number] }] : [];
+    });
+  });
   const chat = createMemo<ChatMessage[]>(() => {
     const known = new Set(conv.chat.map((c) => c.id));
     const queued = outbox().flatMap((m) =>
@@ -112,7 +184,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   const paths = createMemo(() => snapshot().files.map((f) => f.path));
   const definedNames = createMemo(() => new Set(snapshot().symbols.map((s) => s.name)));
   const notes = createMemo(() =>
-    conv.threads
+    threads()
       .filter((t) => t.kind.type === "note")
       .sort((a, b) => (a.kind.type === "note" && b.kind.type === "note" ? a.kind.order - b.kind.order : 0)),
   );
@@ -133,12 +205,14 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     match(msg)
       .with({ type: "state" }, ({ state }) =>
         batch(() => {
-          const prev = snapshot();
+          const prev = whole();
           setMeta(state.review);
           if (state.snapshot.revision !== prev.revision) {
-            setSnapshot(state.snapshot);
+            setWhole(state.snapshot);
             events.onRevision?.(prev, state.snapshot);
+            refreshWorktreeSpan();
           }
+          followHistory(state.history);
           setConv({
             threads: reconcile(state.threads, { key: "id" })(conv.threads),
             regions: state.regions,
@@ -150,13 +224,15 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
         }),
       )
       .with({ type: "revision" }, ({ review, snapshot: next }) => {
-        const prev = snapshot();
+        const prev = whole();
         batch(() => {
           setMeta(review);
-          setSnapshot(next);
+          setWhole(next);
         });
         events.onRevision?.(prev, next);
+        refreshWorktreeSpan();
       })
+      .with({ type: "history" }, ({ history: next }) => followHistory(next))
       .with({ type: "thread" }, ({ thread }) => upsertThread(thread))
       .with({ type: "regions" }, ({ regions }) => setConv("regions", regions))
       .with({ type: "chat" }, ({ message }) =>
@@ -177,6 +253,23 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       .with({ type: "ack" }, () => {})
       .exhaustive();
 
+  /** Files changed: diffs that end at the working tree are stale now. */
+  const refreshWorktreeSpan = () => {
+    for (const key of spanCache.keys()) if (key.endsWith("..")) spanCache.delete(key);
+    if (range()?.to === null) void showSpan(span());
+  };
+  /** Commits were added (or rewritten): keep showing the same commits when they're still there. */
+  const followHistory = (next: History) => {
+    const prev = history();
+    if (JSON.stringify(prev) === JSON.stringify(next)) return;
+    const carried = carrySpan(prev, next, span());
+    batch(() => {
+      setHistory(next);
+      setSpan(carried);
+    });
+    if (carried === null && spanSnapshot() !== null) void showSpan(null);
+  };
+
   let socket: Socket | null = null;
   const start = () => {
     socket = connect(initial.review.id, { onMessage: apply, onStatus: setConnection, onOutbox: setOutbox });
@@ -189,6 +282,13 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   return {
     meta,
     snapshot,
+    whole,
+    history,
+    span,
+    range,
+    loadingSpan,
+    showSpan,
+    regions,
     conv,
     connection,
     error,
@@ -243,4 +343,13 @@ function queuedMessage(id: MessageId, body: string): Message {
 export function newId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   return `p${Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("")}`;
+}
+
+/** The diff between two points of a review's history. */
+async function fetchRange(reviewId: string, range: CommitRange): Promise<Snapshot> {
+  const q = new URLSearchParams({ from: range.from });
+  if (range.to !== null) q.set("to", range.to);
+  const res = await fetch(`/api/reviews/${encodeURIComponent(reviewId)}/range?${q}`);
+  if (!res.ok) throw new Error((await res.text()) || `Couldn't load those commits (${res.status})`);
+  return (await res.json()) as Snapshot;
 }

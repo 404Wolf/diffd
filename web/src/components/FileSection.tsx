@@ -46,7 +46,7 @@ export function FileSection(props: Props) {
     return byRow;
   });
 
-  const regions = createMemo(() => props.review.conv.regions.filter((r) => r.path === file().path));
+  const regions = createMemo(() => props.review.regions().filter((r) => r.path === file().path));
   const testRows = createMemo(() => {
     const m = model();
     const rows = new Set<number>();

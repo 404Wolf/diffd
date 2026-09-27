@@ -1,6 +1,7 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { match } from "ts-pattern";
 import type { ReviewState } from "../gen/ReviewState";
+import { spanLabel } from "../lib/history";
 import { KeyEngine, keyToken, type Mode } from "../lib/keymap";
 import { BINDINGS, type Ctx } from "../state/bindings";
 import { createCommands } from "../state/commands";
@@ -12,6 +13,7 @@ import { Buffer } from "./Buffer";
 import { Chat } from "./Chat";
 import { Help, Nudge, Picker, StatusLine, TopBar } from "./Chrome";
 import { CommentPopover, SelectionBubble } from "./CommentPopover";
+import { Commits } from "./Commits";
 import { Drawer } from "./Drawer";
 import { FileTree } from "./FileTree";
 
@@ -24,10 +26,22 @@ export function ReviewPage(props: { state: ReviewState }) {
     layout: keepViewport,
     onRevision: (_, next) => view?.say(`Revision ${next.revision} arrived`),
     onShow: (request) => view?.setNudge(request),
+    onSpan: () => requestAnimationFrame(() => showSpanStart()),
   });
   const v = createView(review);
   view = v;
   const cmd = createCommands(review, v);
+  /** A different part of the history is on screen: start at its first change. */
+  const showSpanStart = () => {
+    v.setMode({ kind: "diff" });
+    v.setVisual(null);
+    v.setSelection(null);
+    bufferEl()?.scrollTo({ top: 0 });
+    const first = navigableRows().find((r) => r.dataset.chg === "1") ?? navigableRows()[0];
+    if (first) cmd.place(first, { scroll: "center" });
+    v.say(spanLabel(review.history(), review.span()));
+    trackScroll();
+  };
   const ctx: Ctx = { cmd, view: v };
   const engine = new KeyEngine<Ctx>(BINDINGS);
   let container: HTMLDivElement | undefined;
@@ -124,6 +138,7 @@ export function ReviewPage(props: { state: ReviewState }) {
       <TopBar review={review} />
       <div ref={container} class="relative flex min-h-0 flex-1">
         <Drawer side="left" label="Files" state={v.drawers.left} onChange={(s) => v.setDrawers("left", s)}>
+          <Commits review={review} />
           <FileTree review={review} view={v} cmd={cmd} current={currentFile} />
         </Drawer>
         <div class="flex min-w-0 flex-1 flex-col">

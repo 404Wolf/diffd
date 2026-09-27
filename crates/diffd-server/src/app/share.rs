@@ -17,7 +17,9 @@ pub struct ShareRequest {
     /// Absolute path of the repository or worktree (normally your working directory).
     pub repo_path: String,
     /// What to compare against: any revision git understands, e.g. `main`, `HEAD`, `v1.2.0`, `HEAD~3`.
-    /// `HEAD` with no `to` shows only uncommitted changes.
+    /// `HEAD` with no `to` shows only uncommitted changes. A range spanning several commits (e.g. your
+    /// branch against `main`) lets the user walk it commit by commit as well as see the whole change.
+    /// The base is fixed when you share, so committing afterwards adds commits without shrinking the review.
     pub from: String,
     /// The other side. Omit it to compare against the working tree, including
     /// uncommitted and untracked files; the review then updates live as files change.
