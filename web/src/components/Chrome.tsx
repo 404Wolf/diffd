@@ -1,6 +1,7 @@
 import { Dialog } from "@kobalte/core/dialog";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
 import { match } from "ts-pattern";
+import type { LanguageServerStatus } from "../api";
 import { agentName } from "../lib/agent";
 import { diagnosticsOn } from "../lib/code";
 import { spanLabel } from "../lib/history";
@@ -197,7 +198,65 @@ export function StatusLine(props: { review: Review; view: View; layout: LayoutSt
           </span>
         )}
       </Show>
+      <LanguageServers servers={props.review.conv.languageServers} />
     </footer>
+  );
+}
+
+/** How a language server shows in the status line. */
+interface ServerShown {
+  readonly busy: boolean;
+  readonly text: string;
+  readonly tone: string;
+  /** The tooltip, when it says more than `text`. */
+  readonly tip?: string;
+}
+
+const Spinner = () => (
+  <i class="inline-block size-2 animate-spin rounded-full border border-current border-t-transparent" />
+);
+
+/** The review's language servers at the end of the status line: starting, busy (indexing 40%), ready, or why not. */
+function LanguageServers(props: { servers: readonly LanguageServerStatus[] }) {
+  return (
+    <span class="flex flex-none items-center gap-2.5" aria-label="Language servers">
+      <For each={props.servers}>
+        {(s) => {
+          const view = (): ServerShown =>
+            match(s.state)
+              .with({ type: "starting" }, () => ({ busy: true, text: `${s.name} starting…`, tone: "" }))
+              .with({ type: "busy" }, ({ title, message, percentage }) => ({
+                busy: true,
+                text: [`${s.name}:`, title, message, percentage === null ? null : `${percentage}%`]
+                  .filter(Boolean)
+                  .join(" "),
+                tone: "",
+              }))
+              .with({ type: "ready" }, () => ({ busy: false, text: s.name, tone: "text-subtle" }))
+              .with({ type: "unavailable" }, ({ reason }) => ({
+                busy: false,
+                text: `${s.name} unavailable`,
+                tone: "text-warn",
+                tip: reason,
+              }))
+              .exhaustive();
+          return (
+            <span
+              class={`flex max-w-[44ch] items-center gap-1 ${view().tone}`}
+              title={view().tip ?? view().text}
+              data-language-server={s.name}
+              data-state={s.state.type}
+              aria-busy={view().busy}
+            >
+              <Show when={view().busy} fallback={<i class="size-1.5 rounded-full bg-current" />}>
+                <Spinner />
+              </Show>
+              <span class="truncate">{view().text}</span>
+            </span>
+          );
+        }}
+      </For>
+    </span>
   );
 }
 

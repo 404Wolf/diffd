@@ -10,9 +10,35 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/highlight": {
+      "post": {
+        "summary": "Highlight fenced code from a message with the same grammars and classes as the diff.",
+        "operationId": "highlight",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HighlightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Highlighted"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/reviews": {
       "get": {
-        "summary": "Recent reviews, newest first.",
         "operationId": "list_reviews",
         "responses": {
           "200": {
@@ -1160,7 +1186,7 @@
               "string",
               "null"
             ],
-            "description": "One or two plain sentences on what changed here and why, shown above the chapter's code."
+            "description": "One or two plain sentences on what changed here and why, shown above the chapter's code and in the\ntour's sidebar. `path:line` references to the spots that matter become links."
           },
           "files": {
             "type": "array",
@@ -1171,6 +1197,43 @@
           }
         },
         "additionalProperties": false
+      },
+      "HighlightRequest": {
+        "type": "object",
+        "description": "Recent reviews, newest first.\nFenced code in a message, to highlight like the diff.",
+        "required": [
+          "language",
+          "code"
+        ],
+        "properties": {
+          "language": {
+            "type": "string",
+            "description": "The fence's language: a name (`rust`, `typescript`) or an extension (`rs`, `tsx`)."
+          },
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "Highlighted": {
+        "type": "object",
+        "required": [
+          "lines"
+        ],
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "description": "Per line of `code` (split at `\\n`), flattened `[start, end, class, …]` runs, as in a diff's `syntax`.\nEmpty for a language diffd has no grammar for."
+          }
+        }
       },
       "History": {
         "type": "object",
@@ -1224,6 +1287,109 @@
         },
         "additionalProperties": false
       },
+      "LanguageServerState": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "starting"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Working on something it reports (`$/progress`): loading the workspace, indexing, checking.",
+            "required": [
+              "title",
+              "message",
+              "percentage",
+              "type"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "message": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "percentage": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "busy"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ready"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Not installed, or it kept crashing.",
+            "required": [
+              "reason",
+              "type"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "unavailable"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "LanguageServerStatus": {
+        "type": "object",
+        "description": "A language server running for the review's files, for the status line.",
+        "required": [
+          "name",
+          "state"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name in the config, e.g. `rust-analyzer`."
+          },
+          "state": {
+            "$ref": "#/components/schemas/LanguageServerState"
+          }
+        }
+      },
       "Layout": {
         "type": "object",
         "description": "How the agent arranged the review for reading: who it is, related changes\ngrouped together, and labels the user can hide files by.",
@@ -1267,7 +1433,8 @@
           "activity",
           "presence",
           "readSeq",
-          "diagnostics"
+          "diagnostics",
+          "languageServers"
         ],
         "properties": {
           "review": {
@@ -1321,6 +1488,12 @@
             },
             "propertyNames": {
               "type": "string"
+            }
+          },
+          "languageServers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LanguageServerStatus"
             }
           }
         }
@@ -1524,7 +1697,8 @@
           "activity",
           "presence",
           "readSeq",
-          "diagnostics"
+          "diagnostics",
+          "languageServers"
         ],
         "properties": {
           "review": {
@@ -1587,6 +1761,13 @@
             "propertyNames": {
               "type": "string"
             }
+          },
+          "languageServers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LanguageServerStatus"
+            },
+            "description": "The language servers running for the review's files."
           }
         }
       },
@@ -1803,6 +1984,28 @@
                 "type": "string",
                 "enum": [
                   "presence"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The review's language servers started, stopped, or are busy with something new.",
+            "required": [
+              "servers",
+              "type"
+            ],
+            "properties": {
+              "servers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LanguageServerStatus"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "languageServers"
                 ]
               }
             }

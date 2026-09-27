@@ -8,6 +8,7 @@ use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
+use diffd_core::lang::Lang;
 use diffd_core::model::{Author, FileDiff, ReviewId, Revision, Snapshot};
 use diffd_core::protocol::{Boot, ClientMsg, ReviewState, ReviewSummary, ServerMsg};
 use futures::{SinkExt, StreamExt};
@@ -104,6 +105,7 @@ fn api() -> OpenApiRouter<Web> {
         .routes(routes!(repo_files))
         .routes(routes!(context_file))
         .routes(routes!(wake, cancel_wake))
+        .routes(routes!(highlight))
 }
 
 /// diffd's HTTP API. The WebSocket's messages and the page's boot data aren't
@@ -220,6 +222,40 @@ async fn review_page(State(web): State<Web>, Path(id): Path<String>) -> Response
 }
 
 /// Recent reviews, newest first.
+/// Fenced code in a message, to highlight like the diff.
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+struct HighlightRequest {
+    /// The fence's language: a name (`rust`, `typescript`) or an extension (`rs`, `tsx`).
+    language: String,
+    code: String,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct Highlighted {
+    /// Per line of `code` (split at `\n`), flattened `[start, end, class, …]` runs, as in a diff's `syntax`.
+    /// Empty for a language diffd has no grammar for.
+    lines: Vec<Vec<u32>>,
+}
+
+/// Snippets longer than this aren't highlighted: fenced code in a message is short.
+const MAX_SNIPPET_BYTES: usize = 64 * 1024;
+
+/// Highlight fenced code from a message with the same grammars and classes as the diff.
+#[utoipa::path(post, path = "/api/highlight", request_body = HighlightRequest, responses((status = 200, body = Highlighted)))]
+async fn highlight(axum::Json(req): axum::Json<HighlightRequest>) -> Response {
+    let lang = Lang::from_name(&req.language).or_else(|| Lang::from_path(&format!("snippet.{}", req.language)));
+    let lines = match lang {
+        Some(lang) if req.code.len() <= MAX_SNIPPET_BYTES => tokio::task::spawn_blocking(move || {
+            let count = req.code.split('\n').count();
+            diffd_core::highlight::highlight(lang, &req.code, count)
+        })
+        .await
+        .unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    axum::Json(Highlighted { lines }).into_response()
+}
+
 #[utoipa::path(get, path = "/api/reviews", responses((status = 200, body = Vec<ReviewSummary>)))]
 async fn list_reviews(State(web): State<Web>) -> Response {
     match recent(&web.app).await {

@@ -121,6 +121,7 @@ One long-running server handles everything:
 | `/api/reviews/{id}/files` | every file in the repository on the review's `to` side (§8.9) |
 | `/api/reviews/{id}/context?path=` | one file outside the diff, highlighted (§8.9) |
 | `/api/reviews/{id}/ws` | the page's WebSocket (below) |
+| `/api/highlight` | `POST {language, code}`: syntax runs for fenced code in a message |
 
 **The page talks to the server over one typed WebSocket.** Every message in
 either direction is a tagged union defined in Rust (`diffd-core/src/protocol.rs`)
@@ -503,7 +504,12 @@ diagnostics (`crates/diffd-server/src/adapters/lsp/`).
   default), and are restarted after a crash, up to three times (an exit is
   noticed as soon as its output ends, so nothing waits out a timeout). A server that
   isn't installed is remembered as broken, with the reason, and the page falls
-  back quietly.
+  back quietly. When the last page showing a review closes, its servers are
+  shut down after 30 s (a reload doesn't restart them).
+- **Status:** each server's state (starting, busy with what it reports over
+  `$/progress` such as "Indexing 40%", ready, or unavailable and why) goes to
+  the pages of reviews in its repository, at most four times a second, and
+  shows at the right end of the status line.
 - **Only reviews of the working tree** get language servers: servers see files
   on disk, which is exactly the new side of such a review.
 - **Files:** when a page connects, the review's new-side files are opened in
@@ -579,6 +585,8 @@ open pages, which stop reconnecting. `refresh` runs the same rebuild on demand.
 
 - **Header:** repo, `from → to`, revision, stats, agent presence and
   connection state. The summary (collapsible Markdown) sits above the diff.
+  Fenced code in any agent message (```` ```rust ````) is highlighted by the
+  server's grammars (`POST /api/highlight`), in the diff's colours.
 - **Multibuffer (Zed):**
   - Every file is stacked in one scroll as excerpts.
   - File headers are sticky, and clicking one collapses that file.
@@ -608,7 +616,8 @@ open pages, which stop reconnecting. `refresh` runs the same rebuild on demand.
   Its message box grows with what you type (enter sends, shift+enter is a
   new line), and dragging its top edge (or arrow keys on it) resizes it.
 - **Status line (vim):** mode, position, hunk n/m, the cursor line's worst
-  diagnostic, key hints.
+  diagnostic, key hints, and the language servers (a spinner while one starts
+  or indexes).
 
 ### 8.2 Selecting and commenting
 

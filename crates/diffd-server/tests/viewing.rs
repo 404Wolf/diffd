@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use diffd_core::model::{CodeAnswer, CodeQuery, ReviewId};
 use diffd_server::app::ShareRequest;
-use diffd_server::ports::{CodeIntel, FileDiagnostics};
+use diffd_server::ports::{CodeIntel, FileDiagnostics, ServerStatus};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use tokio::sync::broadcast;
@@ -32,6 +32,9 @@ impl CodeIntel for Recorder {
     }
     fn diagnostics(&self) -> broadcast::Receiver<FileDiagnostics> {
         self.diagnostics.as_ref().expect("a channel").subscribe()
+    }
+    fn servers(&self) -> tokio::sync::watch::Receiver<Vec<ServerStatus>> {
+        tokio::sync::watch::channel(Vec::new()).1
     }
     fn release<'a>(&'a self, root: &'a Path) -> BoxFuture<'a, ()> {
         self.released.lock().unwrap().push(root.to_owned());

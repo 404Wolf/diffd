@@ -372,9 +372,14 @@ try {
     await page.keyboard.press("Enter");
     const chatBatch = await agent.call("wait_for_feedback", { review_id: reviewId, timeout_seconds: 20 });
     check(chatBatch.items.length === 1 && chatBatch.items[0].type === "chat", "the chat message reaches the agent");
-    await agent.call("say", { review_id: reviewId, body: "It's gone now: I deleted it in src/legacy.rs:1. The token bucket covers both uses." });
+    await agent.call("say", { review_id: reviewId, body: "It's gone now: I deleted it in src/legacy.rs:1. The token bucket covers both uses:\n\n```rust\nlet allowed = bucket.take(1);\n```" });
     await page.waitForFunction(() => document.body.innerText.includes("covers both uses"));
     check(true, "the agent's answer shows in the chat");
+    const highlighted = await page
+      .waitForSelector('section[aria-label="Chat with Claude"] pre code .s-keyword', { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    check(highlighted, "code blocks in messages are highlighted like the diff");
     await page.locator('section[aria-label="Chat with Claude"] a[data-go]').click();
     await sleep(200);
     await shot(page, "chat");
@@ -934,6 +939,8 @@ try {
       log(`✓ ${path}: ${await page.locator(`[data-problems="${path}"]`).innerText()}`);
     }
     check(true, "every language's errors show in the tree");
+    const ra = page.locator('[data-language-server="rust-analyzer"]');
+    check(["ready", "busy"].includes(await ra.getAttribute("data-state")), `the status line shows the language servers (${(await page.getByLabel("Language servers").innerText()).replace(/\s+/g, " ")})`);
     const squiggles = await page.evaluate(() => CSS.highlights.get("diag-error")?.size ?? 0);
     check(squiggles >= 4, `errors are underlined in the code (${squiggles} ranges)`);
     await shot(page, "diagnostics");

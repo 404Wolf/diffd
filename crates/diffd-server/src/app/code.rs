@@ -12,15 +12,18 @@ use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-use diffd_core::model::{CodeAnswer, CodeQuery, FileStatus, ReviewId};
+use diffd_core::model::{CodeAnswer, CodeQuery, FileStatus, LanguageServerStatus, ReviewId};
 use diffd_core::protocol::ServerMsg;
 use tokio::sync::broadcast::error::RecvError;
 
 use super::{App, Live, Result, nested};
-use crate::ports::{CodeIntel, FileDiagnostics};
+use crate::ports::{CodeIntel, FileDiagnostics, ServerStatus};
 
 /// Files opened in language servers per review, for diagnostics.
 const MAX_SYNCED_FILES: usize = 300;
+
+/// How often pages hear about language servers' progress, at most.
+const SERVER_STATUS_EVERY: Duration = Duration::from_millis(250);
 
 /// How long servers outlive the last page of a review: a reload or a dropped
 /// connection shouldn't restart them.
@@ -44,6 +47,7 @@ impl App {
     /// Use these language servers; their diagnostics flow to pages from now on.
     pub fn set_code_intel(&self, intel: Arc<dyn CodeIntel>) {
         let mut rx = intel.diagnostics();
+        let mut servers = intel.servers();
         *self.code.lock().expect("code lock") = Some(intel);
         let me = self.me.clone();
         tokio::spawn(async move {
@@ -56,6 +60,16 @@ impl App {
                     Err(RecvError::Lagged(n)) => tracing::warn!(n, "dropped language server diagnostics"),
                     Err(RecvError::Closed) => return,
                 }
+            }
+        });
+        let me = self.me.clone();
+        tokio::spawn(async move {
+            while servers.changed().await.is_ok() {
+                // Indexing reports progress many times a second: pages hear at most a few.
+                tokio::time::sleep(SERVER_STATUS_EVERY).await;
+                let all = servers.borrow_and_update().clone();
+                let Some(app) = me.upgrade() else { return };
+                app.route_servers(&all);
             }
         });
     }
@@ -176,6 +190,23 @@ impl App {
         let Ok(live) = self.live(id).await else { return };
         live.inner.lock().expect("live lock").context_paths.insert(path.to_owned());
         self.sync_code(id, &live, vec![path.to_owned()]).await;
+    }
+
+    /// Tell each review's pages about the language servers for its repository, when that changed.
+    fn route_servers(&self, all: &[ServerStatus]) {
+        for live in self.lives() {
+            let servers: Vec<LanguageServerStatus> = {
+                let mut inner = live.inner.lock().expect("live lock");
+                let Some(root) = inner.code_root.clone() else { continue };
+                let servers: Vec<_> = all.iter().filter(|s| nested(&s.root, &root)).map(|s| s.status.clone()).collect();
+                if inner.language_servers == servers {
+                    continue;
+                }
+                inner.language_servers = servers.clone();
+                servers
+            };
+            App::broadcast(&live, ServerMsg::LanguageServers { servers });
+        }
     }
 
     /// Hand a file's diagnostics to every open review that shows it.

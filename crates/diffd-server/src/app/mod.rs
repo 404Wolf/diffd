@@ -101,6 +101,8 @@ struct LiveInner {
     /// Files outside the repository a language server pointed at; only these can be opened.
     external_paths: std::collections::HashSet<String>,
     diagnostics: std::collections::BTreeMap<String, Vec<diffd_core::model::Diagnostic>>,
+    /// The language servers for `code_root`, as last sent to pages.
+    language_servers: Vec<diffd_core::model::LanguageServerStatus>,
 }
 
 impl App {
@@ -204,6 +206,7 @@ impl App {
                         context_paths: Default::default(),
                         external_paths: Default::default(),
                         diagnostics: Default::default(),
+                        language_servers: Vec::new(),
                     }),
                 })
             })
@@ -234,9 +237,9 @@ impl App {
     pub async fn live_state(&self, id: &ReviewId) -> Result<(Arc<Snapshot>, LiveState)> {
         let live = self.live(id).await?;
         let (review, spec) = self.meta(id).await?;
-        let (snapshot, presence, diagnostics) = {
+        let (snapshot, presence, diagnostics, language_servers) = {
             let inner = live.inner.lock().expect("live lock");
-            (inner.snapshot.clone(), inner.presence, inner.diagnostics.clone())
+            (inner.snapshot.clone(), inner.presence, inner.diagnostics.clone(), inner.language_servers.clone())
         };
         let history = self.history(&live, &review, &spec).await;
         let state = LiveState {
@@ -250,6 +253,7 @@ impl App {
             presence,
             read_seq: self.store.read_seq(id).await?,
             diagnostics,
+            language_servers,
         };
         Ok((snapshot, state))
     }

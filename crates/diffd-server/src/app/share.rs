@@ -52,7 +52,8 @@ pub struct ShareRequest {
     /// order that makes the change easiest to understand. Usually the data model or types first, then the
     /// logic that uses them, then callers, UI and config, with tests last. Each chapter has a short title
     /// ("The rate limiter", "Storing quotas") and a `summary`: one or two sentences on what changed there
-    /// and why, which the user reads before its code. A file belongs to the first chapter naming it; any
+    /// and why, which the user reads before its code (and in the tour's sidebar). Point at the spots that
+    /// matter as `path:line` (e.g. `src/bucket.rs:42`): they become links. A file belongs to the first chapter naming it; any
     /// left over go under "Other changes" at the end. The review opens on the tour; the plain diff is a
     /// click away.
     #[serde(default)]

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelWakeData, CancelWakeResponses, ContextFileData, ContextFileErrors, ContextFileResponses, DeleteReviewData, DeleteReviewErrors, DeleteReviewResponses, ListReviewsData, ListReviewsResponses, RangeData, RangeErrors, RangeResponses, RepoFilesData, RepoFilesErrors, RepoFilesResponses, ReviewStateData, ReviewStateErrors, ReviewStateResponses, WakeData, WakeResponses } from './types.gen';
+import type { CancelWakeData, CancelWakeResponses, ContextFileData, ContextFileErrors, ContextFileResponses, DeleteReviewData, DeleteReviewErrors, DeleteReviewResponses, HighlightData, HighlightResponses, ListReviewsData, ListReviewsResponses, RangeData, RangeErrors, RangeResponses, RepoFilesData, RepoFilesErrors, RepoFilesResponses, ReviewStateData, ReviewStateErrors, ReviewStateResponses, WakeData, WakeResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -19,8 +19,17 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 };
 
 /**
- * Recent reviews, newest first.
+ * Highlight fenced code from a message with the same grammars and classes as the diff.
  */
+export const highlight = <ThrowOnError extends boolean = false>(options: Options<HighlightData, ThrowOnError>): RequestResult<HighlightResponses, unknown, ThrowOnError> => (options.client ?? client).post<HighlightResponses, unknown, ThrowOnError>({
+    url: '/api/highlight',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
 export const listReviews = <ThrowOnError extends boolean = false>(options?: Options<ListReviewsData, ThrowOnError>): RequestResult<ListReviewsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListReviewsResponses, unknown, ThrowOnError>({ url: '/api/reviews', ...options });
 
 /**

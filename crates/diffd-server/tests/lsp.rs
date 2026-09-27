@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use diffd_core::model::{CodeAnswer, CodeQuery, Severity};
+use diffd_core::model::{CodeAnswer, CodeQuery, LanguageServerState, Severity};
 use diffd_server::adapters::lsp::LspPool;
 use diffd_server::config::Config;
 use diffd_server::ports::CodeIntel;
@@ -124,6 +124,15 @@ async fn rust() {
 
     write(&root, &[("src/lib.rs", "mod shapes;\npub use shapes::Square;\n\npub fn area(s: &Square) -> u32 {\n    s.sides\n}\n")]);
     diagnostics_until(&pool, &mut rx, &root, "src/lib.rs", |d| d.iter().any(|d| d.severity == Severity::Error && d.line == 5)).await;
+
+    // The page's status line: rust-analyzer is up, for this root; stopping it takes it off.
+    let servers = pool.servers().borrow().clone();
+    assert!(
+        servers.iter().any(|s| s.root == root && s.status.name == "rust-analyzer" && s.status.state != LanguageServerState::Starting),
+        "{servers:?}"
+    );
+    pool.release(&root).await;
+    assert!(pool.servers().borrow().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -318,4 +327,10 @@ async fn a_crashing_server_is_restarted_then_given_up_on() {
     let crashes = std::fs::read_to_string(&log).unwrap().lines().filter(|l| *l == "crash").count();
     assert_eq!(crashes, 3, "restarted after each crash, up to the limit: {reasons:?}");
     assert!(reasons.last().unwrap().contains("keeps crashing"), "{reasons:?}");
+    // And the page is told why.
+    let servers = pool.servers().borrow().clone();
+    assert!(
+        matches!(&servers[..], [s] if matches!(&s.status.state, LanguageServerState::Unavailable { reason } if reason.contains("keeps crashing"))),
+        "{servers:?}"
+    );
 }

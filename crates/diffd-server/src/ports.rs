@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 
 use diffd_core::build::FileInput;
 use diffd_core::difft::EngineDiff;
-use diffd_core::model::{CodeAnswer, CodeQuery, Commit, Diagnostic, Millis, ReviewId};
+use diffd_core::model::{CodeAnswer, CodeQuery, Commit, Diagnostic, LanguageServerStatus, Millis, ReviewId};
 use futures::future::BoxFuture;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 /// A repository the agent pointed us at.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +77,13 @@ pub struct FileDiagnostics {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// A language server and the project root it runs for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerStatus {
+    pub root: PathBuf,
+    pub status: LanguageServerStatus,
+}
+
 /// What language servers know about files on disk. Paths are relative to `repo_root`.
 pub trait CodeIntel: Send + Sync {
     /// Open a file (or tell its server it changed), so its diagnostics arrive.
@@ -85,6 +92,8 @@ pub trait CodeIntel: Send + Sync {
     fn ask<'a>(&'a self, repo_root: &'a Path, path: &'a str, query: CodeQuery, line: u32, col: u32) -> BoxFuture<'a, CodeAnswer>;
     /// Diagnostics as servers publish them, for every file they have open.
     fn diagnostics(&self) -> broadcast::Receiver<FileDiagnostics>;
+    /// Every server that's starting, running or couldn't start, as it changes.
+    fn servers(&self) -> watch::Receiver<Vec<ServerStatus>>;
     /// Stop the servers for the repository at `repo_root`: nobody is looking at it.
     fn release<'a>(&'a self, repo_root: &'a Path) -> BoxFuture<'a, ()>;
 }

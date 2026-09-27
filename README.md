@@ -29,7 +29,9 @@ the agent hears each comment once you pause.
   let the agent show it to you.
 - **Language servers.** Go to definition (`gd`), type definition (`gt`),
   hover docs (`K`) and red/yellow squiggles, for Rust, TypeScript, Python,
-  Go, Nix, YAML or anything you configure.
+  Go, Nix, YAML or anything you configure. The status line shows what each
+  is doing (starting, indexing 40%, ready), and they stop once you close the
+  review's last tab.
 - **Keyboard first**, mostly Zed's vim bindings: hunks, files, symbols, a
   jump list, marks, text objects, splits. Ctrl+F finds in the file you're on (or
   every file), folded lines too.

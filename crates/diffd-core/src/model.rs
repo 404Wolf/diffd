@@ -330,7 +330,8 @@ pub struct Layout {
 pub struct Group {
     /// What these changes are, in a few words, e.g. "The rate limiter API" or "Database migrations".
     pub title: String,
-    /// One or two plain sentences on what changed here and why, shown above the chapter's code.
+    /// One or two plain sentences on what changed here and why, shown above the chapter's code and in the
+    /// tour's sidebar. `path:line` references to the spots that matter become links.
     #[serde(default)]
     pub summary: Option<String>,
     /// Files in the diff, as paths, directories or globs (`web/src/**`, `*.sql`), in reading order.
@@ -477,6 +478,32 @@ pub enum CodeAnswer {
         markdown: String,
     },
     /// No language server for this file (or it couldn't answer): fall back to what the page knows.
+    Unavailable {
+        reason: String,
+    },
+}
+
+/// A language server running for the review's files, for the status line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageServerStatus {
+    /// Its name in the config, e.g. `rust-analyzer`.
+    pub name: String,
+    pub state: LanguageServerState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum LanguageServerState {
+    Starting,
+    /// Working on something it reports (`$/progress`): loading the workspace, indexing, checking.
+    Busy {
+        title: String,
+        message: Option<String>,
+        percentage: Option<u32>,
+    },
+    Ready,
+    /// Not installed, or it kept crashing.
     Unavailable {
         reason: String,
     },

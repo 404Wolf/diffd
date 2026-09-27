@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use diffd_core::model::{CodeLocation, Diagnostic, Severity};
+use diffd_core::model::{CodeLocation, Diagnostic, LanguageServerState, Severity};
 use serde_json::{Value, json};
 use url::Url;
 
@@ -83,6 +83,23 @@ fn marked(v: &Value) -> String {
     }
 }
 
+/// A `$/progress` value (begin, report or end) applied to what that token said
+/// before: what it's working on now, or `None` once it's done.
+pub fn progress(value: &Value, before: Option<LanguageServerState>) -> Option<LanguageServerState> {
+    let message = value["message"].as_str().map(str::to_owned);
+    let percentage = value["percentage"].as_u64().map(|p| p.min(100) as u32);
+    match value["kind"].as_str()? {
+        "begin" => Some(LanguageServerState::Busy { title: value["title"].as_str().unwrap_or_default().to_owned(), message, percentage }),
+        "report" => match before? {
+            LanguageServerState::Busy { title, message: old, percentage: was } => {
+                Some(LanguageServerState::Busy { title, message: message.or(old), percentage: percentage.or(was) })
+            }
+            other => Some(other),
+        },
+        _ => None,
+    }
+}
+
 /// `textDocument/publishDiagnostics` params → the file and its diagnostics.
 pub fn diagnostics(params: &Value) -> Option<(PathBuf, Vec<Diagnostic>)> {
     let path = uri_path(params.get("uri")?.as_str()?)?;
@@ -150,6 +167,25 @@ mod tests {
         assert_eq!(hover_markdown(&json!({ "contents": { "language": "rust", "value": "fn f()" } })).unwrap(), "```rust\nfn f()\n```");
         assert_eq!(hover_markdown(&json!({ "contents": ["a", { "language": "go", "value": "b" }] })).unwrap(), "a\n\n```go\nb\n```");
         assert!(hover_markdown(&json!({ "contents": "" })).is_none());
+    }
+
+    #[test]
+    fn progress_begins_reports_and_ends() {
+        let busy = |message: Option<&str>, percentage| LanguageServerState::Busy {
+            title: "Indexing".into(),
+            message: message.map(Into::into),
+            percentage,
+        };
+        let begun = progress(&json!({ "kind": "begin", "title": "Indexing", "percentage": 0 }), None);
+        assert_eq!(begun, Some(busy(None, Some(0))));
+        let reported = progress(&json!({ "kind": "report", "message": "4/10 (core)", "percentage": 40 }), begun);
+        assert_eq!(reported, Some(busy(Some("4/10 (core)"), Some(40))));
+        // A report without a percentage keeps the last one.
+        let again = progress(&json!({ "kind": "report", "message": "5/10" }), reported);
+        assert_eq!(again, Some(busy(Some("5/10"), Some(40))));
+        assert_eq!(progress(&json!({ "kind": "end" }), again), None);
+        // A report for a token that never began is ignored.
+        assert_eq!(progress(&json!({ "kind": "report", "percentage": 3 }), None), None);
     }
 
     #[test]

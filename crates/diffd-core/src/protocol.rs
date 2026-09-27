@@ -9,8 +9,8 @@ use utoipa::ToSchema;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::model::{
-    ActivityItem, Anchor, CodeAnswer, CodeQuery, Diagnostic, FileDiff, History, Layout, Message, MessageId, Presence, Region, ReviewMeta,
-    Revision, ShowRequest, Snapshot, Symbol, Thread, ThreadId,
+    ActivityItem, Anchor, CodeAnswer, CodeQuery, Diagnostic, FileDiff, History, LanguageServerStatus, Layout, Message, MessageId, Presence,
+    Region, ReviewMeta, Revision, ShowRequest, Snapshot, Symbol, Thread, ThreadId,
 };
 
 /// Everything the page needs to render a review. It's embedded in the HTML so
@@ -35,6 +35,8 @@ pub struct ReviewState {
     pub read_seq: u64,
     /// Language servers' diagnostics, by path (files in the diff and open for context).
     pub diagnostics: BTreeMap<String, Vec<Diagnostic>>,
+    /// The language servers running for the review's files.
+    pub language_servers: Vec<LanguageServerStatus>,
 }
 
 /// [`ReviewState`] without the snapshot: what a page that already has the
@@ -53,12 +55,14 @@ pub struct LiveState {
     pub presence: Presence,
     pub read_seq: u64,
     pub diagnostics: BTreeMap<String, Vec<Diagnostic>>,
+    pub language_servers: Vec<LanguageServerStatus>,
 }
 
 impl ReviewState {
     pub fn new(snapshot: Snapshot, live: LiveState) -> Self {
-        let LiveState { review, threads, regions, layout, history, chat, activity, presence, read_seq, diagnostics } = live;
-        Self { review, snapshot, threads, regions, layout, history, chat, activity, presence, read_seq, diagnostics }
+        let LiveState { review, threads, regions, layout, history, chat, activity, presence, read_seq, diagnostics, language_servers } =
+            live;
+        Self { review, snapshot, threads, regions, layout, history, chat, activity, presence, read_seq, diagnostics, language_servers }
     }
 }
 
@@ -168,6 +172,11 @@ pub enum ServerMsg {
     },
     Presence {
         presence: Presence,
+    },
+    /// The review's language servers started, stopped, or are busy with something new.
+    #[serde(rename_all = "camelCase")]
+    LanguageServers {
+        servers: Vec<LanguageServerStatus>,
     },
     /// A file's diagnostics changed (an empty list clears them).
     Diagnostics {

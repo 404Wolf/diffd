@@ -6,20 +6,20 @@
 mod convert;
 mod rpc;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use diffd_core::model::{CodeAnswer, CodeQuery};
+use diffd_core::model::{CodeAnswer, CodeQuery, LanguageServerState, LanguageServerStatus};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use serde_json::{Value, json};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::config::{Config, LanguageServer};
-use crate::ports::{CodeIntel, FileDiagnostics, MAX_FILE_BYTES};
+use crate::ports::{CodeIntel, FileDiagnostics, MAX_FILE_BYTES, ServerStatus};
 use rpc::{Connection, Incoming};
 
 /// How long a server may take to start up.
@@ -33,6 +33,42 @@ pub struct LspPool {
     /// can take a while) doesn't hold up questions to the others.
     servers: Mutex<HashMap<Key, Arc<tokio::sync::Mutex<Option<Slot>>>>>,
     diagnostics: broadcast::Sender<FileDiagnostics>,
+    board: Arc<Board>,
+}
+
+/// What each server is doing, for the pages' status lines.
+struct Board {
+    states: Mutex<BTreeMap<Key, LanguageServerState>>,
+    tx: watch::Sender<Vec<ServerStatus>>,
+}
+
+impl Board {
+    /// Set a server's state (`None`: it's gone), telling watchers when that's news.
+    fn set(&self, key: &Key, state: Option<LanguageServerState>) {
+        let mut states = self.states.lock().expect("lsp lock");
+        let changed = match state {
+            Some(state) => states.insert(key.clone(), state.clone()) != Some(state),
+            None => states.remove(key).is_some(),
+        };
+        if changed {
+            let all = states
+                .iter()
+                .map(|((name, root), state)| ServerStatus {
+                    root: root.clone(),
+                    status: LanguageServerStatus { name: name.clone(), state: state.clone() },
+                })
+                .collect();
+            self.tx.send_replace(all);
+        }
+    }
+
+    /// Up: ready, unless it's already said what it's busy with.
+    fn started(&self, key: &Key) {
+        let starting = self.states.lock().expect("lsp lock").get(key) == Some(&LanguageServerState::Starting);
+        if starting {
+            self.set(key, Some(LanguageServerState::Ready));
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -66,7 +102,8 @@ struct Server {
 
 impl LspPool {
     pub fn new(config: Arc<Config>) -> Arc<Self> {
-        let pool = Arc::new(Self { config, servers: Default::default(), diagnostics: broadcast::channel(1024).0 });
+        let board = Arc::new(Board { states: Default::default(), tx: watch::channel(Vec::new()).0 });
+        let pool = Arc::new(Self { config, servers: Default::default(), diagnostics: broadcast::channel(1024).0, board });
         let weak = Arc::downgrade(&pool);
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(Duration::from_secs(60));
@@ -94,7 +131,7 @@ impl LspPool {
         };
         let root = project_root(repo_root, path, &spec.root_markers);
         let key = (name.to_owned(), root.clone());
-        let cell = self.servers.lock().expect("lsp lock").entry(key).or_default().clone();
+        let cell = self.servers.lock().expect("lsp lock").entry(key.clone()).or_default().clone();
         let mut slot = cell.lock().await;
         let crashes = match &*slot {
             Some(Slot::Running(s)) if s.conn.alive() => {
@@ -107,25 +144,30 @@ impl LspPool {
         };
         if crashes >= MAX_CRASHES {
             let reason = format!("{name} keeps crashing; restart diffd to try again");
+            self.board.set(&key, Some(LanguageServerState::Unavailable { reason: reason.clone() }));
             *slot = Some(Slot::Broken(reason.clone()));
             return Err(reason);
         }
-        match self.start(name, spec, &root, crashes).await {
+        self.board.set(&key, Some(LanguageServerState::Starting));
+        match self.start(&key, spec, crashes).await {
             Ok(server) => {
                 tracing::info!(server = name, root = %root.display(), "language server started");
+                self.board.started(&key);
                 *slot = Some(Slot::Running(server.clone()));
                 Ok((server, language.to_owned()))
             }
             Err(e) => {
                 let reason = format!("{name} isn't available: {e:#}");
                 tracing::warn!("{reason}");
+                self.board.set(&key, Some(LanguageServerState::Unavailable { reason: reason.clone() }));
                 *slot = Some(Slot::Broken(reason.clone()));
                 Err(reason)
             }
         }
     }
 
-    async fn start(&self, name: &str, spec: &LanguageServer, root: &Path, crashes: u32) -> anyhow::Result<Arc<Server>> {
+    async fn start(&self, key: &Key, spec: &LanguageServer, crashes: u32) -> anyhow::Result<Arc<Server>> {
+        let (name, root) = (key.0.as_str(), key.1.as_path());
         let (tx, mut rx) = mpsc::unbounded_channel();
         let conn = Connection::spawn(&spec.command, &spec.args, &spec.env, root, tx)?;
         let settings = spec.settings.clone().map(toml_to_json).unwrap_or(Value::Null);
@@ -135,9 +177,22 @@ impl LspPool {
         let folders = json!([{ "uri": convert::file_uri(root), "name": root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() }]);
         let init_folders = folders.clone();
         let server_name = name.to_owned();
+        let (board, key) = (self.board.clone(), key.clone());
         tokio::spawn(async move {
+            // Work in progress (`$/progress`), by token, and the one that last said something.
+            let mut progress: HashMap<String, LanguageServerState> = HashMap::new();
+            let mut latest: Option<String> = None;
             while let Some(msg) = rx.recv().await {
                 match msg {
+                    Incoming::Notification { method, params } if method == "$/progress" => {
+                        let token = params["token"].to_string();
+                        if let Some(state) = convert::progress(&params["value"], progress.remove(&token)) {
+                            progress.insert(token.clone(), state);
+                            latest = Some(token);
+                        }
+                        let now = latest.as_ref().and_then(|t| progress.get(t)).or_else(|| progress.values().next());
+                        board.set(&key, Some(now.cloned().unwrap_or(LanguageServerState::Ready)));
+                    }
                     Incoming::Notification { method, params } if method == "textDocument/publishDiagnostics" => {
                         if let Some((path, diagnostics_)) = convert::diagnostics(&params) {
                             let _ = diagnostics.send(FileDiagnostics { path, diagnostics: diagnostics_ });
@@ -164,6 +219,8 @@ impl LspPool {
                     }
                 }
             }
+            // The server exited (stopped, or crashed: the next question starts it again).
+            board.set(&key, None);
         });
 
         let init = json!({
@@ -342,13 +399,14 @@ impl CodeIntel for LspPool {
                 .expect("lsp lock")
                 .iter()
                 .filter(|((_, root), _)| root.starts_with(repo_root))
-                .map(|(_, c)| c.clone())
+                .map(|(key, cell)| (key.clone(), cell.clone()))
                 .collect();
-            for cell in cells {
+            for (key, cell) in cells {
                 // Wait for one that's starting: it's stopped once it's up.
-                let mut slot = cell.lock().await;
-                if let Some(Slot::Running(s)) = slot.take() {
-                    drop(slot);
+                let taken = cell.lock().await.take();
+                // Not running, and not "unavailable" either: the next page to open it tries again.
+                self.board.set(&key, None);
+                if let Some(Slot::Running(s)) = taken {
                     tracing::info!(root = %repo_root.display(), "stopping a language server: nobody is viewing its review");
                     s.conn.shutdown().await;
                 }
@@ -359,6 +417,10 @@ impl CodeIntel for LspPool {
 
     fn diagnostics(&self) -> broadcast::Receiver<FileDiagnostics> {
         self.diagnostics.subscribe()
+    }
+
+    fn servers(&self) -> watch::Receiver<Vec<ServerStatus>> {
+        self.board.tx.subscribe()
     }
 }
 

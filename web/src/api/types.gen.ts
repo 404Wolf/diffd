@@ -226,13 +226,34 @@ export type Group = {
      */
     title: string;
     /**
-     * One or two plain sentences on what changed here and why, shown above the chapter's code.
+     * One or two plain sentences on what changed here and why, shown above the chapter's code and in the
+     * tour's sidebar. `path:line` references to the spots that matter become links.
      */
     summary: string | null;
     /**
      * Files in the diff, as paths, directories or globs (`web/src**`, `*.sql`), in reading order.
      */
     files: Array<string>;
+};
+
+/**
+ * Recent reviews, newest first.
+ * Fenced code in a message, to highlight like the diff.
+ */
+export type HighlightRequest = {
+    /**
+     * The fence's language: a name (`rust`, `typescript`) or an extension (`rs`, `tsx`).
+     */
+    language: string;
+    code: string;
+};
+
+export type Highlighted = {
+    /**
+     * Per line of `code` (split at `\n`), flattened `[start, end, class, …]` runs, as in a diff's `syntax`.
+     * Empty for a language diffd has no grammar for.
+     */
+    lines: Array<Array<number>>;
 };
 
 /**
@@ -269,6 +290,31 @@ export type Label = {
     files: Array<string>;
 };
 
+export type LanguageServerState = {
+    type: 'starting';
+} | {
+    title: string;
+    message: string | null;
+    percentage: number | null;
+    type: 'busy';
+} | {
+    type: 'ready';
+} | {
+    reason: string;
+    type: 'unavailable';
+};
+
+/**
+ * A language server running for the review's files, for the status line.
+ */
+export type LanguageServerStatus = {
+    /**
+     * Its name in the config, e.g. `rust-analyzer`.
+     */
+    name: string;
+    state: LanguageServerState;
+};
+
 /**
  * How the agent arranged the review for reading: who it is, related changes
  * grouped together, and labels the user can hide files by.
@@ -300,6 +346,7 @@ export type LiveState = {
     diagnostics: {
         [key: string]: Array<Diagnostic>;
     };
+    languageServers: Array<LanguageServerStatus>;
 };
 
 /**
@@ -415,6 +462,10 @@ export type ReviewState = {
     diagnostics: {
         [key: string]: Array<Diagnostic>;
     };
+    /**
+     * The language servers running for the review's files.
+     */
+    languageServers: Array<LanguageServerStatus>;
 };
 
 export type ReviewStatus = 'open';
@@ -466,6 +517,9 @@ export type ServerMsg = {
 } | {
     presence: Presence;
     type: 'presence';
+} | {
+    servers: Array<LanguageServerStatus>;
+    type: 'languageServers';
 } | {
     path: string;
     diagnostics: Array<Diagnostic>;
@@ -631,6 +685,19 @@ export type WakeReview = {
 export type U32 = number;
 
 export type U64 = number;
+
+export type HighlightData = {
+    body: HighlightRequest;
+    path?: never;
+    query?: never;
+    url: '/api/highlight';
+};
+
+export type HighlightResponses = {
+    200: Highlighted;
+};
+
+export type HighlightResponse = HighlightResponses[keyof HighlightResponses];
 
 export type ListReviewsData = {
     body?: never;

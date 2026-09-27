@@ -16,6 +16,7 @@ import type {
   Diagnostic,
   FileDiff,
   History,
+  LanguageServerStatus,
   Layout,
   LiveState,
   Message,
@@ -50,6 +51,8 @@ interface Conversation {
   activity: ActivityItem[];
   presence: Presence;
   readSeq: number;
+  /** The language servers running for the review's files. */
+  languageServers: LanguageServerStatus[];
 }
 
 export interface ReviewEvents {
@@ -87,6 +90,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     activity: initial.activity,
     presence: initial.presence,
     readSeq: initial.readSeq,
+    languageServers: initial.languageServers,
   });
   const [connection, setConnection] = createSignal<Connection>("connecting");
   const [error, setError] = createSignal<string | null>(null);
@@ -449,6 +453,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       activity: reconcile(state.activity, { key: "seq" })(conv.activity),
       presence: state.presence,
       readSeq: state.readSeq,
+      languageServers: state.languageServers,
     });
   };
   const applyNow = (msg: ServerMsg) =>
@@ -495,6 +500,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       )
       .with({ type: "activity" }, ({ item }) => setConv("activity", (a) => [...a, item]))
       .with({ type: "presence" }, ({ presence }) => setConv("presence", presence))
+      .with({ type: "languageServers" }, ({ servers }) => setConv("languageServers", servers))
       .with({ type: "show" }, ({ request }) => events.onShow?.(request))
       .with({ type: "error" }, ({ message }) => setError(message))
       .with({ type: "gone" }, ({ message }) => setError(`${message} This page is now a read-only copy.`))
