@@ -227,8 +227,7 @@ Keep it short; if you changed code because of the comment, say what you changed.
 decision, risks, or questions for the user. Same rules as share_diff's annotations. Can also add test and fold `regions`.")]
     async fn annotate(&self, Parameters(p): Parameters<AnnotateParams>) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
-        let n = try_app!(self.app.add_notes(&id, p.annotations, true).await);
-        let r = if p.regions.is_empty() { 0 } else { try_app!(self.app.add_regions(&id, p.regions).await) };
+        let (n, r) = try_app!(self.app.annotate(&id, p.annotations, p.regions).await);
         ok(&serde_json::json!({ "notes_added": n, "regions_added": r }))
     }
 

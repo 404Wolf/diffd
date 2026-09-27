@@ -180,12 +180,6 @@ impl App {
         App::broadcast(&live, ServerMsg::Activity { item });
         Ok(Some(revision))
     }
-
-    /// Set the fingerprint of a freshly shared review so the first watch
-    /// event doesn't count as a change.
-    pub(super) fn set_fingerprint(&self, live: &super::Live, fp: u64) {
-        live.inner.lock().expect("live lock").fingerprint = fp;
-    }
 }
 
 /// Follow a region's lines into a new snapshot. Whole-file regions need nothing.

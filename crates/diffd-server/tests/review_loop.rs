@@ -169,3 +169,24 @@ async fn working_tree_reviews_follow_edits() {
     assert_eq!(got.files[0].new.as_ref().unwrap().lines, vec!["three"]);
     assert_eq!(got.files[0].since, vec![1]);
 }
+
+#[tokio::test]
+async fn a_bad_share_or_annotate_saves_nothing() {
+    let repo = common::Repo::new();
+    repo.write("src/lib.rs", BEFORE);
+    repo.commit("init");
+    repo.write("src/lib.rs", AFTER);
+    let app = common::app().await;
+
+    let mut req = share_request(&repo);
+    req.annotations[0].lines = [50, 60];
+    assert!(app.share(req).await.is_err());
+    assert!(app.store().recent(10).await.unwrap().is_empty(), "no half-made review");
+
+    let id = diffd_core::model::ReviewId(app.share(share_request(&repo)).await.unwrap().review_id);
+    let before = app.state(&id).await.unwrap().threads.len();
+    let good = NoteInput { file: "src/lib.rs".into(), lines: [1, 1], side: None, body: "fine".into(), kind: None };
+    let bad_region = diffd_server::app::RegionInput { file: "nope.rs".into(), lines: None, side: None, kind: diffd_core::model::RegionKind::Test, summary: None };
+    assert!(app.annotate(&id, vec![good], vec![bad_region]).await.is_err());
+    assert_eq!(app.state(&id).await.unwrap().threads.len(), before, "the good note wasn't saved either");
+}

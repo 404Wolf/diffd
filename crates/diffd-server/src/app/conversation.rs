@@ -280,12 +280,57 @@ impl App {
 
     // -- From the agent ------------------------------------------------------
 
-    /// Add agent notes; returns how many were added.
-    pub async fn add_notes(&self, id: &ReviewId, notes: Vec<NoteInput>, announce: bool) -> Result<usize> {
+    /// Notes as threads, checked against a snapshot. Nothing is saved: callers
+    /// check everything they were given before writing any of it.
+    pub(super) fn prepare_notes(&self, snap: &Snapshot, notes: Vec<NoteInput>, first_order: u32) -> Result<Vec<Thread>> {
+        notes
+            .into_iter()
+            .zip(first_order..)
+            .map(|(n, order)| {
+                let side = n.side.unwrap_or(Side::New);
+                let [start, end] = n.lines;
+                let text = anchor_text(snap, &n.file, side, start, end)?;
+                Ok(Thread {
+                    id: ThreadId(new_id("n")),
+                    kind: ThreadKind::Note { kind: n.kind.unwrap_or(NoteKind::Explain), order },
+                    anchor: Anchor { path: n.file, side, start, end, text, range: None },
+                    resolved: false,
+                    changed_in: None,
+                    outdated: false,
+                    messages: vec![self.message(Author::Agent, &n.body)?],
+                    created_at: self.now(),
+                })
+            })
+            .collect()
+    }
+
+    /// Save prepared notes and show them on the page.
+    pub(super) async fn save_notes(&self, id: &ReviewId, live: &Live, notes: Vec<Thread>, announce: bool) -> Result<usize> {
+        let count = notes.len();
+        for t in notes {
+            self.store.insert_thread(id, &t).await?;
+            if announce {
+                let kind = ActivityKind::AgentNoted { thread_id: t.id.clone(), path: t.anchor.path.clone(), line: t.anchor.start };
+                let item = self.store.add_activity(id, self.now(), kind).await?;
+                App::broadcast(live, ServerMsg::Activity { item });
+            }
+            App::broadcast(live, ServerMsg::Thread { thread: t });
+        }
+        Ok(count)
+    }
+
+    /// The agent adds notes, test regions and folds to a review. All of it is
+    /// checked first: a bad entry fails the call and nothing is saved, so a
+    /// retry doesn't duplicate anything.
+    pub async fn annotate(&self, id: &ReviewId, notes: Vec<NoteInput>, regions: Vec<RegionInput>) -> Result<(usize, usize)> {
         let live = self.live(id).await?;
+        // A rebuild moves regions and writes them back; don't let it overwrite these.
+        let _rebuild = live.rebuild.lock().await;
         let snap = App::snapshot(&live);
-        let existing = self.store.threads(id).await?;
-        let mut order = existing
+        let next_order = self
+            .store
+            .threads(id)
+            .await?
             .iter()
             .filter_map(|t| match t.kind {
                 ThreadKind::Note { order, .. } => Some(order + 1),
@@ -293,49 +338,17 @@ impl App {
             })
             .max()
             .unwrap_or(0);
-        // Validate everything first so a bad note doesn't leave half the batch behind.
-        let mut threads = Vec::with_capacity(notes.len());
-        for n in notes {
-            let side = n.side.unwrap_or(Side::New);
-            let [start, end] = n.lines;
-            let text = anchor_text(&snap, &n.file, side, start, end)?;
-            threads.push(Thread {
-                id: ThreadId(new_id("n")),
-                kind: ThreadKind::Note { kind: n.kind.unwrap_or(NoteKind::Explain), order },
-                anchor: Anchor { path: n.file, side, start, end, text, range: None },
-                resolved: false,
-                changed_in: None,
-                outdated: false,
-                messages: vec![self.message(Author::Agent, &n.body)?],
-                created_at: self.now(),
-            });
-            order += 1;
-        }
-        let count = threads.len();
-        for t in threads {
-            self.store.insert_thread(id, &t).await?;
-            if announce {
-                let kind = ActivityKind::AgentNoted { thread_id: t.id.clone(), path: t.anchor.path.clone(), line: t.anchor.start };
-                let item = self.store.add_activity(id, self.now(), kind).await?;
-                App::broadcast(&live, ServerMsg::Activity { item });
-            }
-            App::broadcast(&live, ServerMsg::Thread { thread: t });
+        let notes = self.prepare_notes(&snap, notes, next_order)?;
+        let regions = regions_from(&snap, regions)?;
+        let (n, r) = (self.save_notes(id, &live, notes, true).await?, regions.len());
+        if r > 0 {
+            let (_, mut spec) = self.meta(id).await?;
+            spec.regions.extend(regions);
+            self.store.set_spec(id, &spec).await?;
+            App::broadcast(&live, ServerMsg::Regions { regions: spec.regions });
         }
         self.agent_seen(&live);
-        Ok(count)
-    }
-
-    /// Add test and fold regions.
-    pub async fn add_regions(&self, id: &ReviewId, inputs: Vec<RegionInput>) -> Result<usize> {
-        let live = self.live(id).await?;
-        let regions = regions_from(&App::snapshot(&live), inputs)?;
-        let n = regions.len();
-        let (_, mut spec) = self.meta(id).await?;
-        spec.regions.extend(regions);
-        self.store.set_spec(id, &spec).await?;
-        App::broadcast(&live, ServerMsg::Regions { regions: spec.regions });
-        self.agent_seen(&live);
-        Ok(n)
+        Ok((n, r))
     }
 
     /// The agent writes in the chat box.

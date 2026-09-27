@@ -90,7 +90,9 @@ impl App {
         let snap = build_snapshot(1, &inputs, files);
         let mut spec = spec;
         spec.base = Some(resolved.base);
+        // Check everything the agent sent before saving anything: a failed share leaves no review behind.
         spec.regions = regions_from(&snap, req.regions)?;
+        let notes = self.prepare_notes(&snap, req.annotations, 0)?;
         let id = ReviewId(new_id(""));
         let now = self.now();
         let meta = ReviewMeta {
@@ -121,8 +123,7 @@ impl App {
             next_step: "Send the user the url. Then call wait_for_feedback to hear their comments; reply in threads with reply, and use say for anything not tied to lines.".into(),
         };
         let live = self.insert_live(&id, snap, fp);
-        self.set_fingerprint(&live, fp);
-        let notes = self.add_notes(&id, req.annotations, false).await?;
+        let notes = self.save_notes(&id, &live, notes, false).await?;
         let item = self
             .store
             .add_activity(&id, now, ActivityKind::Opened { notes: notes as u32, collapsed: result.collapsed.len() as u32 })
