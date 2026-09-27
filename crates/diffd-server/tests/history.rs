@@ -3,6 +3,7 @@
 
 mod common;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use diffd_core::model::{Anchor, CommitRange, ReviewId, Side};
@@ -126,4 +127,121 @@ async fn new_commits_show_up_after_a_rebuild() {
         msg => panic!("expected the new history, got {msg:?}"),
     }
     assert_eq!(app.state(&id).await.unwrap().snapshot.files.len(), 1);
+}
+
+/// A diff engine that notes what it was asked to diff (each file's new side)
+/// and leaves the diffing to the line diff.
+#[derive(Default)]
+struct Recording {
+    diffed: std::sync::Mutex<Vec<String>>,
+    /// Each diff takes this long, so tests can ask while one is in progress.
+    delay: Duration,
+}
+
+impl diffd_server::ports::DiffEngine for Recording {
+    fn diff(&self, _path: &str, _old: &str, new: &str) -> Option<diffd_core::difft::EngineDiff> {
+        std::thread::sleep(self.delay);
+        self.diffed.lock().unwrap().push(new.to_owned());
+        None
+    }
+}
+
+impl Recording {
+    fn diffed(&self) -> Vec<String> {
+        let mut d = self.diffed.lock().unwrap().clone();
+        d.sort();
+        d
+    }
+
+    /// Wait until `new` has been diffed.
+    async fn wait_for(&self, new: &str) {
+        for _ in 0..500 {
+            if self.diffed.lock().unwrap().iter().any(|d| d == new) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("`{new:?}` was never diffed; diffed {:?}", self.diffed());
+    }
+}
+
+/// `main`, then five commits that each change `a.txt`: its contents after
+/// commit `i` are the lines `0..=i`.
+fn five_commits() -> common::Repo {
+    let repo = common::Repo::new();
+    repo.write("a.txt", "0\n");
+    repo.commit("init");
+    repo.git(&["checkout", "-q", "-b", "feature"]);
+    for i in 1..=5 {
+        repo.write("a.txt", &after(i));
+        repo.commit(&format!("commit {i}"));
+    }
+    repo
+}
+
+fn after(i: usize) -> String {
+    (0..=i).map(|n| format!("{n}\n")).collect()
+}
+
+async fn app_with(engine: Arc<Recording>) -> Arc<diffd_server::App> {
+    let store = diffd_server::adapters::store::Store::open("sqlite::memory:").await.unwrap();
+    diffd_server::App::new(
+        store,
+        Arc::new(diffd_server::adapters::git::GitCli),
+        engine,
+        Arc::new(diffd_server::ports::SystemClock),
+        "http://localhost:3433".into(),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn one_step_diffs_the_steps_around_it_ahead_of_time() {
+    let repo = five_commits();
+    let engine = Arc::new(Recording::default());
+    let app = app_with(engine.clone()).await;
+    let shared = app.share(request(&repo, "main", Some("feature"))).await.unwrap();
+    let id = ReviewId(shared.review_id);
+    let history = app.state(&id).await.unwrap().history;
+    let points: Vec<String> = std::iter::once(history.base.clone()).chain(history.commits.iter().map(|c| c.sha.clone())).collect();
+    engine.diffed.lock().unwrap().clear();
+
+    // Step 2 (commit 3): steps 3, 1 and 4 follow in the background.
+    let step = app.range(&id, &points[2], Some(points[3].clone())).await.unwrap();
+    assert_eq!(step.files[0].new.as_ref().unwrap().lines.len(), 4);
+    engine.wait_for(&after(5)).await;
+    assert_eq!(engine.diffed(), [after(2), after(3), after(4), after(5)]);
+
+    // Stepping to them diffs nothing new, except the next step back: step 0.
+    for i in [3, 4] {
+        app.range(&id, &points[i], Some(points[i + 1].clone())).await.unwrap();
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(engine.diffed(), [after(2), after(3), after(4), after(5)]);
+    app.range(&id, &points[1], Some(points[2].clone())).await.unwrap();
+    engine.wait_for(&after(1)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(engine.diffed(), [after(1), after(2), after(3), after(4), after(5)]);
+
+    // Ranges of several commits aren't walked, so nothing is diffed around them.
+    engine.diffed.lock().unwrap().clear();
+    app.range(&id, &points[0], Some(points[5].clone())).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(engine.diffed(), [after(5)]);
+}
+
+#[tokio::test]
+async fn asking_again_while_a_range_is_diffed_waits_for_the_same_diff() {
+    let repo = five_commits();
+    let engine = Arc::new(Recording { delay: Duration::from_millis(200), ..Recording::default() });
+    let app = app_with(engine.clone()).await;
+    let shared = app.share(request(&repo, "main", Some("feature"))).await.unwrap();
+    let id = ReviewId(shared.review_id);
+    let history = app.state(&id).await.unwrap().history;
+    let (from, to) = (history.commits[0].sha.clone(), history.commits[1].sha.clone());
+    engine.diffed.lock().unwrap().clear();
+
+    let (a, b) = tokio::join!(app.range(&id, &from, Some(to.clone())), app.range(&id, &from, Some(to.clone())));
+    assert!(Arc::ptr_eq(&a.unwrap(), &b.unwrap()));
+    assert_eq!(engine.diffed().iter().filter(|d| **d == after(2)).count(), 1);
 }

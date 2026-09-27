@@ -17,6 +17,7 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use tokio::sync::broadcast::error::RecvError;
 use tokio_tungstenite::WebSocketStream;
 use tokio_util::sync::CancellationToken;
+use tower_http::compression::CompressionLayer;
 use tungstenite::Message as WsMessage;
 use tungstenite::extensions::compression::deflate::DeflateConfig;
 use tungstenite::handshake::derive_accept_key;
@@ -84,6 +85,10 @@ pub fn router_with_access(app: Arc<App>, template: &'static str, shutdown: Cance
         .route("/api/reviews/{id}/ws", get(ws))
         .route("/api/wake", get(wake).delete(cancel_wake))
         .with_state(web)
+        // Pages and JSON, compressed: a review is megabytes of code, and the page may
+        // be shared over a network. The WebSocket compresses its own messages, and
+        // `/mcp` (nested below, so not covered) streams its answers.
+        .layer(CompressionLayer::new())
         .nest_service("/mcp", mcp)
         .layer(middleware::from_fn(move |req, next| local_only(access.clone(), req, next)))
 }

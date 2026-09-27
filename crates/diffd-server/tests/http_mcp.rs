@@ -79,6 +79,13 @@ async fn agent_and_page_talk_through_the_server() {
     assert_eq!(page.status(), 200);
     let html = page.text().await.unwrap();
     assert!(html.contains(r#"<script id="diffd-boot" type="application/json">{"page":"review""#));
+    // Pages and JSON go out compressed to browsers that take it.
+    for path in [format!("/r/{id}"), format!("/api/reviews/{id}")] {
+        let res = reqwest::Client::new().get(format!("{base}{path}")).header("accept-encoding", "gzip, zstd").send().await.unwrap();
+        assert_eq!(res.status(), 200);
+        let encoding = res.headers().get("content-encoding").map(|v| v.to_str().unwrap().to_owned());
+        assert!(matches!(encoding.as_deref(), Some("zstd" | "gzip")), "{path}: {encoding:?}");
+    }
     // Requests for other hosts are refused (DNS rebinding).
     let evil = reqwest::Client::new().get(format!("{base}/")).header("host", "evil.example").send().await.unwrap();
     assert_eq!(evil.status(), 403);

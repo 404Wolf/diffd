@@ -33,6 +33,18 @@ export function steps(h: History): number {
 /** The single step `i` (0-based) as a span. */
 export const step = (i: number): Span => ({ from: i, to: i + 1 });
 
+/**
+ * The step someone walking the history will likely want after `next`: the
+ * one past it, in the direction they came from `prev` (forward otherwise).
+ * `null` when `next` isn't a single step or there's no step that way.
+ */
+export function stepAhead(h: History, prev: Span, next: Span): Span {
+  if (next === null || next.to - next.from !== 1) return null;
+  const back = prev !== null && prev.to - prev.from === 1 && prev.from > next.from;
+  const ahead = next.from + (back ? -1 : 1);
+  return ahead >= 0 && ahead < steps(h) ? step(ahead) : null;
+}
+
 /** The span as revisions the server understands. */
 export function rangeOf(h: History, span: Span): CommitRange | null {
   if (span === null) return null;

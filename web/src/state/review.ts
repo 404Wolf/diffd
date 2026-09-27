@@ -29,8 +29,9 @@ import type { Thread } from "../gen/Thread";
 import type { ThreadId } from "../gen/ThreadId";
 import { setAgentName } from "../lib/agent";
 import { type FileModel, fileModel } from "../lib/diffModel";
-import { carrySpan, rangeOf, relocate, type Span } from "../lib/history";
+import { carrySpan, rangeOf, relocate, type Span, stepAhead } from "../lib/history";
 import { type FileGroup, labelsOf, resolveGroups } from "../lib/kinds";
+import { Lru } from "../lib/lru";
 import { type Connection, connect, type Socket } from "../lib/socket";
 
 interface Conversation {
@@ -52,6 +53,15 @@ export interface ReviewEvents {
   onShow?: (request: ShowRequest) => void;
   /** Now showing a different part of the history. */
   onSpan?: () => void;
+}
+
+/** Diffs of parts of the history kept in memory (the server keeps more). */
+const MAX_CACHED_SPANS = 12;
+
+/** A part of the history's diff: loaded, or on its way. */
+interface SpanDiff {
+  snapshot: Snapshot | null;
+  loading: Promise<Snapshot>;
 }
 
 /** A little longer than the server's own timeout, so its answer usually wins. */
@@ -88,13 +98,46 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   const [span, setSpan] = createSignal<Span>(null);
   const [spanSnapshot, setSpanSnapshot] = createSignal<Snapshot | null>(null);
   const [loadingSpan, setLoadingSpan] = createSignal<Span | undefined>(undefined);
-  /** Diffs of parts of the history, by range. Ranges ending at the working tree are dropped on every revision. */
-  const spanCache = new Map<string, Snapshot>();
+  /**
+   * Diffs of parts of the history, loaded or on their way, by range. Ranges
+   * ending at the working tree are dropped on every revision.
+   */
+  const spanCache = new Lru<string, SpanDiff>(MAX_CACHED_SPANS);
   const rangeKey = (r: CommitRange) => `${r.from}..${r.to ?? ""}`;
+  const loadRange = (range: CommitRange): SpanDiff => {
+    const key = rangeKey(range);
+    const cached = spanCache.get(key);
+    if (cached) return cached;
+    const entry: SpanDiff = {
+      snapshot: null,
+      loading: fetchRange(initial.review.id, range).then(
+        (snap) => {
+          entry.snapshot = snap;
+          return snap;
+        },
+        (e: unknown) => {
+          // Try again next time.
+          if (spanCache.peek(key) === entry) spanCache.delete(key);
+          throw e;
+        },
+      ),
+    };
+    spanCache.set(key, entry);
+    return entry;
+  };
+  /** Load a part of the history in the background, so showing it later is instant. */
+  const prefetchSpan = (span: Span) => {
+    const range = rangeOf(history(), span);
+    if (range === null) return;
+    const load = () => loadRange(range).loading.catch(() => {});
+    if ("requestIdleCallback" in window) requestIdleCallback(load, { timeout: 500 });
+    else setTimeout(load, 50);
+  };
   let spanRequest = 0;
   /** Show part of the history (`null`: the whole review). */
   const showSpan = async (next: Span) => {
     const request = ++spanRequest;
+    const prev = loadingSpan() ?? span();
     const range = rangeOf(history(), next);
     if (next === null || range === null) {
       setLoadingSpan(undefined);
@@ -105,17 +148,18 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       events.onSpan?.();
       return;
     }
-    let snap = spanCache.get(rangeKey(range));
+    // The old view stays up until the new one is ready.
+    const entry = loadRange(range);
+    let snap = entry.snapshot;
     if (!snap) {
       setLoadingSpan(next);
       try {
-        snap = await fetchRange(initial.review.id, range);
+        snap = await entry.loading;
       } catch (e) {
         if (request === spanRequest) setLoadingSpan(undefined);
         setError(e instanceof Error ? e.message : String(e));
         return;
       }
-      spanCache.set(rangeKey(range), snap);
     }
     if (request !== spanRequest) return;
     setLoadingSpan(undefined);
@@ -124,6 +168,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       setSpanSnapshot(snap);
     });
     events.onSpan?.();
+    prefetchSpan(stepAhead(history(), prev, next));
   };
   /** The diff: the whole review, or the part of its history being walked. */
   const diff = createMemo<Snapshot>(() => spanSnapshot() ?? whole());
@@ -445,7 +490,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
 
   /** Files changed: diffs that end at the working tree are stale now. */
   const refreshWorktreeSpan = () => {
-    for (const key of spanCache.keys()) if (key.endsWith("..")) spanCache.delete(key);
+    spanCache.deleteWhere((key) => key.endsWith(".."));
     if (range()?.to === null) void showSpan(span());
   };
   /** Commits were added (or rewritten): keep showing the same commits when they're still there. */
