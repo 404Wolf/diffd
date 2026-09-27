@@ -37,7 +37,12 @@ export function lazyChunks(root: HTMLElement, render: (el: HTMLElement) => Rende
   if (!observer) {
     observer = new IntersectionObserver(
       (entries) => {
-        for (const e of entries) if (e.isIntersecting) fill(e.target as HTMLElement);
+        for (const e of entries) {
+          const el = e.target as HTMLElement;
+          if (e.isIntersecting) fill(el, above.has(el));
+          else if (e.boundingClientRect.bottom < (e.rootBounds?.top ?? 0)) above.add(el);
+          else above.delete(el);
+        }
       },
       { root: buf, rootMargin: AHEAD },
     );
@@ -51,19 +56,26 @@ export function lazyChunks(root: HTMLElement, render: (el: HTMLElement) => Rende
   scheduleIdle();
 }
 
-/** Fill in one placeholder, keeping the page still when it's above the viewport. */
-function fill(el: HTMLElement): void {
+/**
+ * Placeholders the observer last saw above the viewport. Filling one of these
+ * changes the height of what's above the reader, so it's measured and the
+ * scroll corrected; anything else is filled without touching layout.
+ */
+const above = new WeakSet<HTMLElement>();
+
+/** Fill in one placeholder; `measure` keeps the page still when it's above the viewport. */
+function fill(el: HTMLElement, measure: boolean): void {
   const render = renders.get(el);
   pending.delete(el);
+  above.delete(el);
   const buf = el.closest<HTMLElement>(".buffer");
   if (buf) observers.get(buf)?.unobserve(el);
   if (!render || !el.isConnected || !el.classList.contains("lazy")) return;
-  const before = el.getBoundingClientRect();
-  const top = buf?.getBoundingClientRect().top ?? 0;
+  const before = measure ? el.getBoundingClientRect().height : 0;
   el.innerHTML = render();
   el.classList.remove("lazy");
   announceFill();
-  if (buf && before.bottom <= top) buf.scrollTop += el.getBoundingClientRect().height - before.height;
+  if (measure && buf) buf.scrollTop += el.getBoundingClientRect().height - before;
 }
 
 let announced = 0;
@@ -73,9 +85,12 @@ function announceFill(): void {
   announced = requestAnimationFrame(() => document.dispatchEvent(new Event(lazyFilledEvent)));
 }
 
-/** Fill in everything that's left (before anything that walks all rows). */
+/**
+ * Fill in everything that's left (before anything that walks all rows),
+ * without measuring each chunk: wrap it in `keepViewport` to hold the reader's place.
+ */
 export function fillAll(): void {
-  for (const el of [...pending]) fill(el);
+  for (const el of [...pending]) fill(el, false);
 }
 
 export const hasPending = (): boolean => pending.size > 0;
@@ -87,7 +102,7 @@ function scheduleIdle(): void {
     const until = performance.now() + (deadline ? Math.min(deadline.timeRemaining(), SLICE_MS) : SLICE_MS);
     for (const el of pending) {
       if (performance.now() > until) break;
-      fill(el);
+      fill(el, above.has(el));
     }
     for (const el of pending) if (!el.isConnected) pending.delete(el);
     if (pending.size > 0) next();

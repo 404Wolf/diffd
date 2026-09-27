@@ -71,12 +71,21 @@ export function ReviewPage(props: { state: ReviewState }) {
     const m = v.mode();
     if (m.kind === "file") return setCurrentFile(m.file);
     const top = buf.getBoundingClientRect().top + 40;
-    let current: number | null = null;
-    for (const s of buf.querySelectorAll<HTMLElement>("[data-file-section]")) {
-      if (s.getBoundingClientRect().top <= top) current = Number(s.dataset.fileSection);
-      else break;
+    // Sections are the buffer's own children: don't search the (possibly huge) rows below them.
+    const sections = Array.prototype.filter.call(
+      buf.children,
+      (el: HTMLElement) => el.dataset.fileSection !== undefined,
+    ) as HTMLElement[];
+    // The last section starting above the line, by binary search.
+    let lo = 0;
+    let hi = sections.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((sections[mid] as HTMLElement).getBoundingClientRect().top <= top) lo = mid + 1;
+      else hi = mid;
     }
-    setCurrentFile(current ?? (review.snapshot().files.length ? 0 : null));
+    const current = sections[lo - 1];
+    setCurrentFile(current ? Number(current.dataset.fileSection) : review.snapshot().files.length ? 0 : null);
     rememberReading();
   };
 
@@ -202,7 +211,7 @@ export function ReviewPage(props: { state: ReviewState }) {
           <FileTree review={review} view={v} cmd={cmd} current={currentFile} />
         </Drawer>
         <div class="flex min-w-0 flex-1 flex-col">
-          <div class="flex min-h-0 flex-1">
+          <div id="panes" class="flex min-h-0 flex-1">
             <For each={v.panes()}>
               {(pane, i) => (
                 <>

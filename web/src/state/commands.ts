@@ -15,7 +15,7 @@ import type { Thread } from "../gen/Thread";
 import { diagnosticsOn, IDENT, textRange, type WordAt } from "../lib/code";
 import { type ExpandDirection, expandGap, initialVisible, nearestGap, rowOf } from "../lib/diffModel";
 import { step, steps } from "../lib/history";
-import { fillAll } from "../lib/lazyRows";
+import { fillAll, hasPending } from "../lib/lazyRows";
 import { rowChanged } from "../lib/render";
 import {
   CLASS_KINDS,
@@ -43,6 +43,11 @@ import {
 } from "./dom";
 import { fromAgent, type Review } from "./review";
 import { CONTEXT, type Cursor, EXPAND_STEP, type PickerItem, type Place, type View, type Word } from "./view";
+
+/** Fill in every lazily rendered row, keeping the reader where they are. */
+const completeRows = () => {
+  if (hasPending()) keepViewport(fillAll);
+};
 
 /** How long `gd` waits for a language server before using the diff's own symbols. */
 const LSP_PATIENCE_MS = 1500;
@@ -111,7 +116,7 @@ export function createCommands(review: Review, view: View) {
     if (next) place(next);
   };
   const edge = (last: boolean) => {
-    fillAll();
+    completeRows();
     const rows = navigableRows();
     const el = last ? rows.at(-1) : rows[0];
     if (!el) return;
@@ -168,7 +173,7 @@ export function createCommands(review: Review, view: View) {
   // -- Moving around the diff -----------------------------------------------
 
   const hunk = (dir: 1 | -1) => {
-    fillAll();
+    completeRows();
     const cur = cursorEl();
     const starts = hunkStarts();
     const target =
@@ -203,7 +208,7 @@ export function createCommands(review: Review, view: View) {
   };
 
   const goTo = (file: number, side: Side, line: number, opts: { word?: Word | null; card?: string } = {}) => {
-    fillAll();
+    completeRows();
     const model = review.models()[file];
     if (!model) return;
     const row = rowOf(model, side, line);
@@ -260,7 +265,7 @@ export function createCommands(review: Review, view: View) {
 
   const order = () => treeOrder(buildTree(review.paths()));
   const openFile = (file: number, rememberIt = true) => {
-    fillAll();
+    completeRows();
     if (rememberIt) remember();
     const m = view.mode();
     if (m.kind === "file" || review.isContext(file)) {
@@ -281,7 +286,7 @@ export function createCommands(review: Review, view: View) {
   };
   /** `]f` / `[f`, in tree order, skipping collapsed and viewed files. */
   const fileJump = (dir: 1 | -1) => {
-    fillAll();
+    completeRows();
     const list = order();
     const current =
       view.mode().kind === "file"

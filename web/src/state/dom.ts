@@ -11,7 +11,11 @@ export const bufferEl = (pane: number = focusedPane): HTMLElement | null =>
   document.getElementById(`buffer-${pane}`);
 
 /** Every pane's buffer, left to right. */
-export const allBuffers = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>(".buffer")];
+export const allBuffers = (): HTMLElement[] =>
+  // The panes' container, not the whole document: a big diff has hundreds of thousands of nodes.
+  Array.prototype.filter.call(document.getElementById("panes")?.children ?? [], (el: Element) =>
+    el.classList.contains("buffer"),
+  ) as HTMLElement[];
 
 /**
  * Every row in the buffer, indexed. Big diffs have 100k+ rows, so the index is
