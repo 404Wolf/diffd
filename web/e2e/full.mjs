@@ -1175,6 +1175,49 @@ try {
     check((await page.locator('[data-toast="agentSaid"]').innerText()).includes("in the chat"), "chat answers get a toast too");
   });
 
+  await section("Vim screen motions: zz zt zb, H M L, ctrl-e ctrl-y, 12G, '', uppercase marks", async () => {
+    await page.goto(reviewUrl);
+    await page.waitForSelector(".buffer.focused .row");
+    await cursorTo(page, "src/lib.rs", 45);
+    const cur = () =>
+      page.evaluate(() => {
+        const buf = document.querySelector(".buffer.focused").getBoundingClientRect();
+        const row = document.querySelector(".buffer.focused .row.cur")?.getBoundingClientRect();
+        return row ? { top: row.top - buf.top, bottom: buf.bottom - row.bottom, mid: row.top + row.height / 2 - (buf.top + buf.height / 2) } : null;
+      });
+    await keys(page, "z", "z");
+    await sleep(150);
+    check(Math.abs((await cur()).mid) < 40, "zz puts the cursor's line in the middle");
+    await keys(page, "z", "t");
+    await sleep(150);
+    check((await cur()).top < 70, "zt puts it at the top, under the file header");
+    await keys(page, "z", "b");
+    await sleep(150);
+    check((await cur()).bottom < 40, "zb puts it at the bottom");
+    await keys(page, "H");
+    check((await cur()).top < 80, "H goes to the top line on screen");
+    await keys(page, "L");
+    check((await cur()).bottom < 60, "L to the bottom one");
+    await keys(page, "M");
+    check(Math.abs((await cur()).mid) < 60, "M to the middle one");
+    const before = await page.locator(".buffer.focused").evaluate((b) => b.scrollTop);
+    await keys(page, "5", "Control+e");
+    const after = await page.locator(".buffer.focused").evaluate((b) => b.scrollTop);
+    check(after - before > 60, `5 ctrl-e scrolls five lines down (${Math.round(after - before)}px)`);
+    await keys(page, "5", "Control+y");
+    check(Math.abs((await page.locator(".buffer.focused").evaluate((b) => b.scrollTop)) - before) < 3, "ctrl-y scrolls back");
+    const here = await status(page);
+    await keys(page, "m", "Shift+T");
+    await keys(page, "g", "g");
+    check(!(await status(page)).includes(here.match(/\S+:\d+/)[0]), "gg moves away");
+    await keys(page, "'", "Shift+T");
+    check((await status(page)).includes(here.match(/\S+:\d+/)[0]), "an uppercase mark (mT, 'T) comes back");
+    await keys(page, "1", "2", "Shift+G");
+    check((await status(page)).includes("lib.rs:12 "), "12G goes to line 12 of this file");
+    await keys(page, "'", "'");
+    check((await status(page)).includes(here.match(/\S+:\d+/)[0]), "'' goes back to where the jump came from");
+  });
+
   await section("Home page", async () => {
     await page.goto(base);
     check(await page.getByText("Add burst capacity to the limiter").isVisible(), "recent reviews are listed");

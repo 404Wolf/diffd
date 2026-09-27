@@ -339,6 +339,8 @@ export function WindowedList(props: Props) {
         const h = buf.clientHeight;
         const next = match(how)
           .with("start", () => y)
+          .with("top", () => y - inset)
+          .with("bottom", () => y + size - h + MARGIN_BOTTOM_PX)
           .with("center", () => y - (h - size) / 2)
           .with("nearest", () =>
             y < top + inset

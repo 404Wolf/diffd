@@ -27,7 +27,8 @@ export interface Windowed {
   /** The list it shows, to move through. */
   readonly nav: ListNav;
   /** Scroll so item `index` is in view, rendering it right away. */
-  reveal(index: number, how: "nearest" | "center" | "start"): void;
+  /** `top` / `bottom`: the item just below the sticky header / just above the bottom edge (vim's zt, zb). */
+  reveal(index: number, how: "nearest" | "center" | "start" | "top" | "bottom"): void;
   reading(): ReadingPosition | null;
   /** Scroll so the row sits at `offset` from the top again, rendering it right away. */
   restore(pos: ReadingPosition): void;

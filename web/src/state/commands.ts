@@ -173,6 +173,76 @@ export function createCommands(review: Review, view: View) {
   const startAtFirstChange = (scroll: "center" | false) => placeItem(firstChange(), { scroll });
   const halfPage = () => Math.max(5, Math.floor((bufferEl()?.clientHeight ?? 600) / 36));
 
+  // -- Vim's screen motions ----------------------------------------------------------
+
+  /** `zz` / `zt` / `zb`: scroll so the cursor's line is in the middle / at the top / at the bottom. */
+  const scrollCursor = (how: "center" | "top" | "bottom") => {
+    const c = view.cursor();
+    const win = windowed();
+    const at = c && win ? win.nav.indexOfRow(c.file, c.row) : -1;
+    if (win && at >= 0) win.reveal(at, how);
+  };
+  /** The row drawn at a height on screen (in the buffer's code), if any. */
+  const rowAt = (y: number): { file: number; row: number } | null => {
+    const buf = bufferEl();
+    if (!buf) return null;
+    const r = buf.getBoundingClientRect();
+    for (const x of [r.left + r.width * 0.75, r.left + r.width * 0.25]) {
+      const el = document.elementFromPoint(x, y)?.closest<HTMLElement>(".row[data-f]");
+      if (el && buf.contains(el)) return { file: Number(el.dataset.f), row: Number(el.dataset.r) };
+    }
+    return null;
+  };
+  /** Search down (or up) from a height for the nearest row on screen. */
+  const rowNear = (y: number, step: number): { file: number; row: number } | null => {
+    const buf = bufferEl();
+    if (!buf) return null;
+    const r = buf.getBoundingClientRect();
+    for (let at = y; at > r.top && at < r.bottom; at += step) {
+      const found = rowAt(at);
+      if (found) return found;
+    }
+    return null;
+  };
+  /** Where the sticky file header ends: rows under it aren't really on screen. */
+  const screenTop = () => (bufferEl()?.getBoundingClientRect().top ?? 0) + 34;
+  const screenBottom = () => (bufferEl()?.getBoundingClientRect().bottom ?? 0) - 4;
+  /** `H` / `M` / `L`: the first, middle or last line on screen. */
+  const screenLine = (where: "top" | "middle" | "bottom") => {
+    const top = screenTop();
+    const bottom = screenBottom();
+    const found = match(where)
+      .with("top", () => rowNear(top + 2, 6))
+      .with("middle", () => rowNear((top + bottom) / 2, 6) ?? rowNear((top + bottom) / 2, -6))
+      .with("bottom", () => rowNear(bottom - 2, -6))
+      .exhaustive();
+    if (!found) return view.say("No line on screen");
+    remember();
+    placeRow(found.file, found.row, { scroll: false });
+  };
+  /** `ctrl-e` / `ctrl-y`: scroll by lines, keeping the cursor on screen. */
+  const scrollLines = (lines: number) => {
+    const buf = bufferEl();
+    if (!buf) return;
+    buf.scrollTop += lines * 17;
+    const c = view.cursor();
+    const box = c ? windowed()?.box(c.file, c.row) : null;
+    if (!box) return;
+    if (box.top < screenTop()) {
+      const found = rowNear(screenTop() + 2, 6);
+      if (found) placeRow(found.file, found.row, { scroll: false });
+    } else if (box.bottom > screenBottom()) {
+      const found = rowNear(screenBottom() - 2, -6);
+      if (found) placeRow(found.file, found.row, { scroll: false });
+    }
+  };
+  /** `5G` / `5gg`: line 5 of the cursor's file, on its side. */
+  const goToLine = (line: number) => {
+    const c = view.cursor();
+    if (!c) return view.say("Put the cursor in a file first");
+    goTo(c.file, c.side, line);
+  };
+
   const lineText = (c: Cursor): string => {
     const f = files()[c.file];
     const row = f?.rows[c.row];
@@ -1094,6 +1164,10 @@ export function createCommands(review: Review, view: View) {
     noteJump,
     threadJump,
     activityGo,
+    scrollCursor,
+    screenLine,
+    scrollLines,
+    goToLine,
     chapterJump,
     chapterGo,
     unreadNext,

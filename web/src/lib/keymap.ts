@@ -12,7 +12,8 @@ export interface Binding<C> {
   readonly keys: string;
   /** Modes it applies in; all modes when omitted. */
   readonly modes?: readonly Mode[];
-  readonly run: (ctx: C, count: number) => void;
+  /** `count` is 1 unless one was typed (`5j`); `counted` says whether one was (`5G` vs `G`). */
+  readonly run: (ctx: C, count: number, counted: boolean) => void;
   /** Where it appears in the help screen: [group, description]. */
   readonly help?: readonly [group: string, label: string];
 }
@@ -90,8 +91,9 @@ export class KeyEngine<C> {
     const longer = bindings.some((b) => b.keys.startsWith(`${seq} `));
     if (exact && !longer) {
       const count = Math.max(1, Number.parseInt(this.count || "1", 10));
+      const counted = this.count !== "";
       this.reset();
-      exact.run(ctx, count);
+      exact.run(ctx, count, counted);
       return { kind: "ran" };
     }
     if (longer || exact) {
@@ -112,10 +114,11 @@ export class KeyEngine<C> {
   flush(mode: Mode, ctx: C): boolean {
     const seq = this.pending.join(" ");
     const count = Math.max(1, Number.parseInt(this.count || "1", 10));
+    const counted = this.count !== "";
     this.reset();
     const b = this.candidates(mode).find((x) => x.keys === seq);
     if (!b) return false;
-    b.run(ctx, count);
+    b.run(ctx, count, counted);
     return true;
   }
 }

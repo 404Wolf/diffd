@@ -12,7 +12,7 @@ export interface Ctx {
   readonly view: View;
 }
 
-const MARK_NAMES = [..."abcdefghijklmnopqrstuvwxyz"];
+const MARK_NAMES = [..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 
 /** Keys after `i` / `a` in visual mode, and the object each selects (vim's aliases included). */
 const TEXT_OBJECTS: readonly (readonly [string, TextObject])[] = [
@@ -39,8 +39,32 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "k", run: ({ cmd }, n) => cmd.move(-n) },
   { keys: "down", run: ({ cmd }, n) => cmd.move(n) },
   { keys: "up", run: ({ cmd }, n) => cmd.move(-n) },
-  { keys: "g g", run: ({ cmd }) => cmd.edge(false), help: ["Move", "First / last line"] },
-  { keys: "G", run: ({ cmd }) => cmd.edge(true) },
+  {
+    keys: "g g",
+    run: ({ cmd }, n, counted) => (counted ? cmd.goToLine(n) : cmd.edge(false)),
+    help: ["Move", "First / last line (5G: line 5 of this file)"],
+  },
+  { keys: "G", run: ({ cmd }, n, counted) => (counted ? cmd.goToLine(n) : cmd.edge(true)) },
+  {
+    keys: "z z",
+    run: ({ cmd }) => cmd.scrollCursor("center"),
+    help: ["Move", "Scroll this line to the middle / top / bottom"],
+  },
+  { keys: "z t", run: ({ cmd }) => cmd.scrollCursor("top") },
+  { keys: "z b", run: ({ cmd }) => cmd.scrollCursor("bottom") },
+  {
+    keys: "H",
+    run: ({ cmd }) => cmd.screenLine("top"),
+    help: ["Move", "Top / middle / bottom line on screen"],
+  },
+  { keys: "M", run: ({ cmd }) => cmd.screenLine("middle") },
+  { keys: "L", run: ({ cmd }) => cmd.screenLine("bottom") },
+  {
+    keys: "ctrl-e",
+    run: ({ cmd }, n) => cmd.scrollLines(n),
+    help: ["Move", "Scroll a line down / up"],
+  },
+  { keys: "ctrl-y", run: ({ cmd }, n) => cmd.scrollLines(-n) },
   { keys: "ctrl-d", run: ({ cmd }) => cmd.move(cmd.halfPage()), help: ["Move", "Half a page down / up"] },
   { keys: "ctrl-u", run: ({ cmd }) => cmd.move(-cmd.halfPage()) },
   {
@@ -50,6 +74,12 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     help: ["Move", "Switch old / new side"],
   },
   { keys: "ctrl-o", run: ({ cmd }) => cmd.jumpBack(), help: ["Move", "Jump back / forward"] },
+  {
+    keys: "' '",
+    run: ({ cmd }) => cmd.jumpBack(),
+    help: ["Move", "Back to where you jumped from ('' or ``)"],
+  },
+  { keys: "` `", run: ({ cmd }) => cmd.jumpBack() },
   { keys: "ctrl-i", run: ({ cmd }) => cmd.jumpForward() },
   // Symbols
   { keys: "w", run: ({ cmd }) => cmd.stepWord(1), help: ["Symbols", "Next / previous symbol on the line"] },
@@ -196,7 +226,7 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     {
       keys: `m ${name}`,
       run: ({ cmd }) => cmd.setMark(name),
-      ...(i === 0 ? { help: ["Marks", "Set mark a–z at the cursor (ma)"] as const } : {}),
+      ...(i === 0 ? { help: ["Marks", "Set a mark at the cursor (ma, mT: a–z, A–Z)"] as const } : {}),
     },
     {
       keys: `' ${name}`,
