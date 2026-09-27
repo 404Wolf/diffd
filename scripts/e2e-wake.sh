@@ -73,7 +73,7 @@ EOF
     python3 "$here/scripts/mock-responses.py" "$mock_port" "$work/mock.jsonl" & pids+=($!)
     diffd setup codex --port "$port" >/dev/null
     # The agent shares (the stand-in model doesn't write code; share as it would).
-    DIFFD_MCP="http://localhost:$port/mcp" python3 "$here/scripts/mcp_client.py" share_diff \
+    DIFFD_MCP="http://localhost:$port/mcp?agent=codex" python3 "$here/scripts/mcp_client.py" share_diff \
       "{\"repo_path\": \"$repo\", \"from\": \"HEAD\", \"title\": \"e2e wake\"}" > /dev/null
     # tmux sessions get the tmux server's environment, not ours: pass it on.
     tmux new-session -d -s "$session" -x 220 -y 50 "cd '$repo' && env CODEX_HOME='$CODEX_HOME' PATH='$PATH' codex; sleep 600"
@@ -120,6 +120,10 @@ esac
 
 review=$(curl -s "localhost:$port/api/reviews" | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['review']['id'])")
 echo "review $review"
+named=$(curl -s "localhost:$port/api/reviews/$review" | python3 -c "import json,sys; print(json.load(sys.stdin)['layout']['agent'])")
+want=$([ "$agent" = codex ] && echo Codex || echo Claude)
+[ "$named" = "$want" ] || fail "the review names the agent '$named', not $want"
+echo "✓ the page calls the agent $want"
 # Idle, with a hook waiting.
 until_screen 'esc to interrupt' 1 && sleep 15
 pgrep -f "diffd hook --port $port $agent" > /dev/null || fail "no diffd hook is waiting after the turn"
