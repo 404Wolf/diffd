@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use diffd_core::model::{
-    ActivityItem, ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, Millis, ReviewId, ReviewMeta, ReviewStatus, Revision,
-    Snapshot, Thread, ThreadId, ThreadKind,
+    ActivityItem, ActivityKind, Anchor, Author, Message, MessageId, Millis, ReviewId, ReviewMeta, ReviewStatus, Revision, Snapshot, Thread,
+    ThreadId, ThreadKind,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -299,7 +299,7 @@ impl Store {
         Ok(row.is_some())
     }
 
-    pub async fn chat(&self, review: &ReviewId) -> anyhow::Result<Vec<ChatMessage>> {
+    pub async fn chat(&self, review: &ReviewId) -> anyhow::Result<Vec<Message>> {
         let rows = sqlx::query!(
             "SELECT id, author, body, created_at, delivered_at FROM messages
              WHERE review_id = ? AND thread_id IS NULL ORDER BY created_at, id",
@@ -309,7 +309,7 @@ impl Store {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|r| ChatMessage {
+            .map(|r| Message {
                 id: MessageId(r.id),
                 author: author(&r.author),
                 body: r.body,

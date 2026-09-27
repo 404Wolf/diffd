@@ -6,7 +6,7 @@ use crate::lang::Lang;
 use crate::linediff;
 use crate::model::{FileDiff, FileStatus, Omitted, Revision, Row, SideText, Snapshot};
 use crate::symbols::definitions;
-use crate::text::{split_lines, utf16_col};
+use crate::text::{Utf16Cols, split_lines};
 
 /// One changed file, as read from the repository.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,8 +52,8 @@ pub fn build_file(input: &FileInput, engine: Option<EngineDiff>) -> FileDiff {
     let new_lines = input.new.as_deref().map(split_lines);
 
     let diff = match (&old_lines, &new_lines) {
-        (None, Some(new)) => one_sided(new.len(), new, false),
-        (Some(old), None) => one_sided(old.len(), old, true),
+        (None, Some(new)) => one_sided(new, false),
+        (Some(old), None) => one_sided(old, true),
         (Some(old), Some(new)) => match engine {
             // Unchanged to difftastic but not to git (whitespace, say): show
             // the lines that differ rather than nothing.
@@ -98,7 +98,7 @@ pub fn build_file(input: &FileInput, engine: Option<EngineDiff>) -> FileDiff {
 }
 
 /// Rows and novelty for a file that exists on one side only: every line is new.
-fn one_sided(len: usize, lines: &[String], old_side: bool) -> EngineDiff {
+fn one_sided(lines: &[String], old_side: bool) -> EngineDiff {
     let whole: Vec<Vec<(usize, usize)>> = lines
         .iter()
         .map(|l| {
@@ -106,7 +106,7 @@ fn one_sided(len: usize, lines: &[String], old_side: bool) -> EngineDiff {
             if s == l.len() { Vec::new() } else { vec![(s, l.len())] }
         })
         .collect();
-    let rows = (0..len as u32).map(|i| if old_side { Row(Some(i), None) } else { Row(None, Some(i)) }).collect();
+    let rows = (0..lines.len() as u32).map(|i| if old_side { Row(Some(i), None) } else { Row(None, Some(i)) }).collect();
     EngineDiff {
         language: None,
         rows,
@@ -127,7 +127,11 @@ fn side(source: &str, lines: Vec<String>, novel_bytes: &[Vec<(usize, usize)>], l
         .map(|(i, line)| {
             novel_bytes
                 .get(i)
-                .map(|ranges| ranges.iter().flat_map(|&(a, b)| [utf16_col(line, a), utf16_col(line, b)]).collect())
+                .filter(|ranges| !ranges.is_empty())
+                .map(|ranges| {
+                    let cols = Utf16Cols::new(line);
+                    ranges.iter().flat_map(|&(a, b)| [cols.col(a), cols.col(b)]).collect()
+                })
                 .unwrap_or_default()
         })
         .collect();

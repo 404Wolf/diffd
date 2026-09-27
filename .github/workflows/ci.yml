@@ -23,6 +23,8 @@ jobs:
       - run: npm --prefix web ci
       - run: just lint
       - run: just test
+      - name: Generated TypeScript types match the Rust ones
+        run: just types && git diff --exit-code web/src/gen && test -z "$(git status --porcelain web/src/gen)"
 
   e2e:
     name: End to end

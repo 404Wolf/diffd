@@ -8,7 +8,7 @@ use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter}
 
 use crate::lang::Lang;
 use crate::model::SyntaxClass;
-use crate::text::{line_starts, utf16_col};
+use crate::text::{Utf16Cols, line_starts};
 
 /// Files larger than this are shown without highlighting.
 pub const MAX_HIGHLIGHT_BYTES: usize = 2 * 1024 * 1024;
@@ -90,6 +90,8 @@ pub fn highlight(lang: Lang, source: &str, line_count: usize) -> Vec<Vec<u32>> {
     };
 
     let starts = line_starts(source);
+    // Built on first use per line: many spans land on the same line.
+    let mut cols: Vec<Option<Utf16Cols>> = std::iter::repeat_with(|| None).take(line_count).collect();
     let mut stack: Vec<SyntaxClass> = Vec::new();
     for event in events {
         let Ok(event) = event else { return out };
@@ -100,7 +102,7 @@ pub fn highlight(lang: Lang, source: &str, line_count: usize) -> Vec<Vec<u32>> {
             }
             HighlightEvent::Source { start, end } => {
                 let Some(&class) = stack.last() else { continue };
-                push_span(&mut out, source, &starts, start, end, class);
+                push_span(&mut out, &mut cols, source, &starts, start, end, class);
             }
         }
     }
@@ -108,7 +110,15 @@ pub fn highlight(lang: Lang, source: &str, line_count: usize) -> Vec<Vec<u32>> {
 }
 
 /// Record a byte span, split across the lines it covers.
-fn push_span(out: &mut [Vec<u32>], source: &str, starts: &[usize], start: usize, end: usize, class: SyntaxClass) {
+fn push_span(
+    out: &mut [Vec<u32>],
+    cols: &mut [Option<Utf16Cols>],
+    source: &str,
+    starts: &[usize],
+    start: usize,
+    end: usize,
+    class: SyntaxClass,
+) {
     let mut line = starts.partition_point(|&s| s <= start).saturating_sub(1);
     let mut pos = start;
     while pos < end && line < out.len() {
@@ -117,7 +127,8 @@ fn push_span(out: &mut [Vec<u32>], source: &str, starts: &[usize], start: usize,
         let text = source[line_start..line_end].strip_suffix('\r').unwrap_or(&source[line_start..line_end]);
         let a = pos - line_start;
         let b = end.min(line_end) - line_start;
-        let (a16, b16) = (utf16_col(text, a), utf16_col(text, b));
+        let line_cols = cols[line].get_or_insert_with(|| Utf16Cols::new(text));
+        let (a16, b16) = (line_cols.col(a), line_cols.col(b));
         if b16 > a16 {
             let runs = &mut out[line];
             // Merge with the previous run when it continues the same class.

@@ -2,6 +2,9 @@
 import type { Author } from "./Author";
 import type { MessageId } from "./MessageId";
 
+/**
+ * A message in a thread, or in the chat.
+ */
 export type Message = { id: MessageId, author: Author, 
 /**
  * Markdown.

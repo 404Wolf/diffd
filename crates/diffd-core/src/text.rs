@@ -24,6 +24,37 @@ pub fn utf16_col(line: &str, byte: usize) -> u32 {
     line[..end].encode_utf16().count() as u32
 }
 
+/// Byte offsets to UTF-16 columns for one line, for many lookups: free for
+/// ASCII lines (most of them), a table for the rest.
+pub struct Utf16Cols {
+    /// Per byte offset (0..=len), its column; empty for an ASCII line.
+    table: Vec<u32>,
+    len: usize,
+}
+
+impl Utf16Cols {
+    pub fn new(line: &str) -> Self {
+        if line.is_ascii() {
+            return Self { table: Vec::new(), len: line.len() };
+        }
+        let mut table = Vec::with_capacity(line.len() + 1);
+        let mut col = 0;
+        for c in line.chars() {
+            // Offsets inside a multi-byte character snap to its start.
+            table.extend(std::iter::repeat_n(col, c.len_utf8()));
+            col += c.len_utf16() as u32;
+        }
+        table.push(col);
+        Self { table, len: line.len() }
+    }
+
+    /// The column of byte offset `byte` (clamped to the line), as [`utf16_col`].
+    pub fn col(&self, byte: usize) -> u32 {
+        let byte = byte.min(self.len);
+        if self.table.is_empty() { byte as u32 } else { self.table[byte] }
+    }
+}
+
 /// Byte offset of the start of each line in `source` (split on `\n`).
 pub fn line_starts(source: &str) -> Vec<usize> {
     std::iter::once(0).chain(source.match_indices('\n').map(|(i, _)| i + 1)).collect()
@@ -62,18 +93,19 @@ pub fn invisible_changes(old: &[u8], new: &[u8]) -> Vec<String> {
     out
 }
 
-/// The range covering a line's content, minus leading whitespace, in UTF-16.
-pub fn trimmed_range(line: &str) -> Option<(u32, u32)> {
-    let start = line.len() - line.trim_start().len();
-    if start == line.len() {
-        return None;
-    }
-    Some((utf16_col(line, start), utf16_col(line, line.len())))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn utf16_cols_match_utf16_col() {
+        for line in ["plain ascii", "let s = \"héllo wörld\"; 🎉 x", "日本語", ""] {
+            let cols = Utf16Cols::new(line);
+            for byte in 0..=line.len() + 2 {
+                assert_eq!(cols.col(byte), utf16_col(line, byte), "{line:?} at {byte}");
+            }
+        }
+    }
 
     #[test]
     fn finds_invisible_changes() {
@@ -100,11 +132,5 @@ mod tests {
         assert_eq!(utf16_col(line, byte), 23);
         assert_eq!(utf16_col("😀x", 4), 2);
         assert_eq!(utf16_col("é", 1), 0);
-    }
-
-    #[test]
-    fn trims() {
-        assert_eq!(trimmed_range("    foo"), Some((4, 7)));
-        assert_eq!(trimmed_range("   "), None);
     }
 }

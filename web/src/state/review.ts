@@ -8,7 +8,6 @@ import { createStore, produce, reconcile } from "solid-js/store";
 import { match } from "ts-pattern";
 import type { ActivityItem } from "../gen/ActivityItem";
 import type { Anchor } from "../gen/Anchor";
-import type { ChatMessage } from "../gen/ChatMessage";
 import type { ClientMsg } from "../gen/ClientMsg";
 import type { CodeAnswer } from "../gen/CodeAnswer";
 import type { CodeQuery } from "../gen/CodeQuery";
@@ -36,7 +35,7 @@ interface Conversation {
   diagnostics: Partial<Record<string, Diagnostic[]>>;
   threads: Thread[];
   regions: Region[];
-  chat: ChatMessage[];
+  chat: Message[];
   activity: ActivityItem[];
   presence: Presence;
   readSeq: number;
@@ -258,7 +257,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       return at ? [{ ...r, side: at.side, lines: [at.start, at.end] as [number, number] }] : [];
     });
   });
-  const chat = createMemo<ChatMessage[]>(() => {
+  const chat = createMemo<Message[]>(() => {
     const known = new Set(conv.chat.map((c) => c.id));
     const queued = outbox().flatMap((m) =>
       m.type === "chat" && !known.has(m.messageId) ? [queuedMessage(m.messageId, m.body)] : [],

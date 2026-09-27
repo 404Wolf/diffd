@@ -308,6 +308,7 @@ pub struct Thread {
     pub created_at: Millis,
 }
 
+/// A message in a thread, or in the chat.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -319,19 +320,6 @@ pub struct Message {
     #[ts(type = "number")]
     pub created_at: Millis,
     /// When the agent received it (user messages only).
-    #[ts(type = "number | null")]
-    pub delivered_at: Option<Millis>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct ChatMessage {
-    pub id: MessageId,
-    pub author: Author,
-    pub body: String,
-    #[ts(type = "number")]
-    pub created_at: Millis,
     #[ts(type = "number | null")]
     pub delivered_at: Option<Millis>,
 }

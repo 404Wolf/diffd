@@ -1,10 +1,17 @@
 //! A line diff with word-level highlights, used when difftastic can't help:
 //! unknown or binary-ish text, files past its limits, or a timeout.
 
-use similar::{Algorithm, DiffOp, capture_diff_slices};
+use std::time::{Duration, Instant};
+
+use similar::{Algorithm, DiffOp, capture_diff_slices_deadline};
 
 use crate::difft::EngineDiff;
 use crate::model::Row;
+
+/// Past this, a file's line diff settles for a coarser (still correct) answer.
+const FILE_DEADLINE: Duration = Duration::from_secs(2);
+/// The same for the words of one changed line.
+const LINE_DEADLINE: Duration = Duration::from_millis(20);
 
 pub fn diff(old: &[String], new: &[String]) -> EngineDiff {
     let mut d = EngineDiff {
@@ -14,7 +21,7 @@ pub fn diff(old: &[String], new: &[String]) -> EngineDiff {
         novel_new: vec![Vec::new(); new.len()],
         unchanged: false,
     };
-    for op in capture_diff_slices(Algorithm::Patience, old, new) {
+    for op in capture_diff_slices_deadline(Algorithm::Patience, old, new, Some(Instant::now() + FILE_DEADLINE)) {
         match op {
             DiffOp::Equal { old_index, new_index, len } => {
                 for k in 0..len {
@@ -59,7 +66,7 @@ fn inserted(d: &mut EngineDiff, new: &[String], range: std::ops::Range<usize>) {
 /// New-side lines (1-based) that were inserted or changed relative to `prev`.
 pub fn changed_lines(prev: &[String], cur: &[String]) -> Vec<u32> {
     let mut out = Vec::new();
-    for op in capture_diff_slices(Algorithm::Patience, prev, cur) {
+    for op in capture_diff_slices_deadline(Algorithm::Patience, prev, cur, Some(Instant::now() + FILE_DEADLINE)) {
         if let DiffOp::Insert { new_index, new_len, .. } | DiffOp::Replace { new_index, new_len, .. } = op {
             out.extend((new_index..new_index + new_len).map(|i| i as u32 + 1));
         }
@@ -106,7 +113,7 @@ fn word_diff(a: &str, b: &str) -> (Ranges, Ranges) {
     let (ta, tb) = (tokens(a), tokens(b));
     let wa: Vec<&str> = ta.iter().map(|t| t.1).collect();
     let wb: Vec<&str> = tb.iter().map(|t| t.1).collect();
-    let ops = capture_diff_slices(Algorithm::Myers, &wa, &wb);
+    let ops = capture_diff_slices_deadline(Algorithm::Myers, &wa, &wb, Some(Instant::now() + LINE_DEADLINE));
     // Whitespace is marked only when nothing else changed: otherwise it's noise.
     let marked = |blanks: bool| {
         let (mut na, mut nb) = (Vec::new(), Vec::new());

@@ -242,3 +242,23 @@ async fn the_same_comment_from_two_tabs_at_once_is_saved_once() {
     let t = threads.iter().find(|t| t.id.0 == "t-page-dup01").unwrap();
     assert_eq!(t.messages.len(), 2, "the comment and one reply");
 }
+
+#[tokio::test]
+async fn two_waits_never_get_the_same_feedback() {
+    let repo = common::Repo::new();
+    repo.write("src/lib.rs", BEFORE);
+    repo.commit("init");
+    repo.write("src/lib.rs", AFTER);
+    let app = common::app().await;
+    let id = diffd_core::model::ReviewId(app.share(share_request(&repo)).await.unwrap().review_id);
+    // The note from sharing is the agent's own: nothing is pending yet.
+    let wait = || {
+        let (app, id) = (app.clone(), id.clone());
+        tokio::spawn(async move { app.wait_for_feedback(&id, Duration::from_secs(4)).await.unwrap().items.len() })
+    };
+    let (a, b) = (wait(), wait());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    app.chat_user(&id, None, "hello?").await.unwrap();
+    let (a, b) = (a.await.unwrap(), b.await.unwrap());
+    assert_eq!(a + b, 1, "one wait got the message, the other nothing ({a}, {b})");
+}

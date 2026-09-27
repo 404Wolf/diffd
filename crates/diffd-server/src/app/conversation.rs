@@ -2,8 +2,8 @@
 
 use diffd_core::anchor::{Reanchor, reanchor};
 use diffd_core::model::{
-    ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, NoteKind, Region, RegionKind, ReviewId, ShowRequest, Side, Snapshot,
-    Thread, ThreadId, ThreadKind,
+    ActivityKind, Anchor, Author, Message, MessageId, NoteKind, Region, RegionKind, ReviewId, ShowRequest, Side, Snapshot, Thread,
+    ThreadId, ThreadKind,
 };
 use diffd_core::protocol::ServerMsg;
 use schemars::JsonSchema;
@@ -299,8 +299,7 @@ impl App {
         if !self.store.insert_message(id, None, &msg).await? {
             return Ok(());
         }
-        let chat = ChatMessage { id: msg.id, author: msg.author, body: msg.body, created_at: msg.created_at, delivered_at: None };
-        App::broadcast(&live, ServerMsg::Chat { message: chat });
+        App::broadcast(&live, ServerMsg::Chat { message: msg });
         self.user_activity(&live);
         Ok(())
     }
@@ -384,11 +383,11 @@ impl App {
     }
 
     /// The agent writes in the chat box.
-    pub async fn say(&self, id: &ReviewId, body: &str) -> Result<ChatMessage> {
+    pub async fn say(&self, id: &ReviewId, body: &str) -> Result<Message> {
         let live = self.live(id).await?;
         let msg = self.message(Author::Agent, body)?;
         self.store.insert_message(id, None, &msg).await?;
-        let chat = ChatMessage { id: msg.id, author: msg.author, body: msg.body, created_at: msg.created_at, delivered_at: None };
+        let chat = msg;
         let item = self.store.add_activity(id, self.now(), ActivityKind::AgentSaid { message_id: chat.id.clone() }).await?;
         App::broadcast(&live, ServerMsg::Chat { message: chat.clone() });
         App::broadcast(&live, ServerMsg::Activity { item });

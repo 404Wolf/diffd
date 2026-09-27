@@ -26,6 +26,11 @@ impl FeedbackGate {
         self.touch(now);
     }
 
+    /// Whether the user has a comment draft open.
+    pub fn drafting(&self) -> bool {
+        self.drafting
+    }
+
     /// Whether pending feedback may go out now.
     pub fn ready(&self, now: Millis) -> bool {
         !self.drafting && self.settled(now)

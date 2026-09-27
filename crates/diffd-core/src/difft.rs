@@ -50,6 +50,11 @@ struct Change {
     end: usize,
 }
 
+/// Byte spans of changes, minus empty or reversed ones (never trust a subprocess).
+fn spans(changes: &[Change]) -> impl Iterator<Item = (usize, usize)> + '_ {
+    changes.iter().filter(|c| c.start < c.end).map(|c| (c.start, c.end))
+}
+
 /// Parse one file's JSON. Returns `None` when difftastic couldn't align the
 /// file (it only reports that for created/deleted files), so the caller
 /// falls back to a line diff.
@@ -70,12 +75,12 @@ pub fn parse(json: &str, old_lines: usize, new_lines: usize) -> Result<Option<En
         if let Some(lhs) = entry.lhs
             && let Some(line) = diff.novel_old.get_mut(lhs.line_number)
         {
-            line.extend(lhs.changes.iter().map(|c| (c.start, c.end)));
+            line.extend(spans(&lhs.changes));
         }
         if let Some(rhs) = entry.rhs
             && let Some(line) = diff.novel_new.get_mut(rhs.line_number)
         {
-            line.extend(rhs.changes.iter().map(|c| (c.start, c.end)));
+            line.extend(spans(&rhs.changes));
         }
     }
     for line in diff.novel_old.iter_mut().chain(diff.novel_new.iter_mut()) {

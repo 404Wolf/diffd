@@ -50,8 +50,9 @@ impl Lang {
         Lang::MarkdownInline,
     ];
 
+    /// Position in [`Lang::ALL`], which lists the languages in declaration order.
     pub fn index(self) -> usize {
-        Self::ALL.iter().position(|&l| l == self).unwrap_or(0)
+        self as usize
     }
 
     /// Guess the language from a path's file name.
@@ -235,6 +236,13 @@ impl Lang {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_is_in_declaration_order() {
+        for (i, lang) in Lang::ALL.iter().enumerate() {
+            assert_eq!(lang.index(), i, "{lang:?}");
+        }
+    }
 
     #[test]
     fn detects_languages() {

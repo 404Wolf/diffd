@@ -61,6 +61,8 @@ pub(crate) struct Live {
     pub(crate) tx: broadcast::Sender<ServerMsg>,
     pub(crate) feedback: Notify,
     pub(crate) rebuild: tokio::sync::Mutex<()>,
+    /// Held while handing feedback to the agent, so two waits never both get the same messages.
+    pub(crate) deliver: tokio::sync::Mutex<()>,
     inner: Mutex<LiveInner>,
 }
 
@@ -172,6 +174,7 @@ impl App {
                     tx: broadcast::channel(256).0,
                     feedback: Notify::new(),
                     rebuild: tokio::sync::Mutex::new(()),
+                    deliver: tokio::sync::Mutex::new(()),
                     inner: Mutex::new(LiveInner {
                         gate: FeedbackGate::default(),
                         drafting: 0,

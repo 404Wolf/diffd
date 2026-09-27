@@ -9,7 +9,7 @@ use ts_rs::TS;
 use std::collections::BTreeMap;
 
 use crate::model::{
-    ActivityItem, Anchor, ChatMessage, CodeAnswer, CodeQuery, Diagnostic, History, MessageId, Presence, Region, ReviewMeta, ShowRequest,
+    ActivityItem, Anchor, CodeAnswer, CodeQuery, Diagnostic, History, Message, MessageId, Presence, Region, ReviewMeta, ShowRequest,
     Snapshot, Thread, ThreadId,
 };
 
@@ -26,7 +26,7 @@ pub struct ReviewState {
     pub regions: Vec<Region>,
     /// The commits in the review's range.
     pub history: History,
-    pub chat: Vec<ChatMessage>,
+    pub chat: Vec<Message>,
     pub activity: Vec<ActivityItem>,
     pub presence: Presence,
     /// Activity up to this sequence number has been seen by the user.
@@ -58,7 +58,7 @@ pub enum ServerMsg {
         thread: Thread,
     },
     Chat {
-        message: ChatMessage,
+        message: Message,
     },
     Activity {
         item: ActivityItem,

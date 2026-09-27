@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use diffd_core::model::{Author, ChatMessage, MessageId, ReviewId, Side, Snapshot, Thread, ThreadId};
+use diffd_core::model::{Author, MessageId, ReviewId, Side, Snapshot, Thread, ThreadId};
 use diffd_core::protocol::ServerMsg;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -80,12 +80,20 @@ impl App {
                 let (ready, wait) = {
                     let inner = live.inner.lock().expect("live lock");
                     let ready = !pending.is_empty() && inner.gate.ready(now);
-                    // Drafts can stay open a while; check back periodically.
-                    let wait = if pending.is_empty() { None } else { Some(inner.gate.wait_ms(now).max(100)) };
+                    // A draft closing wakes us; otherwise wait out the quiet period.
+                    let wait = if pending.is_empty() || inner.gate.drafting() { None } else { Some(inner.gate.wait_ms(now).max(100)) };
                     (ready, wait)
                 };
                 if ready {
-                    return Ok::<_, super::AppError>(pending);
+                    // Another wait may have taken these meanwhile: read again while holding the lock.
+                    let guard = live.deliver.lock().await;
+                    let pending = self.store.undelivered(id).await?;
+                    if !pending.is_empty() {
+                        let ids: Vec<MessageId> = pending.iter().map(|p| p.message.id.clone()).collect();
+                        self.store.mark_delivered(&ids, self.now()).await?;
+                        drop(guard);
+                        return Ok::<_, super::AppError>(pending);
+                    }
                 }
                 let sleep_until = match wait {
                     Some(ms) => (tokio::time::Instant::now() + Duration::from_millis(ms)).min(deadline),
@@ -103,10 +111,7 @@ impl App {
         .await;
         drop(_listening);
         let pending = outcome?;
-
-        let now = self.now();
         let ids: Vec<MessageId> = pending.iter().map(|p| p.message.id.clone()).collect();
-        self.store.mark_delivered(&ids, now).await?;
 
         let snap = App::snapshot(&live);
         let threads = self.store.threads(id).await?;
@@ -129,7 +134,7 @@ impl App {
             App::broadcast(&live, ServerMsg::Thread { thread: t });
         }
         for c in self.store.chat(id).await?.into_iter().filter(|c| ids.contains(&c.id)) {
-            App::broadcast(&live, ServerMsg::Chat { message: ChatMessage { ..c } });
+            App::broadcast(&live, ServerMsg::Chat { message: c });
         }
 
         let next_step = if items.is_empty() {
