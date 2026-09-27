@@ -201,6 +201,8 @@ pub struct Symbol {
     pub line: u32,
     pub start: u32,
     pub end: u32,
+    /// The whole definition's first and last line (1-based), e.g. a function with its body.
+    pub lines: [u32; 2],
 }
 
 // ---------------------------------------------------------------------------

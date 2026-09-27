@@ -3,6 +3,7 @@
  * vim keymap; `tab` replaces `ctrl-w h/l` because browsers reserve `ctrl-w`.
  */
 import type { Binding } from "../lib/keymap";
+import type { TextObject } from "../lib/textObjects";
 import type { Commands } from "./commands";
 import type { View } from "./view";
 
@@ -12,6 +13,23 @@ export interface Ctx {
 }
 
 const MARK_NAMES = [..."abcdefghijklmnopqrstuvwxyz"];
+
+/** Keys after `i` / `a` in visual mode, and the object each selects (vim's aliases included). */
+const TEXT_OBJECTS: readonly (readonly [string, TextObject])[] = [
+  ["p", "paragraph"],
+  ["f", "function"],
+  ["c", "class"],
+  ["{", "brace"],
+  ["}", "brace"],
+  ["B", "brace"],
+  ["(", "paren"],
+  [")", "paren"],
+  ["b", "paren"],
+  ["[", "bracket"],
+  ["]", "bracket"],
+  ["t", "tag"],
+  ["h", "hunk"],
+];
 
 const diffModes = ["normal", "visual", "symbol"] as const;
 
@@ -139,6 +157,22 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     run: () => document.getElementById("chat-input")?.focus(),
     help: ["Talk", "Ask Claude anything"],
   },
+  // Text objects, in visual mode: i = inside, a = around (vip, vaf, vi{, …).
+  ...TEXT_OBJECTS.flatMap(([key, object], n): Binding<Ctx>[] =>
+    (["i", "a"] as const).map((ia, k) => ({
+      keys: `${ia} ${key}`,
+      modes: ["visual"],
+      run: ({ cmd }) => cmd.selectObject(object, ia === "a"),
+      ...(n === 0 && k === 0
+        ? {
+            help: [
+              "Talk",
+              "Select a text object: ip ap, if af, ic ac, i{ a{, i( a(, i[ a[, it at, ih ah",
+            ] as const,
+          }
+        : {}),
+    })),
+  ),
   // Marks: m{a-z} sets one at the cursor, ' or ` jumps back to it.
   ...MARK_NAMES.flatMap((name, i): Binding<Ctx>[] => [
     {
@@ -182,7 +216,7 @@ export function helpEntries(): { group: string; label: string; keys: string[] }[
       last &&
       b.keys !== "esc" &&
       !["down", "up", "ctrl-p", "ctrl-]", "shift-enter", "v", "c", "enter"].includes(b.keys) &&
-      !/^[m'`] /.test(b.keys)
+      !/^[m'`ia] /.test(b.keys)
     )
       last.keys.push(b.keys);
   }

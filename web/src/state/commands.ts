@@ -16,6 +16,17 @@ import { diagnosticsOn, IDENT, textRange, type WordAt } from "../lib/code";
 import { type ExpandDirection, expandGap, initialVisible, nearestGap, rowOf } from "../lib/diffModel";
 import { step, steps } from "../lib/history";
 import { fillAll } from "../lib/lazyRows";
+import { rowChanged } from "../lib/render";
+import {
+  CLASS_KINDS,
+  definition,
+  FUNCTION_KINDS,
+  type LineRange,
+  pair,
+  paragraph,
+  type TextObject,
+  tag,
+} from "../lib/textObjects";
 import { buildTree, treeOrder } from "../lib/tree";
 import {
   bufferEl,
@@ -701,6 +712,71 @@ export function createCommands(review: Review, view: View) {
     if (lines.length === 0) return view.say(`No ${c.side} lines selected`);
     openComposer(c.file, c.side, Math.min(...lines), Math.max(...lines));
   };
+  // -- Text objects (visual mode) --------------------------------------------------
+
+  /** `vip`, `vaf`, `vi{`, …: select the lines of a text object around the cursor. */
+  const selectObject = (object: TextObject, around: boolean) => {
+    const c = view.cursor();
+    const f = c ? files()[c.file] : undefined;
+    const model = c ? review.models()[c.file] : undefined;
+    const side = c && f ? (c.side === "old" ? f.old : f.new) : null;
+    const rowLine = c && f ? f.rows[c.row]?.[c.side === "old" ? 0 : 1] : null;
+    if (!c || !f || !model || !side || rowLine === null || rowLine === undefined)
+      return view.say("Put the cursor on a line of code first");
+    const line = rowLine + 1;
+    const text = side.lines;
+    const col = c.word?.range[0] ?? Math.max(0, (text[line - 1] ?? "").search(/\S/));
+    const spans = review.snapshot().symbols.filter((s) => s.file === c.file && s.side === c.side);
+    const lines = match(object)
+      .with("paragraph", () => paragraph(text, line, around))
+      .with("function", () => definition(spans, FUNCTION_KINDS, line, around))
+      .with("class", () => definition(spans, CLASS_KINDS, line, around))
+      .with("brace", () => pair(text, line, col, "{", "}", around))
+      .with("paren", () => pair(text, line, col, "(", ")", around))
+      .with("bracket", () => pair(text, line, col, "[", "]", around))
+      .with("tag", () => tag(text, line, around))
+      .with("hunk", () => hunkLines(c.file, c.row, c.side, around))
+      .exhaustive();
+    if (!lines) return view.say(`No ${object} around this line`);
+    const first = rowOf(model, c.side, lines[0]);
+    const last = rowOf(model, c.side, lines[1]);
+    if (first < 0 || last < 0) return;
+    ensureRow(c.file, first);
+    ensureRow(c.file, last);
+    view.setVisual({ file: c.file, row: first });
+    const el = rowEl(c.file, last);
+    if (el) place(el, { side: c.side });
+  };
+  /** The run of changed rows around a row, as lines of one side; `ah` takes a line of context on each end. */
+  const hunkLines = (file: number, row: number, side: Side, around: boolean): LineRange | null => {
+    const f = files()[file];
+    if (!f) return null;
+    const changed = (r: number) => {
+      const x = f.rows[r];
+      return x !== undefined && rowChanged(f, x);
+    };
+    if (!changed(row)) return null;
+    let a = row;
+    let b = row;
+    while (a > 0 && changed(a - 1)) a--;
+    while (b < f.rows.length - 1 && changed(b + 1)) b++;
+    if (around) {
+      a = Math.max(0, a - 1);
+      b = Math.min(f.rows.length - 1, b + 1);
+    }
+    const lineOf = (r: number) => f.rows[r]?.[side === "old" ? 0 : 1] ?? null;
+    // The first and last rows that have this side.
+    let first: number | null = null;
+    let last: number | null = null;
+    for (let r = a; r <= b; r++) {
+      const l = lineOf(r);
+      if (l === null) continue;
+      first ??= l + 1;
+      last = l + 1;
+    }
+    return first === null || last === null ? null : [first, last];
+  };
+
   const rowsBetween = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
   /** `gc` with a mouse selection: comment on the selected lines. */
@@ -813,6 +889,7 @@ export function createCommands(review: Review, view: View) {
     references,
     outline,
     filePicker,
+    selectObject,
     typeDefinition,
     hoverAtCursor,
     openPath,

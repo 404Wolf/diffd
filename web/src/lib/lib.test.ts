@@ -6,6 +6,7 @@ import { JumpList } from "./jumps";
 import { KeyEngine, keyToken } from "./keymap";
 import { renderMarkdown, resolveRef } from "./markdown";
 import { changeMarks, lineHtml, rowHtml } from "./render";
+import { CLASS_KINDS, definition, FUNCTION_KINDS, pair, paragraph, tag } from "./textObjects";
 import { buildTree, parentDir, treeOrder } from "./tree";
 
 const file = (): FileDiff => ({
@@ -240,5 +241,51 @@ describe("tree with neighbours", () => {
     expect(treeOrder(nodes)).toEqual([0]);
     expect(parentDir("src/a.rs")).toBe("src/");
     expect(parentDir("top.md")).toBe("");
+  });
+});
+
+describe("text objects", () => {
+  const code = [
+    "fn outer() {", // 1
+    "    let a = (1,", // 2
+    "        2);", // 3
+    "    if a.0 > 0 {", // 4
+    '        println!("{}", "}");', // 5
+    "    }", // 6
+    "}", // 7
+    "", // 8
+    "fn next<'a>(x: &'a str) {}", // 9
+  ];
+  it("pairs: innermost, quotes skipped, a vs i", () => {
+    expect(pair(code, 5, 8, "{", "}", true)).toEqual([4, 6]);
+    expect(pair(code, 5, 8, "{", "}", false)).toEqual([5, 5]);
+    expect(pair(code, 3, 8, "(", ")", false)).toEqual([2, 3]); // fewer than three lines: same as a(
+    expect(pair(code, 3, 8, "{", "}", false)).toEqual([2, 6]);
+    expect(pair(code, 3, 8, "(", ")", true)).toEqual([2, 3]);
+    expect(pair(code, 9, 12, "(", ")", true)).toEqual([9, 9]); // lifetimes aren't quotes
+    expect(pair(code, 8, 0, "{", "}", true)).toBeNull();
+  });
+  it("paragraphs", () => {
+    const text = ["a", "b", "", "", "c"];
+    expect(paragraph(text, 2, false)).toEqual([1, 2]);
+    expect(paragraph(text, 2, true)).toEqual([1, 4]);
+    expect(paragraph(text, 5, true)).toEqual([3, 5]); // no blank after: take the ones before
+    expect(paragraph(text, 3, false)).toEqual([3, 4]);
+  });
+  it("tags, innermost, skipping self-closing ones", () => {
+    const jsx = ["<div>", "  <span>", "    hi <br/>", "  </span>", "  <img src='x' />", "</div>"];
+    expect(tag(jsx, 3, true)).toEqual([2, 4]);
+    expect(tag(jsx, 5, false)).toEqual([2, 5]);
+    expect(tag(jsx, 5, true)).toEqual([1, 6]);
+  });
+  it("definitions", () => {
+    const spans = [
+      { kind: "class", lines: [1, 10] as [number, number] },
+      { kind: "method", lines: [3, 6] as [number, number] },
+    ];
+    expect(definition(spans, FUNCTION_KINDS, 4, true)).toEqual([3, 6]);
+    expect(definition(spans, FUNCTION_KINDS, 4, false)).toEqual([4, 5]);
+    expect(definition(spans, CLASS_KINDS, 4, true)).toEqual([1, 10]);
+    expect(definition(spans, FUNCTION_KINDS, 8, true)).toBeNull();
   });
 });

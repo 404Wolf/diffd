@@ -34,6 +34,9 @@ pub fn definitions(lang: Lang, source: &str, file: u32, side: Side, lines: &[Str
         let Some(line) = lines.get(row) else { continue };
         let start = tag.name_range.start - starts[row];
         let end = (tag.name_range.end - starts[row]).min(line.len());
+        let row_of = |byte: usize| starts.partition_point(|&s| s <= byte).saturating_sub(1) as u32 + 1;
+        // The node's end is exclusive; step back so a trailing newline doesn't count as the next line.
+        let lines = [row_of(tag.range.start), row_of(tag.range.end.saturating_sub(1).max(tag.range.start))];
         out.push(Symbol {
             name: name.to_owned(),
             kind: cfg.syntax_type_name(tag.syntax_type_id).to_owned(),
@@ -42,6 +45,7 @@ pub fn definitions(lang: Lang, source: &str, file: u32, side: Side, lines: &[Str
             line: row as u32 + 1,
             start: utf16_col(line, start),
             end: utf16_col(line, end),
+            lines,
         });
     }
     out
@@ -58,6 +62,12 @@ mod tests {
         let syms = definitions(Lang::Rust, src, 0, Side::New, &split_lines(src));
         let names: Vec<_> = syms.iter().map(|s| (s.name.as_str(), s.line)).collect();
         assert!(names.contains(&("Gate", 1)));
+        let poll = syms.iter().find(|s| s.name == "poll").unwrap();
+        assert_eq!(poll.lines, [4, 4]);
+        let imp = syms.iter().find(|s| s.name == "Gate" && s.line == 3);
+        if let Some(imp) = imp {
+            assert_eq!(imp.lines, [3, 5], "the impl block with its body");
+        }
         assert!(names.contains(&("poll", 4)));
         let poll = syms.iter().find(|s| s.name == "poll").unwrap();
         assert_eq!((poll.start, poll.end), (11, 15));

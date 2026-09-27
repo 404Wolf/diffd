@@ -493,6 +493,48 @@ try {
     check((await status(page)).includes("No mark z"), "an unset mark says so");
   });
 
+  await section("Text objects", async () => {
+    const lineOf = (path, needle) => readFileSync(`${repo}/${path}`, "utf8").split("\n").findIndex((l) => l.includes(needle)) + 1;
+    const selected = () => page.locator(".buffer.focused .row.vsel").count();
+    const take = lineOf("src/lib.rs", "self.tokens -= 1;");
+    const acquire = lineOf("src/lib.rs", "pub fn acquire");
+    const acquireEnd = lineOf("src/lib.rs", "fn refill") - 2;
+
+    await cursorTo(page, "src/lib.rs", take);
+    await keys(page, "v", "a", "f");
+    check((await selected()) === acquireEnd - acquire + 1, `vaf selects the whole function (${await selected()} lines)`);
+    await keys(page, "g", "c");
+    const quote = await page.getByRole("dialog", { name: "Write a comment" }).locator("pre").innerText();
+    check(quote.trim().startsWith("pub fn acquire"), "and gc comments on it");
+    await keys(page, "Escape");
+    await keys(page, "Escape");
+
+    await cursorTo(page, "src/lib.rs", take);
+    await keys(page, "v", "i", "{");
+    check((await selected()) === 2, `vi{ selects inside the braces (${await selected()} lines)`);
+    await keys(page, "Escape");
+    await cursorTo(page, "src/lib.rs", take);
+    await keys(page, "v", "a", "B");
+    check((await selected()) === 4, "vaB takes the braces' lines too");
+    await keys(page, "Escape");
+
+    await cursorTo(page, "src/lib.rs", take);
+    await keys(page, "v", "i", "p");
+    check((await selected()) === acquireEnd - acquire + 2, `vip selects the paragraph (${await selected()} lines)`);
+    await keys(page, "Escape");
+
+    const badge = lineOf("web/src/QuotaBadge.tsx", "left (+");
+    await cursorTo(page, "web/src/QuotaBadge.tsx", badge);
+    await keys(page, "v", "a", "t");
+    check((await selected()) === 4, `vat selects the enclosing element (${await selected()} lines)`);
+    await keys(page, "Escape");
+
+    await cursorTo(page, "src/lib.rs", 1);
+    await keys(page, "v", "i", "h");
+    check((await selected()) >= 1 && (await status(page)).includes("VISUAL"), "vih selects the hunk");
+    await keys(page, "Escape");
+  });
+
   await section("Offline comments queue and send on reconnect", async () => {
     const { stop, start } = serverControl;
     if (!stop || !start) {

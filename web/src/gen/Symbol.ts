@@ -12,4 +12,8 @@ kind: string,
 /**
  * Index into [`Snapshot::files`].
  */
-file: number, side: Side, line: number, start: number, end: number, };
+file: number, side: Side, line: number, start: number, end: number, 
+/**
+ * The whole definition's first and last line (1-based), e.g. a function with its body.
+ */
+lines: [number, number], };
