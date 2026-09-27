@@ -499,7 +499,8 @@ during a rebuild leads to one more rebuild, not one per change. A rebuild:
    item.
 
 After a restart, reviews touched in the last week are watched again at once;
-older ones when someone opens them. Deleting a review stops its watch and tells
+older ones when someone opens them. A new watch starts with one rebuild, to
+catch edits made while it was being set up or while diffd wasn't running. Deleting a review stops its watch and tells
 open pages, which stop reconnecting. `refresh` runs the same rebuild on demand.
 
 ## 8. The page

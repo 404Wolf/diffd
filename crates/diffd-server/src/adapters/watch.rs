@@ -49,9 +49,10 @@ pub struct Watcher {
     /// By canonical repository root.
     repos: Mutex<HashMap<PathBuf, RepoWatch>>,
     rebuilds: Mutex<Rebuilds>,
-    /// Changes, by repository root, for the thread that handles them. (Not
-    /// handled on notify's own thread: adding a watch from there deadlocks.)
-    events: std::sync::mpsc::Sender<(PathBuf, Vec<PathBuf>)>,
+    /// Work for the watcher's own thread: setting up a watch walks the
+    /// repository, which mustn't hold up async code, and changes can't be
+    /// handled on notify's thread (adding a watch from there deadlocks).
+    work: std::sync::mpsc::Sender<Work>,
     me: Weak<Watcher>,
 }
 
@@ -64,6 +65,12 @@ struct RepoWatch {
     ignored: HashSet<PathBuf>,
 }
 
+enum Work {
+    Watch { id: ReviewId, root: PathBuf },
+    Unwatch { id: ReviewId },
+    Changed { root: PathBuf, paths: Vec<PathBuf> },
+}
+
 #[derive(Default)]
 struct Rebuilds {
     running: HashSet<ReviewId>,
@@ -74,13 +81,13 @@ struct Rebuilds {
 impl Watcher {
     /// Watch working trees for `app`, so reviews of them follow edits.
     pub fn install(app: &Arc<App>, runtime: Handle) -> Arc<Self> {
-        let (events, rx) = std::sync::mpsc::channel::<(PathBuf, Vec<PathBuf>)>();
+        let (work, rx) = std::sync::mpsc::channel::<Work>();
         let watcher = Arc::new_cyclic(|me| Self {
             app: Arc::downgrade(app),
             runtime,
             repos: Mutex::new(HashMap::new()),
             rebuilds: Mutex::new(Rebuilds::default()),
-            events,
+            work,
             me: me.clone(),
         });
         let me = Arc::downgrade(&watcher);
@@ -88,9 +95,13 @@ impl Watcher {
         std::thread::Builder::new()
             .name("diffd-watch".into())
             .spawn(move || {
-                while let Ok((root, paths)) = rx.recv() {
+                while let Ok(work) = rx.recv() {
                     let Some(me) = me.upgrade() else { return };
-                    me.changed(&root, &paths);
+                    match work {
+                        Work::Watch { id, root } => me.add(id, root),
+                        Work::Unwatch { id } => me.remove(&id),
+                        Work::Changed { root, paths } => me.changed(&root, &paths),
+                    }
                 }
             })
             .expect("starting the file watcher thread");
@@ -99,12 +110,12 @@ impl Watcher {
     }
 
     fn start(&self, root: &Path) -> Option<RepoWatch> {
-        let (events, watched) = (self.events.clone(), root.to_owned());
+        let (work, watched) = (self.work.clone(), root.to_owned());
         let handler = move |res: notify::Result<Event>| {
             if let Ok(event) = res
                 && writes(&event.kind)
             {
-                let _ = events.send((watched.clone(), event.paths));
+                let _ = work.send(Work::Changed { root: watched.clone(), paths: event.paths });
             }
         };
         let watcher = match notify::recommended_watcher(handler) {
@@ -121,6 +132,33 @@ impl Watcher {
             return None;
         }
         Some(repo)
+    }
+
+    /// Follow review `id`'s repository, starting a watcher for it if needed.
+    fn add(&self, id: ReviewId, root: PathBuf) {
+        // Events come with canonical paths.
+        let root = root.canonicalize().unwrap_or(root);
+        let mut repos = self.repos.lock().expect("watch lock");
+        let Some(repo) = repos.get_mut(&root) else {
+            let Some(mut repo) = self.start(&root) else { return };
+            repo.reviews.insert(id.clone());
+            repos.insert(root, repo);
+            drop(repos);
+            // Catch up on anything that changed before the watch was in place
+            // (while setting it up, or while diffd wasn't running).
+            self.rebuild(id);
+            return;
+        };
+        repo.reviews.insert(id);
+    }
+
+    fn remove(&self, id: &ReviewId) {
+        let mut repos = self.repos.lock().expect("watch lock");
+        for repo in repos.values_mut() {
+            repo.reviews.remove(id);
+        }
+        // The last review of a repository gone: stop watching it.
+        repos.retain(|_, repo| !repo.reviews.is_empty());
     }
 
     /// Files changed under `root`: watch new directories, rebuild its reviews.
@@ -183,25 +221,12 @@ impl Watcher {
 
 impl TreeWatch for Watcher {
     fn watch(&self, id: &ReviewId, root: &Path) {
-        // Events come with canonical paths.
-        let root = root.canonicalize().unwrap_or_else(|_| root.to_owned());
-        let mut repos = self.repos.lock().expect("watch lock");
-        if !repos.contains_key(&root) {
-            let Some(repo) = self.start(&root) else { return };
-            repos.insert(root.clone(), repo);
-        }
-        if let Some(repo) = repos.get_mut(&root) {
-            repo.reviews.insert(id.clone());
-        }
+        let _ = self.work.send(Work::Watch { id: id.clone(), root: root.to_owned() });
     }
 
     fn unwatch(&self, id: &ReviewId) {
-        let mut repos = self.repos.lock().expect("watch lock");
-        for repo in repos.values_mut() {
-            repo.reviews.remove(id);
-        }
-        // The last review of a repository gone: stop watching it.
-        repos.retain(|_, repo| !repo.reviews.is_empty());
+        // Queued like `watch`, so it can't overtake a watch still being set up.
+        let _ = self.work.send(Work::Unwatch { id: id.clone() });
     }
 }
 
