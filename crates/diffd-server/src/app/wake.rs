@@ -97,10 +97,16 @@ impl App {
         tokio::pin!(cancel);
         cancel.as_mut().enable();
 
+        // Count as listening meanwhile: the page shows the agent will hear it. Held
+        // across passes of the loop (a pass ends every few seconds), so pages
+        // don't see the agent stop and start listening each time.
+        let mut listening: HashMap<ReviewId, Listening<'_>> = HashMap::new();
         loop {
             let lives = self.reviews_around(&cwd).await?;
-            // Count as listening meanwhile: the page shows the agent will hear it.
-            let _listening: Vec<Listening<'_>> = lives.iter().map(|(_, live)| Listening::start(self, live)).collect();
+            listening.retain(|id, _| lives.iter().any(|(l, _)| l == id));
+            for (id, live) in &lives {
+                listening.entry(id.clone()).or_insert_with(|| Listening::start(self, live));
+            }
             // Register for wake-ups before looking, so nothing slips between.
             let mut wakes: Vec<_> = lives.iter().map(|(_, live)| Box::pin(live.feedback.notified())).collect();
             for w in &mut wakes {

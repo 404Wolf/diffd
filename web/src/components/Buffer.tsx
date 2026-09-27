@@ -11,6 +11,7 @@ import {
 } from "solid-js";
 import { match } from "ts-pattern";
 import { columnAtPoint, wordAt } from "../lib/code";
+import { rowOf } from "../lib/diffModel";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
 import { wrappedLines } from "../lib/windower";
 import type { Commands } from "../state/commands";
@@ -286,6 +287,8 @@ function usePaintCursor(props: Props) {
   createEffect(() => {
     const cursor = props.pane.cursor();
     const visual = props.pane.visual();
+    // The lines a comment is being written on stay selected until it's sent.
+    const writing = props.view.composer();
     // Re-paint after anything that re-renders rows.
     props.pane.mode();
     props.review.snapshot();
@@ -325,6 +328,18 @@ function usePaintCursor(props: Props) {
               word: cursor.word.range,
             },
           );
+        }
+      }
+      if (writing?.kind === "new") {
+        const a = writing.anchor;
+        const file = props.review.paths().indexOf(a.path);
+        const model = props.review.models()[file];
+        for (let line = a.start; model && line <= a.end; line++) {
+          const el = rowEl(file, rowOf(model, a.side, line), buf);
+          if (el) {
+            el.classList.add("vsel");
+            painted.rows.push(el);
+          }
         }
       }
       if (visual && visual.file === cursor.file) {

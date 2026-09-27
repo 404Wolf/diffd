@@ -264,9 +264,9 @@ try {
     check(hiddenBefore - hiddenAfter === 5, `g e reveals 5 lines (${hiddenBefore} → ${hiddenAfter} hidden)`);
     const vp2 = await viewport(page);
     check(vp.key === vp2.key && Math.abs(vp.y - vp2.y) < 3, "without moving the page");
-    // Ctrl+F is the page's own find: it searches folded lines too.
-    await keys(page, "Control+f");
-    check(await page.getByText("Search every line, hidden ones too").isVisible(), "Ctrl+F opens the page's search, which sees folded lines");
+    // `space /` searches every line: it sees folded lines too.
+    await keys(page, "Space", "/");
+    check(await page.getByText("Search every line, hidden ones too").isVisible(), "/ opens the page's search, which sees folded lines");
     await keys(page, "Escape");
     check((await page.locator('[data-file-section]:has([data-path="src/lib.rs"]) .row.test').count()) >= 20, "test code is marked along its side");
     await page.locator('[data-file-section]:has([data-path="tests/limiter.rs"])').scrollIntoViewIfNeeded();
@@ -400,16 +400,29 @@ try {
     await page.keyboard.type("badge");
     await keys(page, "Enter");
     check((await status(page)).match(/QuotaBadge\.tsx|badge\.css/), "space f opens a file");
-    await keys(page, "/");
+    await keys(page, "Space", "/");
     await page.keyboard.type("Retry-After");
     await sleep(150);
-    check((await page.locator("[role=dialog] li").count()) >= 1, "/ finds text anywhere, hidden lines included");
+    check((await page.locator("[role=dialog] li").count()) >= 1, "space / finds text anywhere, hidden lines included");
     await keys(page, "Enter");
     check((await status(page)).includes("main.go"), "and jumps to it");
     check((await status(page)).includes("Retry-After · 1 of"), "saying which match of how many");
     check(await page.evaluate(() => (CSS.highlights.get("search-current")?.size ?? 0) === 1), "the match is highlighted");
     await keys(page, "n");
     check(/Retry-After · \d+ of/.test(await status(page)), "n goes to the next match");
+    // `/`: like vim, from the cursor in this file, as you type; enter goes back to the code.
+    await keys(page, "Escape", "/");
+    check(await page.getByRole("search", { name: "Find" }).isVisible(), "/ opens the find bar");
+    await page.keyboard.type("err");
+    await sleep(150);
+    check((await status(page)).includes("main.go"), "and finds the nearest match in this file as you type");
+    await keys(page, "Enter");
+    check(!(await page.getByRole("search", { name: "Find" }).isVisible()), "enter closes it, staying on the match");
+    const at = await status(page);
+    await keys(page, "n");
+    check((await status(page)) !== at && (await status(page)).includes("main.go"), "n goes to the next one in the file");
+    await keys(page, "Shift+N");
+    check((await status(page)).startsWith(at.slice(0, 20)), "N back");
     await keys(page, "Escape");
     check(await page.evaluate(() => (CSS.highlights.get("search")?.size ?? 0) === 0), "esc clears the highlights");
     await keys(page, "g", "S");
@@ -1216,6 +1229,74 @@ try {
     check((await status(page)).includes("lib.rs:12 "), "12G goes to line 12 of this file");
     await keys(page, "'", "'");
     check((await status(page)).includes(here.match(/\S+:\d+/)[0]), "'' goes back to where the jump came from");
+  });
+
+  await section("Find bar, replying, gc, keeping the selection, marks anywhere, shift+click to a split", async () => {
+    await page.goto(reviewUrl);
+    await page.waitForSelector(".buffer.focused .row");
+    await cursorTo(page, "src/lib.rs", 45);
+    // Ctrl+F: a small bar in the corner, finding in this file as you type.
+    await keys(page, "Control+f");
+    const bar = page.getByRole("search", { name: "Find" });
+    check(await bar.isVisible(), "Ctrl+F opens the find bar");
+    check((await page.getByRole("dialog").count()) === 0, "not a popup");
+    const box = await bar.boundingBox();
+    check(box.y < 120 && box.x + box.width > page.viewportSize().width * 0.5, "in the top right");
+    await page.keyboard.type("burst");
+    await sleep(200);
+    const count = await page.locator("[data-find-count]").innerText();
+    check(/^\d+\/\d+$/.test(count), `it counts the matches in this file (${count})`);
+    check((await status(page)).includes("lib.rs"), "and goes to the first one");
+    const first = await status(page);
+    await page.keyboard.press("Enter");
+    await sleep(150);
+    check((await status(page)) !== first, "enter goes to the next");
+    await page.keyboard.press("Escape");
+    check(!(await bar.isVisible()), "esc closes it");
+    await keys(page, "n");
+    check((await status(page)).includes("lib.rs"), "and n keeps going");
+    await keys(page, "Escape");
+
+    // gc comments on the line (no third c needed), and gcc doesn't type a c.
+    await keys(page, "g", "c");
+    check(await page.getByRole("dialog", { name: "Write a comment" }).isVisible(), "gc opens the comment popover");
+    await keys(page, "Escape");
+    await keys(page, "g", "c", "c");
+    await page.keyboard.type("x");
+    check((await page.getByRole("dialog", { name: "Write a comment" }).locator("textarea").inputValue()) === "x", "gcc's last c isn't typed into the comment");
+    await keys(page, "Escape", "Escape");
+
+    // Lines picked with V stay picked while the comment is written.
+    await keys(page, "Shift+V", "j", "j", "g", "c");
+    await sleep(150);
+    check((await page.locator(".buffer.focused .row.vsel").count()) >= 3, "V … gc keeps the selected lines highlighted while commenting");
+    await keys(page, "Escape");
+
+    // r answers a thread on screen, and goes to one first when none is.
+    await keys(page, "G");
+    await keys(page, "r");
+    await sleep(400);
+    const composer = await page.getByRole("dialog", { name: "Write a comment" }).boundingBox();
+    check(composer && composer.y >= 0 && composer.y + composer.height <= page.viewportSize().height, "r opens the reply on screen, next to its thread");
+    await keys(page, "Escape");
+
+    // Marks work in file view and in files outside the diff.
+    await cursorTo(page, "src/bucket.rs", 6);
+    await keys(page, "g", "Enter", "j", "j");
+    const inFile = (await status(page)).match(/\S+:\d+/)[0];
+    await keys(page, "m", "Shift+F", "g", "g");
+    await keys(page, "'", "Shift+F");
+    check((await status(page)).includes(inFile), "a mark set in file view comes back");
+    await keys(page, "Control+o");
+
+    // Shift+click a path:line link: the file opens in a split beside.
+    const link = page.locator('section[aria-label^="Chat with"] a[data-go]').first();
+    await link.scrollIntoViewIfNeeded();
+    await link.click({ modifiers: ["Shift"] });
+    await sleep(400);
+    check((await page.locator(".buffer").count()) === 2, "shift+click on a link opens it in a split");
+    check((await status(page)).startsWith("FILE"), "in file view");
+    await keys(page, "Control+Escape");
   });
 
   await section("Home page", async () => {

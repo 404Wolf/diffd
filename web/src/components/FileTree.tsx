@@ -215,7 +215,9 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
       classList={{ "text-subtle italic": mode() === "diff", "text-muted": mode() === "project" }}
       title={`${p.file.path} · not changed; open to read or comment`}
       data-neighbour={p.file.path}
-      onClick={() => void props.cmd.openPath(p.file.path)}
+      onClick={(e) =>
+        void (e.shiftKey ? props.cmd.openPathInSplit(p.file.path) : props.cmd.openPath(p.file.path))
+      }
     >
       <span class="w-3 flex-none" />
       <span class="min-w-0 flex-1 truncate">{p.file.name}</span>
@@ -233,7 +235,8 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         data-tree-file={p.file.path}
         data-context={props.review.isContext(p.file.index) ? "" : undefined}
         title={`${p.file.path}${file().collapsed ? ` · collapsed: ${file().collapsed}` : ""}`}
-        onClick={() => {
+        onClick={(e) => {
+          if (e.shiftKey) return void props.cmd.openPathInSplit(p.file.path);
           const dir = parentDir(p.file.path);
           if (mode() !== "diff") return props.cmd.openFile(p.file.index);
           // Clicking the file you're on again hides its folder's other files.

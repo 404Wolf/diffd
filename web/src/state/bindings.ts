@@ -178,11 +178,12 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   },
   // Talk
   {
-    keys: "g c c",
+    keys: "g c",
     modes: ["normal", "symbol", "file"],
     run: ({ cmd }) => cmd.comment(),
-    help: ["Talk", "Comment on this line"],
+    help: ["Talk", "Comment on this line (gc, or gcc)"],
   },
+
   {
     keys: "V",
     modes: [...diffModes, "file"],
@@ -194,11 +195,8 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "c", modes: ["visual"], run: ({ cmd }) => cmd.comment() },
   {
     keys: "r",
-    run: ({ cmd, view }) => {
-      const t = cmd.nearThread();
-      t ? cmd.replyTo(t) : view.say("No thread to reply to");
-    },
-    help: ["Talk", "Reply to the next thread"],
+    run: ({ cmd }) => void cmd.replyNear(),
+    help: ["Talk", "Reply to the thread here (or the next one)"],
   },
   {
     keys: "space i",
@@ -269,9 +267,14 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "space n", run: ({ cmd }) => cmd.toggleDrawer("right"), help: ["Panels", "Activity drawer"] },
   { keys: "space f", run: ({ cmd }) => cmd.filePicker(), help: ["Panels", "Go to file"] },
   { keys: "ctrl-p", run: ({ cmd }) => cmd.filePicker() },
-  { keys: "/", run: ({ cmd }) => cmd.search(), help: ["Panels", "Search every line"] },
+  {
+    keys: "/",
+    run: ({ cmd }) => cmd.openFind(true),
+    help: ["Panels", "Search from the cursor, as you type (then n / N)"],
+  },
+  { keys: "space /", run: ({ cmd }) => cmd.search(), help: ["Panels", "Search every line, as a list"] },
   // Only rows near the screen are in the page, so the browser's find can't see the rest: use ours.
-  { keys: "ctrl-f", run: ({ cmd }) => cmd.search() },
+  { keys: "ctrl-f", run: ({ cmd }) => cmd.openFind(), help: ["Panels", "Find in this file (or every file)"] },
   { keys: "n", run: ({ cmd }) => cmd.searchNext(1), help: ["Panels", "Next / previous match of the search"] },
   { keys: "N", run: ({ cmd }) => cmd.searchNext(-1) },
   { keys: "?", run: ({ view }) => view.setHelp(true), help: ["Panels", "This list"] },

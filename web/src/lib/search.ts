@@ -37,11 +37,14 @@ export function findMatches(
   files: readonly FileDiff[],
   models: readonly FileModel[],
   query: string,
+  /** Only this file (the find bar's default), or every file. */
+  only?: number,
 ): Match[] {
   const needle = query.toLowerCase();
   const out: Match[] = [];
   if (needle.length === 0) return out;
   files.forEach((f, file) => {
+    if (only !== undefined && file !== only) return;
     const model = models[file];
     if (!model) return;
     const found: Match[] = [];

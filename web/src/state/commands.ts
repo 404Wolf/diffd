@@ -651,6 +651,24 @@ export function createCommands(review: Review, view: View) {
     bufferEl()?.focus({ preventScroll: true });
   };
   /** `g space`: the plain file at this line, in the split beside this one (made if needed). */
+  /** Shift+click a `path:line` link (or a file in the tree): open it in the next split, making one if needed. */
+  const openPathInSplit = async (path: string, line = 1) => {
+    const file = await review.openContext(path);
+    if (file === null) return;
+    const ps = view.panes();
+    const at = ps.indexOf(view.focused());
+    const other = ps[at + 1] ?? ps[at - 1];
+    if (other) view.focusPane(other.id);
+    else view.split();
+    remember();
+    view.setMode({ kind: "file", file });
+    const f = files()[file];
+    const model = review.models()[file];
+    const side: Side = f?.new ? "new" : "old";
+    const row = model ? Math.max(0, rowOf(model, side, line)) : 0;
+    placeInFileView({ file, row, side, word: null }, "center");
+    bufferEl()?.focus({ preventScroll: true });
+  };
   const fileInSplit = () => {
     const c = view.cursor();
     if (!c) return view.say("Put the cursor on a line first");
@@ -943,8 +961,9 @@ export function createCommands(review: Review, view: View) {
         : {
             query: prev.query,
             snapshot: review.snapshot(),
-            matches: findMatches(files(), review.models(), prev.query),
+            matches: findMatches(files(), review.models(), prev.query, prev.file),
             index: -1,
+            file: prev.file,
           };
     const { index, wrapped } = nextMatch(s.matches, searchPlace(dir, s), dir);
     if (index < 0) {
@@ -952,6 +971,44 @@ export function createCommands(review: Review, view: View) {
       return view.say(`/${s.query} · no matches`);
     }
     showMatch(s, index, wrapped);
+  };
+
+  /** Ctrl+F: the find bar, on the cursor's file. */
+  const openFind = (vim = false) => {
+    view.setFind({ scope: view.find()?.scope ?? "file", vim });
+    queueMicrotask(() => {
+      const input = document.getElementById("find-input") as HTMLInputElement | null;
+      input?.focus();
+      input?.select();
+    });
+  };
+  const closeFind = () => {
+    view.setFind(null);
+    bufferEl()?.focus({ preventScroll: true });
+  };
+  /** The find bar's text changed: find it, and go to the first match from the cursor (as you type). */
+  const findAsYouType = (query: string) => {
+    const scope = view.find()?.scope ?? "file";
+    const c = view.cursor();
+    const file = scope === "file" ? c?.file : undefined;
+    if (query.length === 0) return view.setSearch(null);
+    const s: Search = {
+      query,
+      snapshot: review.snapshot(),
+      matches: findMatches(files(), review.models(), query, file),
+      index: -1,
+      file,
+    };
+    if (s.matches.length === 0) return view.setSearch(s);
+    // From the start of the cursor's row, so the match under the cursor counts.
+    const from: SearchPlace = c ? { file: c.file, row: c.row, side: "old", col: -1 } : searchPlace(1, null);
+    const { index } = nextMatch(s.matches, from, 1);
+    showMatch(s, index, false);
+  };
+  const setFindScope = (scope: "file" | "all") => {
+    view.setFind({ scope, vim: view.find()?.vim ?? false });
+    const q = view.search()?.query;
+    if (q) findAsYouType(q);
   };
 
   // -- Comments ------------------------------------------------------------------
@@ -1070,10 +1127,44 @@ export function createCommands(review: Review, view: View) {
     view.setComposer({ kind: "reply", threadId: thread.id, label });
     review.drafting(true);
   };
+  /**
+   * The thread `r` answers: of those whose cards are on screen, the nearest to
+   * the cursor; else the next one after the cursor (or the last).
+   */
   const nearThread = (): Thread | undefined => {
     const at = cursorIndex();
     const all = threadsInOrder();
+    const buf = bufferEl()?.getBoundingClientRect();
+    const win = windowed();
+    if (buf && win) {
+      const onScreen = all.filter(({ thread: t }) => {
+        const file = review.paths().indexOf(t.anchor.path);
+        const model = review.models()[file];
+        const row = model ? rowOf(model, t.anchor.side, t.anchor.end) : -1;
+        const box = row >= 0 ? win.box(file, row, true) : null;
+        return box !== null && box.bottom > buf.top && box.top < buf.bottom;
+      });
+      const nearest = onScreen.sort((a, b) => Math.abs(a.index - at) - Math.abs(b.index - at))[0];
+      if (nearest) return nearest.thread;
+    }
     return (all.find((t) => at < 0 || t.index > at) ?? all.at(-1))?.thread;
+  };
+  /** `r`: reply to the thread near the cursor, going to it first when it's off screen. */
+  const replyNear = async () => {
+    const t = nearThread();
+    if (!t) return view.say("No thread to reply to");
+    const buf = bufferEl()?.getBoundingClientRect();
+    const file = review.paths().indexOf(t.anchor.path);
+    const model = review.models()[file];
+    const row = model ? rowOf(model, t.anchor.side, t.anchor.end) : -1;
+    const box = row >= 0 ? windowed()?.box(file, row, true) : null;
+    const visible = buf && box && box.bottom > buf.top && box.top < buf.bottom;
+    if (!visible) {
+      await goToThread(t);
+      // Let the card render where it landed before the composer sits under it.
+      await new Promise(requestAnimationFrame);
+    }
+    replyTo(t);
   };
   const closeComposer = () => {
     if (!view.composer()) return;
@@ -1195,6 +1286,7 @@ export function createCommands(review: Review, view: View) {
     closePane,
     focusSplit,
     fileInSplit,
+    openPathInSplit,
     setMark,
     jumpToMark,
     deleteMark,
@@ -1202,12 +1294,17 @@ export function createCommands(review: Review, view: View) {
     commitPicker,
     search,
     searchNext,
+    openFind,
+    closeFind,
+    findAsYouType,
+    setFindScope,
     jumpBack,
     jumpForward,
     comment,
     openComposer,
     commentSelection,
     replyTo,
+    replyNear,
     nearThread,
     closeComposer,
     sendComposer,

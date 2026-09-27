@@ -59,6 +59,15 @@ export interface Search {
   readonly matches: readonly Match[];
   /** The match last gone to, or -1. */
   readonly index: number;
+  /** Searched only this file (the find bar's default). */
+  readonly file?: number | undefined;
+}
+
+/** The find bar (Ctrl+F): searching the cursor's file, or every file. */
+export interface Find {
+  readonly scope: "file" | "all";
+  /** Opened with `/`: enter goes to the match and closes the bar, like vim. */
+  readonly vim?: boolean;
 }
 
 /** Lines picked with the mouse, waiting to be commented on. */
@@ -407,6 +416,7 @@ export function createView(review: Review) {
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [picker, setPicker] = createSignal<Picker | null>(null);
   const [search, setSearch] = createSignal<Search | null>(null);
+  const [find, setFind] = createSignal<Find | null>(null);
   const [help, setHelp] = createSignal(false);
   const [pending, setPending] = createSignal("");
   const [message, setMessageRaw] = createSignal("");
@@ -479,6 +489,8 @@ export function createView(review: Review) {
     setPicker,
     search,
     setSearch,
+    find,
+    setFind,
     help,
     setHelp,
     pending,

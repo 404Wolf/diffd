@@ -1,5 +1,5 @@
 import { Dialog } from "@kobalte/core/dialog";
-import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
 import { match } from "ts-pattern";
 import { agentName } from "../lib/agent";
 import { diagnosticsOn } from "../lib/code";
@@ -12,6 +12,9 @@ import type { LayoutState } from "../state/layout";
 import type { Review } from "../state/review";
 import type { PickerItem, View } from "../state/view";
 
+/** How long the agent must have stopped listening before the top bar says so. */
+const PRESENCE_SETTLE_MS = 4000;
+
 export function TopBar(props: { review: Review }) {
   const meta = () => props.review.meta();
   const totals = createMemo(() =>
@@ -23,8 +26,19 @@ export function TopBar(props: { review: Review }) {
     const n = props.review.pendingCount();
     return n === 0 ? "" : ` · ${n} queued`;
   };
+  // An agent between two waits (or a hook re-arming after a turn) stops
+  // listening for a moment: only show it stopped once it has for a while.
+  const [steady, setSteady] = createSignal(props.review.conv.presence);
+  let settle: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => {
+    const next = props.review.conv.presence;
+    clearTimeout(settle);
+    if (next === "listening" || untrack(steady) !== "listening") setSteady(next);
+    else settle = setTimeout(() => setSteady(next), PRESENCE_SETTLE_MS);
+  });
+  onCleanup(() => clearTimeout(settle));
   const presence = () =>
-    match([props.review.connection(), props.review.conv.presence] as const)
+    match([props.review.connection(), steady()] as const)
       .with(["gone", "listening"], ["gone", "working"], ["gone", "away"], () => ({
         dot: "bg-del",
         text: "This review was deleted",

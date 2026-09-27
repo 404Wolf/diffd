@@ -187,14 +187,14 @@ impl App {
 /// Counts as an agent listening on a review for as long as it's held.
 pub(super) struct Listening<'a> {
     app: &'a App,
-    live: &'a super::Live,
+    live: std::sync::Arc<super::Live>,
 }
 
 impl<'a> Listening<'a> {
-    pub(super) fn start(app: &'a App, live: &'a super::Live) -> Self {
+    pub(super) fn start(app: &'a App, live: &std::sync::Arc<super::Live>) -> Self {
         live.inner.lock().expect("live lock").listeners += 1;
         app.agent_seen(live);
-        Self { app, live }
+        Self { app, live: live.clone() }
     }
 }
 
@@ -203,7 +203,7 @@ impl Drop for Listening<'_> {
         let mut inner = self.live.inner.lock().expect("live lock");
         inner.listeners = inner.listeners.saturating_sub(1);
         drop(inner);
-        self.app.agent_seen(self.live);
+        self.app.agent_seen(&self.live);
     }
 }
 

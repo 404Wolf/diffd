@@ -12,6 +12,9 @@ import type { View } from "../state/view";
  * The comment composer: a small popover right under what you selected. It
  * floats over the diff, so opening it, typing and sending never scroll.
  */
+/** A `c` typed this soon after `gc` opened the composer is the end of `gcc`, not text. */
+const GCC_GRACE_MS = 400;
+
 export function CommentPopover(props: {
   review: Review;
   view: View;
@@ -20,6 +23,8 @@ export function CommentPopover(props: {
 }) {
   let el: HTMLDivElement | undefined;
   let input: HTMLTextAreaElement | undefined;
+  /** When the composer last opened. */
+  let openedAt = 0;
   const [pos, setPos] = createSignal({ top: 0, left: 0 });
   const [armed, setArmed] = createSignal(false);
 
@@ -98,6 +103,7 @@ export function CommentPopover(props: {
   createEffect(() => {
     const c = props.view.composer();
     if (c) {
+      openedAt = performance.now();
       pane = untrack(() => props.view.focused().id);
       setArmed(false);
       queueMicrotask(() => {
@@ -124,6 +130,18 @@ export function CommentPopover(props: {
 
   const onKey = (e: KeyboardEvent) => {
     if (composing(e)) return;
+    // `gcc` from muscle memory: `gc` already opened this, so its last c isn't the comment's first letter.
+    if (
+      e.key === "c" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      input?.value === "" &&
+      performance.now() - openedAt < GCC_GRACE_MS
+    ) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       props.cmd.sendComposer(input?.value ?? "");

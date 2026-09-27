@@ -14,6 +14,7 @@ import { Help, Nudge, Picker, StatusLine, TopBar } from "./Chrome";
 import { CommentPopover, SelectionBubble } from "./CommentPopover";
 import { Drawer } from "./Drawer";
 import { FileTree } from "./FileTree";
+import { FindBar } from "./FindBar";
 import { HoverCard, usePaintDiagnostics } from "./Hover";
 import { RightPanel } from "./RightPanel";
 import { usePaintSearch } from "./SearchHighlights";
@@ -109,13 +110,20 @@ export function ReviewPage(props: { state: ReviewState }) {
     if (!go) return;
     e.preventDefault();
     const at = go.lastIndexOf(":");
-    void cmd.openPathAt(go.slice(0, at), Number(go.slice(at + 1)));
+    const [path, line] = [go.slice(0, at), Number(go.slice(at + 1))];
+    // Shift+click: in a split, next to what you're reading.
+    void (e.shiftKey ? cmd.openPathInSplit(path, line) : cmd.openPathAt(path, line));
   };
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const onKeyDown = (e: KeyboardEvent) => {
     if (composing(e)) return;
     if (e.key === "Control" || e.key === "Meta") v.setSymKey(true);
+    // Ctrl+F is always ours, even from a text box: the browser's find can't see rows off screen.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      return cmd.openFind();
+    }
     const target = e.target as HTMLElement;
     if (target.closest("input, textarea, select, [contenteditable], [role=menu]") || v.picker() || v.help())
       return;
@@ -197,6 +205,7 @@ export function ReviewPage(props: { state: ReviewState }) {
         </Drawer>
         <div class="relative flex min-w-0 flex-1 flex-col">
           <ReplyToasts review={review} cmd={cmd} />
+          <FindBar view={v} cmd={cmd} />
           <main id="panes" class="flex min-h-0 flex-1">
             <For each={v.panes()}>
               {(pane, i) => (
