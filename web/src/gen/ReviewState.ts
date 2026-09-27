@@ -12,7 +12,8 @@ import type { Thread } from "./Thread";
 
 /**
  * Everything the page needs to render a review. It's embedded in the HTML so
- * the page works offline, and re-sent when the socket (re)connects.
+ * the page works offline, and sent again when the socket (re)connects from a
+ * page without the current revision (otherwise it gets [`LiveState`]).
  */
 export type ReviewState = { review: ReviewMeta, snapshot: Snapshot, threads: Array<Thread>, 
 /**

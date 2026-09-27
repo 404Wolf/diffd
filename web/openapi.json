@@ -1253,6 +1253,77 @@
           }
         }
       },
+      "LiveState": {
+        "type": "object",
+        "description": "[`ReviewState`] without the snapshot: what a page that already has the\ncurrent revision needs when its socket (re)connects. A big review's\nsnapshot is megabytes, and the page already holds it.",
+        "required": [
+          "review",
+          "threads",
+          "regions",
+          "layout",
+          "history",
+          "chat",
+          "activity",
+          "presence",
+          "readSeq",
+          "diagnostics"
+        ],
+        "properties": {
+          "review": {
+            "$ref": "#/components/schemas/ReviewMeta"
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Thread"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Region"
+            }
+          },
+          "layout": {
+            "$ref": "#/components/schemas/Layout"
+          },
+          "history": {
+            "$ref": "#/components/schemas/History"
+          },
+          "chat": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "activity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            }
+          },
+          "presence": {
+            "$ref": "#/components/schemas/Presence"
+          },
+          "readSeq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "diagnostics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Diagnostic"
+              }
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "Message": {
         "type": "object",
         "description": "A message in a thread, or in the chat.",
@@ -1440,7 +1511,7 @@
       },
       "ReviewState": {
         "type": "object",
-        "description": "Everything the page needs to render a review. It's embedded in the HTML so\nthe page works offline, and re-sent when the socket (re)connects.",
+        "description": "Everything the page needs to render a review. It's embedded in the HTML so\nthe page works offline, and sent again when the socket (re)connects from a\npage without the current revision (otherwise it gets [`LiveState`]).",
         "required": [
           "review",
           "snapshot",
@@ -1563,7 +1634,7 @@
         "oneOf": [
           {
             "type": "object",
-            "description": "Full state, sent on connect.",
+            "description": "Full state, sent on connect, and to a page that can't apply a `revision`.",
             "required": [
               "state",
               "type"
@@ -1582,18 +1653,37 @@
           },
           {
             "type": "object",
-            "description": "A new revision of the diff.",
+            "description": "Sent on connect instead of `State` when the page already has the\ncurrent revision (the socket's URL says which one it has).",
+            "required": [
+              "state",
+              "type"
+            ],
+            "properties": {
+              "state": {
+                "$ref": "#/components/schemas/LiveState"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "resume"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A new revision of the diff, as changes to the one before.",
             "required": [
               "review",
-              "snapshot",
+              "delta",
               "type"
             ],
             "properties": {
               "review": {
                 "$ref": "#/components/schemas/ReviewMeta"
               },
-              "snapshot": {
-                "$ref": "#/components/schemas/Snapshot"
+              "delta": {
+                "$ref": "#/components/schemas/SnapshotDelta"
               },
               "type": {
                 "type": "string",
@@ -1977,6 +2067,47 @@
             "items": {
               "$ref": "#/components/schemas/Symbol"
             }
+          }
+        }
+      },
+      "SnapshotDelta": {
+        "type": "object",
+        "description": "A revision as changes to the one before it. An agent editing one file of\na big review would otherwise resend every file (megabytes) on each save.",
+        "required": [
+          "base",
+          "revision",
+          "paths",
+          "files",
+          "symbols"
+        ],
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/u32",
+            "description": "The revision this applies to."
+          },
+          "revision": {
+            "$ref": "#/components/schemas/u32"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every file's path, in the new order. Paths not in `files` are the\nbase's files, unchanged; base files missing here are gone."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileDiff"
+            },
+            "description": "Files that are new or differ in any way from the base's."
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Symbol"
+            },
+            "description": "The definitions in `files`, with `file` indexing the new order."
           }
         }
       },

@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 use diffd_core::feedback::FeedbackGate;
 use diffd_core::model::{History, Millis, Presence, ReviewId, ReviewMeta, Snapshot};
-use diffd_core::protocol::{ReviewState, ServerMsg};
+use diffd_core::protocol::{LiveState, ReviewState, ServerMsg};
 use tokio::sync::{Notify, broadcast};
 
 pub use conversation::{LayoutInput, NoteInput, RegionInput};
@@ -218,16 +218,21 @@ impl App {
 
     /// Everything the page needs, as of now.
     pub async fn state(&self, id: &ReviewId) -> Result<ReviewState> {
+        let (snapshot, live) = self.live_state(id).await?;
+        Ok(ReviewState::new((*snapshot).clone(), live))
+    }
+
+    /// The current snapshot, and everything else the page needs apart from it.
+    pub async fn live_state(&self, id: &ReviewId) -> Result<(Arc<Snapshot>, LiveState)> {
         let live = self.live(id).await?;
         let (review, spec) = self.meta(id).await?;
-        let (presence, diagnostics) = {
+        let (snapshot, presence, diagnostics) = {
             let inner = live.inner.lock().expect("live lock");
-            (inner.presence, inner.diagnostics.clone())
+            (inner.snapshot.clone(), inner.presence, inner.diagnostics.clone())
         };
         let history = self.history(&live, &review, &spec).await;
-        Ok(ReviewState {
+        let state = LiveState {
             review,
-            snapshot: (*Self::snapshot(&live)).clone(),
             threads: self.store.threads(id).await?,
             regions: spec.regions,
             layout: spec.layout,
@@ -237,7 +242,8 @@ impl App {
             presence,
             read_seq: self.store.read_seq(id).await?,
             diagnostics,
-        })
+        };
+        Ok((snapshot, state))
     }
 
     async fn meta(&self, id: &ReviewId) -> Result<(ReviewMeta, crate::adapters::store::ReviewSpec)> {

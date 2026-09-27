@@ -142,14 +142,18 @@ async fn bad_requests_explain_themselves() {
     assert!(err.contains("unknown revision"), "{err}");
 }
 
-/// The next new revision the page would hear about, if one comes within a few seconds.
+/// The next new revision the page would hear about, if one comes within a few
+/// seconds, applied to the page's copy `page` as the page does; and the paths
+/// the change carried.
 async fn next_revision(
     events: &mut tokio::sync::broadcast::Receiver<diffd_core::protocol::ServerMsg>,
-) -> Option<diffd_core::model::Snapshot> {
+    page: &mut diffd_core::model::Snapshot,
+) -> Option<Vec<String>> {
     let wait = async {
         loop {
-            if let diffd_core::protocol::ServerMsg::Revision { snapshot, .. } = events.recv().await.ok()? {
-                return Some(*snapshot);
+            if let diffd_core::protocol::ServerMsg::Revision { delta, .. } = events.recv().await.ok()? {
+                *page = delta.apply(page).expect("the delta applies to the page's revision");
+                return Some(delta.files.iter().map(|f| f.path.clone()).collect());
             }
         }
     };
@@ -168,21 +172,24 @@ async fn working_tree_reviews_follow_edits() {
     req.annotations.clear();
     let id = diffd_core::model::ReviewId(app.share(req).await.unwrap().review_id);
     let mut events = app.subscribe(&id).await.unwrap();
+    let mut got = app.state(&id).await.unwrap().snapshot;
 
     repo.write("a.txt", "three\n");
-    let got = next_revision(&mut events).await.expect("no revision after editing a watched file");
+    next_revision(&mut events, &mut got).await.expect("no revision after editing a watched file");
     assert_eq!(got.revision, 2);
     assert_eq!(got.files[0].new.as_ref().unwrap().lines, vec!["three"]);
     assert_eq!(got.files[0].since, vec![1]);
 
     // A directory made after sharing is watched too.
     repo.write("new/dir/b.txt", "b\n");
-    let got = next_revision(&mut events).await.expect("no revision for a file in a new directory");
+    next_revision(&mut events, &mut got).await.expect("no revision for a file in a new directory");
     assert!(got.files.iter().any(|f| f.path == "new/dir/b.txt"));
     repo.write("new/dir/b.txt", "b2\n");
-    let got = next_revision(&mut events).await.expect("no revision after editing inside the new directory");
+    let sent = next_revision(&mut events, &mut got).await.expect("no revision after editing inside the new directory");
+    assert_eq!(sent, ["new/dir/b.txt"], "only the changed file is sent");
     let b = got.files.iter().find(|f| f.path == "new/dir/b.txt").unwrap();
     assert_eq!(b.new.as_ref().unwrap().lines, vec!["b2"]);
+    assert_eq!(got, app.state(&id).await.unwrap().snapshot, "the page's copy matches the server's");
 
     // Deleted: the page hears so, and nothing is rebuilt any more.
     app.delete(&id).await.unwrap();

@@ -25,10 +25,17 @@ export interface SocketEvents {
   onStatus: (status: Connection) => void;
   /** The outbox changed: everything written but not yet confirmed, oldest first. */
   onOutbox: (pending: ClientMsg[]) => void;
+  /**
+   * The revision the page has. The server answers a (re)connect with
+   * `resume`, leaving out the snapshot, when that's still current.
+   */
+  revision?: () => number;
 }
 
 export interface Socket {
   send(msg: ClientMsg): void;
+  /** Reconnect now, to be sent the whole state (e.g. a revision that doesn't apply to ours). */
+  resync(): void;
   close(): void;
 }
 
@@ -97,8 +104,9 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
     }
     events.onStatus("connecting");
     const scheme = location.protocol === "https:" ? "wss" : "ws";
+    const has = events.revision ? `?revision=${events.revision()}` : "";
     const socket = new WebSocket(
-      `${scheme}://${location.host}/api/reviews/${encodeURIComponent(reviewId)}/ws`,
+      `${scheme}://${location.host}/api/reviews/${encodeURIComponent(reviewId)}/ws${has}`,
     );
     ws = socket;
     socket.onopen = () => {
@@ -108,6 +116,8 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
       void adopt();
     };
     socket.onmessage = (e) => {
+      // A socket given up on (see `resync`) may still deliver what it had buffered.
+      if (ws !== socket) return;
       let msg: ServerMsg;
       try {
         msg = JSON.parse(String(e.data)) as ServerMsg;
@@ -200,6 +210,14 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
         transmit(key, msg);
         if (key !== null && !needsAck(msg)) changed();
       }
+    },
+    resync() {
+      if (closed || ws === null) return;
+      const old = ws;
+      // Forget it first, so its close doesn't schedule a retry.
+      ws = null;
+      old.close();
+      open();
     },
     close: stop,
   };
