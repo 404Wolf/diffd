@@ -468,7 +468,10 @@ try {
     await keys(page, "g", "S");
     await page.keyboard.type("Limiter");
     check((await page.locator("[role=dialog] li").count()) >= 1, "gS lists symbols across the diff");
-    await keys(page, "Escape", "?");
+    await shot(page, "picker");
+    await keys(page, "Escape");
+    check((await page.locator("[role=dialog]").count()) === 0, "esc closes a picker");
+    await keys(page, "?");
     check(await page.getByText("Keys").first().isVisible(), "? shows every key");
     await shot(page, "help");
     await keys(page, "Escape");

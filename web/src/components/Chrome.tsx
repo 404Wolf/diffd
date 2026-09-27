@@ -284,12 +284,14 @@ export function Picker(props: { view: View }) {
     }
   };
   return (
-    <Dialog open={props.view.picker() !== null} onOpenChange={(open) => !open && close()}>
+    // Light, like a command palette: the page stays as it was behind it, undimmed.
+    <Dialog open={props.view.picker() !== null} onOpenChange={(open) => !open && close()} modal={false}>
       <Dialog.Portal>
-        <Dialog.Overlay class="fixed inset-0 z-30 bg-[color-mix(in_srgb,var(--page)_65%,transparent)] backdrop-blur-[2px]" />
-        <div class="fixed inset-0 z-30 grid place-items-start justify-center p-4 pt-[12vh]">
-          <Dialog.Content class="w-[min(640px,100vw-32px)] rounded-xl border border-line-strong bg-bg p-3 shadow-pop">
-            <Dialog.Title class="mb-2 text-sm font-semibold">{props.view.picker()?.title}</Dialog.Title>
+        <div class="pointer-events-none fixed inset-x-0 top-12 z-30 flex justify-center px-4">
+          <Dialog.Content class="pointer-events-auto w-[min(640px,100vw-32px)] rounded-lg border border-line-strong bg-bg p-2 shadow-pop">
+            <Dialog.Title class="mb-1.5 px-0.5 text-xs font-semibold text-muted">
+              {props.view.picker()?.title}
+            </Dialog.Title>
             <input
               autofocus
               value={query()}
@@ -351,7 +353,7 @@ export function Help(props: { view: View }) {
   return (
     <Dialog open={props.view.help()} onOpenChange={props.view.setHelp}>
       <Dialog.Portal>
-        <Dialog.Overlay class="fixed inset-0 z-30 bg-[color-mix(in_srgb,var(--page)_65%,transparent)] backdrop-blur-[2px]" />
+        <Dialog.Overlay class="fixed inset-0 z-30 bg-[color-mix(in_srgb,var(--page)_40%,transparent)]" />
         <div class="fixed inset-0 z-30 grid place-items-center p-4">
           <Dialog.Content class="max-h-[84vh] w-[min(820px,100vw-32px)] overflow-auto rounded-xl border border-line-strong bg-bg px-4 pt-3.5 pb-4 shadow-pop">
             <div class="mb-1 flex items-center gap-2">

@@ -153,9 +153,17 @@ export function Chat(props: { review: Review; view: View }) {
             }
           }}
         />
-        <span class="text-[10.5px] whitespace-nowrap text-subtle">
-          <kbd>space</kbd> <kbd>i</kbd> to focus · <kbd>enter</kbd> to send · <kbd>shift</kbd>{" "}
-          <kbd>enter</kbd> new line
+        {/* Each hint stays whole; a narrow panel wraps between them. */}
+        <span class="flex flex-wrap gap-x-2 text-[10.5px] text-subtle [&>span]:whitespace-nowrap">
+          <span>
+            <kbd>space</kbd> <kbd>i</kbd> focus
+          </span>
+          <span>
+            <kbd>enter</kbd> send
+          </span>
+          <span>
+            <kbd>shift</kbd> <kbd>enter</kbd> new line
+          </span>
         </span>
       </form>
     </section>

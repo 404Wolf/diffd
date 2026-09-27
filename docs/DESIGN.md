@@ -602,9 +602,11 @@ open pages, which stop reconnecting. `refresh` runs the same rebuild on demand.
     signal.
   - **Commits:** the review's commits, when it spans any (§8.8).
   - **Marks**, underneath: your vim marks (§8.11).
-- **Chat box**, docked under the diff, for anything not about specific lines.
-  Claude answers there (`say`), and `path:line` references in its answers are
-  links into the diff. `space i` focuses it.
+- **Chat box**, docked at the bottom of the right panel, for anything not
+  about specific lines. Claude answers there (`say`), and `path:line`
+  references in its answers are links into the diff. `space i` focuses it.
+  Its message box grows with what you type (enter sends, shift+enter is a
+  new line), and dragging its top edge (or arrow keys on it) resizes it.
 - **Status line (vim):** mode, position, hunk n/m, the cursor line's worst
   diagnostic, key hints.
 
@@ -766,7 +768,8 @@ Reviews often need code the change didn't touch.
 
 - `GET /api/reviews/{id}/files` lists every file on the review's `to` side
   (tracked and untracked, minus ignored). The file tree uses it to show a
-  folder's **neighbours**: files next to the changed ones.
+  folder's **neighbours**: files next to the changed ones. Double-click a
+  changed file (a single click just opens it), or click a folder's ⋯.
 - `GET /api/reviews/{id}/context?path=` returns one file, highlighted, as an
   unchanged "diff" (`FileStatus::Unchanged`). It opens in file view.
   Symlinks out of the repository aren't followed, files over 3 MB are listed
@@ -915,7 +918,11 @@ How we get there:
 - **The reader's place is kept by the window.** Every layout change (a gap
   expanding, a file collapsing, a thread or a revision arriving) keeps the
   item at the top of the screen where it was. A collapsed file's header takes
-  the place of its rows.
+  the place of its rows. A revision renumbers rows (lines added above) and
+  files (a file added before), so each pane's top line, cursor and jump list
+  follow the code instead (`carryRow`): a row with an old line keeps it (the
+  base doesn't change), and an added line is found by its text, near where the
+  edits above moved it.
 - **Sticky file headers** are one overlay showing the file at the top of the
   screen, pushed up by the end of its card.
 - **Selections and the composer.** A text selection keeps the item it starts
