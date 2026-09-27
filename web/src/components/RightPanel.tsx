@@ -3,9 +3,10 @@ import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";
 import type { RightTab, View } from "../state/view";
 import { Activity } from "./Activity";
+import { Chat } from "./Chat";
 import { Commits } from "./Commits";
 
-/** The right drawer: activity or commits in tabs, and your marks underneath. */
+/** The right drawer: activity or commits in tabs, your marks, and the chat at the bottom. */
 export function RightPanel(props: { review: Review; view: View; cmd: Commands }) {
   const hasCommits = () => props.review.history().commits.length > 0;
   const tab = (): RightTab => (props.view.rightTab() === "commits" && hasCommits() ? "commits" : "activity");
@@ -48,6 +49,7 @@ export function RightPanel(props: { review: Review; view: View; cmd: Commands })
         </Show>
       </div>
       <Marks view={props.view} cmd={props.cmd} />
+      <Chat review={props.review} view={props.view} />
     </div>
   );
 }

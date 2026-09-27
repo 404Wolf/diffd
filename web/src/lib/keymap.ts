@@ -41,7 +41,7 @@ export function keyToken(
     case " ":
       return e.ctrlKey ? null : "space";
     case "Enter":
-      return e.shiftKey ? "shift-enter" : "enter";
+      return `${e.ctrlKey ? "ctrl-" : ""}${e.shiftKey ? "shift-" : ""}enter`;
     case "Escape":
       return e.ctrlKey ? "ctrl-esc" : "esc";
     case "Tab":

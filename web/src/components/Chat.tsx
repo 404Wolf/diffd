@@ -22,9 +22,20 @@ export function Chat(props: { review: Review; view: View }) {
     input.value = "";
   };
   return (
-    <section aria-label={`Chat with ${AGENT}`} class="flex-none border-t border-line bg-panel">
-      <Show when={props.review.chat().length > 0}>
-        <div ref={log} class="flex max-h-[190px] flex-col gap-1.5 overflow-auto px-3 pt-1.5">
+    // A fixed share of the side panel, whatever the conversation's length.
+    <section
+      aria-label={`Chat with ${AGENT}`}
+      class="flex h-[30%] min-h-28 flex-none flex-col border-t border-line bg-panel"
+    >
+      <div ref={log} class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto px-3 pt-1.5">
+        <Show
+          when={props.review.chat().length > 0}
+          fallback={
+            <p class="m-auto px-2 text-center text-[12px] text-subtle">
+              Anything not about particular lines: ask {AGENT} here.
+            </p>
+          }
+        >
           <For each={props.review.chat()}>
             {(m) => (
               <div class="grid grid-cols-[20px_minmax(0,1fr)] gap-2 text-[12.5px]">
@@ -48,16 +59,16 @@ export function Chat(props: { review: Review; view: View }) {
               </div>
             )}
           </For>
-        </div>
-      </Show>
-      <form class="flex items-center gap-2 px-2 py-1" onSubmit={send}>
+        </Show>
+      </div>
+      <form class="flex flex-none flex-col gap-0.5 px-2 py-1.5" onSubmit={send}>
         <input
           ref={input}
           id="chat-input"
           autocomplete="off"
           placeholder={`Ask ${AGENT} about this diff`}
           aria-label={`Message ${AGENT}`}
-          class="h-6 min-w-0 flex-1 rounded-md border border-line-strong bg-bg px-2.5 text-[12.5px] focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
+          class="h-6 w-full min-w-0 rounded-md border border-line-strong bg-bg px-2.5 text-[12.5px] focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
           onKeyDown={(e) => {
             if (composing(e)) return;
             if (e.key === "Escape") {
@@ -66,7 +77,7 @@ export function Chat(props: { review: Review; view: View }) {
             }
           }}
         />
-        <span class="hidden text-[11px] whitespace-nowrap text-subtle sm:inline">
+        <span class="text-[10.5px] whitespace-nowrap text-subtle">
           <kbd>space</kbd> <kbd>i</kbd> to focus · <kbd>enter</kbd> to send
         </span>
       </form>

@@ -386,6 +386,7 @@ export function createView(review: Review) {
     setRightTab,
     visible,
     setVisible,
+    pinnedRows,
     flags,
     setFlags,
     hidden,

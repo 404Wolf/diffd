@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { FileDiff } from "../gen/FileDiff";
 import { fromRuns, toRuns } from "../state/persist";
 import { diagnosticSpan, diagnosticsOn, IDENT, wordAt } from "./code";
-import { blocks, expandGap, fileModel, initialVisible, nearestGap } from "./diffModel";
+import {
+  blocks,
+  expandGap,
+  fileModel,
+  growAround,
+  initialVisible,
+  nearestGap,
+  shrinkAround,
+} from "./diffModel";
 import { carrySpan, locate, points, rangeOf, spanLabel, step, steps } from "./history";
 import { JumpList } from "./jumps";
 import { KeyEngine, keyToken } from "./keymap";
@@ -386,5 +394,25 @@ describe("jump list remapping", () => {
 describe("identifiers in any script", () => {
   it("finds words the way `w` walks them", () => {
     expect("let 名前 = é_1 + $x".match(IDENT)).toEqual(["let", "名前", "é_1", "$x"]);
+  });
+});
+
+describe("context around the cursor's hunk", () => {
+  const vis = (s: string) => Uint8Array.from(s, (c) => (c === "1" ? 1 : 0));
+  const str = (v: Uint8Array) => [...v].join("");
+  it("ctrl-enter grows both ways, clamped to the file", () => {
+    expect(str(growAround(vis("0000110000"), 4, 2))).toBe("0011111100");
+    expect(str(growAround(vis("1100000000"), 0, 3))).toBe("1111100000");
+    expect(str(growAround(vis("0000000000"), 5, 1)), "a hidden row opens around itself").toBe("0000111000");
+  });
+  it("ctrl-shift-enter shrinks both ways, keeping changes, their context and the cursor", () => {
+    const keep = vis("0000110000");
+    expect(str(shrinkAround(vis("0111111110"), 4, 2, keep))).toBe("0001111000");
+    expect(str(shrinkAround(vis("0001111000"), 4, 2, keep))).toBe("0000110000");
+    expect(str(shrinkAround(vis("0000110000"), 4, 2, keep)), "never below the changes").toBe("0000110000");
+    expect(
+      str(shrinkAround(vis("1111111111"), 0, 3, vis("0000000000"))),
+      "nothing above the cursor to hide",
+    ).toBe("1111111000");
   });
 });

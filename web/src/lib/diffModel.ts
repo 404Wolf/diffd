@@ -104,6 +104,40 @@ export function expandGap(
   return next;
 }
 
+/** The run of visible rows around `row`, as `[start, end)`; empty at a hidden row. */
+function visibleRun(visible: Uint8Array, row: number): [number, number] {
+  if (visible[row] !== 1) return [row, row];
+  let start = row;
+  while (start > 0 && visible[start - 1] === 1) start--;
+  let end = row + 1;
+  while (end < visible.length && visible[end] === 1) end++;
+  return [start, end];
+}
+
+/**
+ * Show `step` more rows on both sides of the visible run around `row` (the
+ * hunk the cursor is in): the gap above grows down to it, the gap below up.
+ * A hidden `row` opens around itself.
+ */
+export function growAround(visible: Uint8Array, row: number, step: number): Uint8Array {
+  const next = visible.slice();
+  const [start, end] = visible[row] === 1 ? visibleRun(visible, row) : [row, row + 1];
+  next.fill(1, Math.max(0, start - step), Math.min(visible.length, end + step));
+  return next;
+}
+
+/**
+ * Hide up to `step` rows from each end of the visible run around `row`,
+ * never hiding `keep` rows (changes and their context, threads) or `row`.
+ */
+export function shrinkAround(visible: Uint8Array, row: number, step: number, keep: Uint8Array): Uint8Array {
+  const next = visible.slice();
+  const [start, end] = visibleRun(visible, row);
+  for (let i = start, n = 0; i < row && n < step && keep[i] !== 1; i++, n++) next[i] = 0;
+  for (let i = end - 1, n = 0; i > row && n < step && keep[i] !== 1; i--, n++) next[i] = 0;
+  return next;
+}
+
 /**
  * The gap nearest to `row`, and the direction that grows toward it. Ties go
  * to the gap below.

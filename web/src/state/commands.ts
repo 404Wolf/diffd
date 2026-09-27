@@ -13,7 +13,15 @@ import type { Side } from "../gen/Side";
 import type { Symbol as Definition } from "../gen/Symbol";
 import type { Thread } from "../gen/Thread";
 import { diagnosticsOn, IDENT, textRange, type WordAt } from "../lib/code";
-import { type ExpandDirection, expandGap, initialVisible, nearestGap, rowOf } from "../lib/diffModel";
+import {
+  type ExpandDirection,
+  expandGap,
+  growAround,
+  initialVisible,
+  nearestGap,
+  rowOf,
+  shrinkAround,
+} from "../lib/diffModel";
 import { step, steps } from "../lib/history";
 import { fillAll, hasPending } from "../lib/lazyRows";
 import { rowChanged } from "../lib/render";
@@ -350,7 +358,7 @@ export function createCommands(review: Review, view: View) {
         if (file >= 0) openFile(file);
       })
       .with({ type: "show" }, ({ request }) => showRequest(request))
-      .with({ type: "agentSaid" }, () => document.getElementById("chat-input")?.focus())
+      .with({ type: "agentSaid" }, () => focusChat())
       .with({ type: "opened" }, () => noteJump(1))
       .exhaustive();
   };
@@ -371,6 +379,29 @@ export function createCommands(review: Review, view: View) {
     const gap = nearestGap(view.visible(c.file), c.row);
     if (!gap) return view.say("No hidden lines in this file");
     expand(c.file, gap.start, gap.end, gap.dir);
+  };
+
+  /** `ctrl-enter`: more context above and below the hunk the cursor is in. */
+  const expandAround = () => {
+    const c = view.cursor();
+    if (!c || view.mode().kind !== "diff") return;
+    const vis = view.visible(c.file);
+    const next = growAround(vis, c.row, EXPAND_STEP);
+    if (next.every((v, i) => v === vis[i])) return view.say("Nothing more to show around here");
+    keepViewport(() => view.setVisible(c.file, next));
+  };
+
+  /** `ctrl-shift-enter`: less context above and below, back toward the changes. */
+  const contractAround = () => {
+    const c = view.cursor();
+    const model = c ? review.models()[c.file] : undefined;
+    if (!c || !model || view.mode().kind !== "diff") return;
+    const vis = view.visible(c.file);
+    const keep = initialVisible(model, CONTEXT, view.pinnedRows(c.file));
+    const next = shrinkAround(vis, c.row, EXPAND_STEP, keep);
+    if (next.every((v, i) => v === vis[i]))
+      return view.say("Only the changes and their context are left here");
+    keepViewport(() => view.setVisible(c.file, next));
   };
 
   /**
@@ -868,6 +899,11 @@ export function createCommands(review: Review, view: View) {
   // -- Misc ----------------------------------------------------------------------
 
   const toggleDrawer = (side: "left" | "right") => view.setDrawers(side, "collapsed", (c) => !c);
+  /** The chat lives in the right drawer: open it if needed. */
+  const focusChat = () => {
+    view.setDrawers("right", "collapsed", false);
+    queueMicrotask(() => document.getElementById("chat-input")?.focus());
+  };
   const markViewedAndNext = () => {
     const mode = view.mode();
     const file = mode.kind === "file" ? mode.file : view.cursor()?.file;
@@ -911,6 +947,8 @@ export function createCommands(review: Review, view: View) {
     goToThread,
     expand,
     expandNearest,
+    expandAround,
+    contractAround,
     toggleFold,
     setViewed,
     expandAll,
@@ -947,6 +985,7 @@ export function createCommands(review: Review, view: View) {
     showRequest,
     nudgeDone,
     toggleDrawer,
+    focusChat,
     markViewedAndNext,
     escapeAll,
     startVisual,

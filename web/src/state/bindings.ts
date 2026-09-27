@@ -113,6 +113,18 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   },
   { keys: "shift-enter", modes: diffModes, run: ({ cmd }) => cmd.expandNearest() },
   {
+    keys: "ctrl-enter",
+    modes: diffModes,
+    run: ({ cmd }) => cmd.expandAround(),
+    help: ["Context", "Show more lines above and below this hunk"],
+  },
+  {
+    keys: "ctrl-shift-enter",
+    modes: diffModes,
+    run: ({ cmd }) => cmd.contractAround(),
+    help: ["Context", "Show fewer lines above and below this hunk"],
+  },
+  {
     keys: "z a",
     run: ({ cmd, view }) => {
       const f = view.cursor()?.file;
@@ -154,7 +166,7 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   },
   {
     keys: "space i",
-    run: () => document.getElementById("chat-input")?.focus(),
+    run: ({ cmd }) => cmd.focusChat(),
     help: ["Talk", "Ask Claude anything"],
   },
   // Text objects, in visual mode: i = inside, a = around (vip, vaf, vi{, …).

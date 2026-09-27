@@ -17,7 +17,6 @@ import {
 import { createReview } from "../state/review";
 import { createView, type View } from "../state/view";
 import { Buffer } from "./Buffer";
-import { Chat } from "./Chat";
 import { Help, Nudge, Picker, StatusLine, TopBar } from "./Chrome";
 import { CommentPopover, SelectionBubble } from "./CommentPopover";
 import { Drawer } from "./Drawer";
@@ -236,7 +235,6 @@ export function ReviewPage(props: { state: ReviewState }) {
               )}
             </For>
           </main>
-          <Chat review={review} view={v} />
         </div>
         <Drawer
           side="right"
