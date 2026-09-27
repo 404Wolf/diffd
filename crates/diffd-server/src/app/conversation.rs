@@ -1,8 +1,8 @@
 //! Threads, notes, chat and "show me": everything said about a review.
 
 use diffd_core::model::{
-    ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, NoteKind, Region, RegionKind, ReviewId,
-    ShowRequest, Side, Snapshot, Thread, ThreadId, ThreadKind,
+    ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, NoteKind, Region, RegionKind, ReviewId, ShowRequest, Side, Snapshot,
+    Thread, ThreadId, ThreadKind,
 };
 use diffd_core::protocol::ServerMsg;
 use schemars::JsonSchema;
@@ -104,13 +104,7 @@ impl App {
         if !diffd_core::protocol::valid_client_id(&id.0) {
             return Err(AppError::Invalid("bad message id".into()));
         }
-        Ok(Message {
-            id,
-            author,
-            body: body.to_owned(),
-            created_at: self.now(),
-            delivered_at: None,
-        })
+        Ok(Message { id, author, body: body.to_owned(), created_at: self.now(), delivered_at: None })
     }
 
     /// The user touched something: hold feedback until they pause, and wake the agent.
@@ -150,11 +144,8 @@ impl App {
         };
         self.store.insert_thread(id, &thread).await?;
         self.store.touch_review(id, self.now()).await?;
-        let kind = ActivityKind::UserCommented {
-            thread_id: thread.id.clone(),
-            path: thread.anchor.path.clone(),
-            line: thread.anchor.start,
-        };
+        let kind =
+            ActivityKind::UserCommented { thread_id: thread.id.clone(), path: thread.anchor.path.clone(), line: thread.anchor.start };
         let item = self.store.add_activity(id, self.now(), kind).await?;
         App::broadcast(&live, ServerMsg::Thread { thread: thread.clone() });
         App::broadcast(&live, ServerMsg::Activity { item });
@@ -172,15 +163,13 @@ impl App {
         body: &str,
         resolve: Option<bool>,
     ) -> Result<Thread> {
-        let (id, mut thread) = self
-            .store
-            .thread(thread_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))?;
+        let (id, mut thread) =
+            self.store.thread(thread_id).await?.ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))?;
         if let Some(m) = &message_id
-            && self.store.message_exists(m).await? {
-                return Ok(thread);
-            }
+            && self.store.message_exists(m).await?
+        {
+            return Ok(thread);
+        }
         let live = self.live(&id).await?;
         let msg = match message_id {
             Some(m) => self.message_with_id(m, author, body)?,
@@ -209,11 +198,8 @@ impl App {
     }
 
     pub async fn resolve(&self, thread_id: &ThreadId, resolved: bool) -> Result<Thread> {
-        let (id, mut thread) = self
-            .store
-            .thread(thread_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))?;
+        let (id, mut thread) =
+            self.store.thread(thread_id).await?.ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))?;
         thread.resolved = resolved;
         self.store.update_thread(&thread).await?;
         let live = self.live(&id).await?;
@@ -238,9 +224,10 @@ impl App {
     pub async fn chat_user(&self, id: &ReviewId, message_id: Option<MessageId>, body: &str) -> Result<()> {
         let live = self.live(id).await?;
         if let Some(m) = &message_id
-            && self.store.message_exists(m).await? {
-                return Ok(());
-            }
+            && self.store.message_exists(m).await?
+        {
+            return Ok(());
+        }
         let msg = match message_id {
             Some(m) => self.message_with_id(m, Author::User, body)?,
             None => self.message(Author::User, body)?,

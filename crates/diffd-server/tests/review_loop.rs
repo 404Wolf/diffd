@@ -9,7 +9,8 @@ use diffd_core::model::{Anchor, Author, Side, ThreadKind};
 use diffd_server::app::{NoteInput, ShareRequest};
 
 const BEFORE: &str = "use std::time::Duration;\n\nfn timeout() -> Duration {\n    Duration::from_secs(1)\n}\n";
-const AFTER: &str = "use std::time::Duration;\n\n/// How long to wait.\nfn timeout() -> Duration {\n    Duration::from_secs(1).max(QUIET)\n}\n";
+const AFTER: &str =
+    "use std::time::Duration;\n\n/// How long to wait.\nfn timeout() -> Duration {\n    Duration::from_secs(1).max(QUIET)\n}\n";
 
 fn share_request(repo: &common::Repo) -> ShareRequest {
     ShareRequest {

@@ -4,7 +4,7 @@ use crate::difft::EngineDiff;
 use crate::highlight::highlight;
 use crate::lang::Lang;
 use crate::linediff;
-use crate::model::{FileDiff, FileStatus, Row, SideText, Snapshot, Revision};
+use crate::model::{FileDiff, FileStatus, Revision, Row, SideText, Snapshot};
 use crate::symbols::definitions;
 use crate::text::{split_lines, utf16_col};
 
@@ -113,12 +113,7 @@ fn side(source: &str, lines: Vec<String>, novel_bytes: &[Vec<(usize, usize)>], l
         .map(|(i, line)| {
             novel_bytes
                 .get(i)
-                .map(|ranges| {
-                    ranges
-                        .iter()
-                        .flat_map(|&(a, b)| [utf16_col(line, a), utf16_col(line, b)])
-                        .collect()
-                })
+                .map(|ranges| ranges.iter().flat_map(|&(a, b)| [utf16_col(line, a), utf16_col(line, b)]).collect())
                 .unwrap_or_default()
         })
         .collect();
@@ -131,17 +126,19 @@ pub fn snapshot(revision: Revision, inputs: &[FileInput], files: Vec<FileDiff>) 
     for (i, (input, file)) in inputs.iter().zip(&files).enumerate() {
         let i = i as u32;
         if let (Some(src), Some(text)) = (&input.new, &file.new)
-            && let Some(lang) = Lang::from_path(&input.path) {
-                symbols.extend(definitions(lang, src, i, crate::model::Side::New, &text.lines));
-            }
+            && let Some(lang) = Lang::from_path(&input.path)
+        {
+            symbols.extend(definitions(lang, src, i, crate::model::Side::New, &text.lines));
+        }
         // Old-side definitions only matter for deleted files; elsewhere they duplicate new ones.
         if input.status == FileStatus::Deleted
-            && let (Some(src), Some(text)) = (&input.old, &file.old) {
-                let path = input.old_path.as_deref().unwrap_or(&input.path);
-                if let Some(lang) = Lang::from_path(path) {
-                    symbols.extend(definitions(lang, src, i, crate::model::Side::Old, &text.lines));
-                }
+            && let (Some(src), Some(text)) = (&input.old, &file.old)
+        {
+            let path = input.old_path.as_deref().unwrap_or(&input.path);
+            if let Some(lang) = Lang::from_path(path) {
+                symbols.extend(definitions(lang, src, i, crate::model::Side::Old, &text.lines));
             }
+        }
     }
     Snapshot { revision, files, symbols }
 }
@@ -208,10 +205,7 @@ mod tests {
             novel_new: vec![vec![(25, 28)]],
             unchanged: false,
         };
-        let f = build_file(
-            &input(Some("let s = \"héllo wörld\";\n"), Some("let s = \"héllo wörld\"; let z = 1;\n")),
-            Some(e),
-        );
+        let f = build_file(&input(Some("let s = \"héllo wörld\";\n"), Some("let s = \"héllo wörld\"; let z = 1;\n")), Some(e));
         assert_eq!(f.new.unwrap().novel[0], vec![23, 26]);
     }
 }

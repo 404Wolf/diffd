@@ -6,10 +6,7 @@ pub fn split_lines(content: &str) -> Vec<String> {
     if content.is_empty() {
         return Vec::new();
     }
-    let mut lines: Vec<String> = content
-        .split('\n')
-        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_owned())
-        .collect();
+    let mut lines: Vec<String> = content.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l).to_owned()).collect();
     if content.ends_with('\n') {
         lines.pop();
     }
@@ -29,9 +26,7 @@ pub fn utf16_col(line: &str, byte: usize) -> u32 {
 
 /// Byte offset of the start of each line in `source` (split on `\n`).
 pub fn line_starts(source: &str) -> Vec<usize> {
-    std::iter::once(0)
-        .chain(source.match_indices('\n').map(|(i, _)| i + 1))
-        .collect()
+    std::iter::once(0).chain(source.match_indices('\n').map(|(i, _)| i + 1)).collect()
 }
 
 /// Whether `content` looks binary (a NUL byte in the first 8 KiB), as git does.

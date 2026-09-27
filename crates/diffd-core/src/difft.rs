@@ -68,13 +68,15 @@ pub fn parse(json: &str, old_lines: usize, new_lines: usize) -> Result<Option<En
     };
     for entry in out.chunks.into_iter().flatten() {
         if let Some(lhs) = entry.lhs
-            && let Some(line) = diff.novel_old.get_mut(lhs.line_number) {
-                line.extend(lhs.changes.iter().map(|c| (c.start, c.end)));
-            }
+            && let Some(line) = diff.novel_old.get_mut(lhs.line_number)
+        {
+            line.extend(lhs.changes.iter().map(|c| (c.start, c.end)));
+        }
         if let Some(rhs) = entry.rhs
-            && let Some(line) = diff.novel_new.get_mut(rhs.line_number) {
-                line.extend(rhs.changes.iter().map(|c| (c.start, c.end)));
-            }
+            && let Some(line) = diff.novel_new.get_mut(rhs.line_number)
+        {
+            line.extend(rhs.changes.iter().map(|c| (c.start, c.end)));
+        }
     }
     for line in diff.novel_old.iter_mut().chain(diff.novel_new.iter_mut()) {
         line.sort_unstable();
@@ -151,13 +153,7 @@ mod tests {
         let rows = vec![Row(Some(0), Some(0)), Row(Some(3), Some(2)), Row(Some(1), None), Row(Some(9), Some(9))];
         assert_eq!(
             normalize(rows, 5, 3),
-            vec![
-                Row(Some(0), Some(0)),
-                Row(Some(1), Some(1)),
-                Row(Some(2), None),
-                Row(Some(3), Some(2)),
-                Row(Some(4), None),
-            ]
+            vec![Row(Some(0), Some(0)), Row(Some(1), Some(1)), Row(Some(2), None), Row(Some(3), Some(2)), Row(Some(4), None),]
         );
     }
 }

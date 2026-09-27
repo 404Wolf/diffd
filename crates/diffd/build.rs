@@ -8,10 +8,8 @@ use std::path::PathBuf;
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("index.html");
-    let bundle = std::env::var_os("DIFFD_WEB_DIST")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| manifest.join("../../web/dist"))
-        .join("index.html");
+    let bundle =
+        std::env::var_os("DIFFD_WEB_DIST").map(PathBuf::from).unwrap_or_else(|| manifest.join("../../web/dist")).join("index.html");
     println!("cargo:rerun-if-changed={}", bundle.display());
     println!("cargo:rerun-if-env-changed=DIFFD_WEB_DIST");
     match std::fs::read_to_string(&bundle) {

@@ -99,9 +99,11 @@ impl App {
     pub async fn resume_watches(&self) -> Result<()> {
         for (meta, _) in self.store.recent(200).await? {
             if let Some((meta, spec)) = self.store.review(&meta.id).await?
-                && spec.watch && meta.to.is_none() {
-                    self.start_watch(&meta);
-                }
+                && spec.watch
+                && meta.to.is_none()
+            {
+                self.start_watch(&meta);
+            }
         }
         Ok(())
     }
@@ -129,11 +131,7 @@ impl App {
         if let Some(l) = self.live.lock().expect("live lock").get(id) {
             return Ok(l.clone());
         }
-        let snapshot = self
-            .store
-            .latest_snapshot(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("no review with id `{id}`")))?;
+        let snapshot = self.store.latest_snapshot(id).await?.ok_or_else(|| AppError::NotFound(format!("no review with id `{id}`")))?;
         Ok(self.insert_live(id, snapshot, 0))
     }
 

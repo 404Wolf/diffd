@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use diffd_core::model::{
-    ActivityItem, ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, Millis, ReviewId,
-    ReviewMeta, ReviewStatus, Revision, Snapshot, Thread, ThreadId, ThreadKind,
+    ActivityItem, ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, Millis, ReviewId, ReviewMeta, ReviewStatus, Revision,
+    Snapshot, Thread, ThreadId, ThreadKind,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -67,10 +67,7 @@ impl Store {
     /// Open (creating if needed) the database at `url`, e.g. `sqlite://…/diffd.db`
     /// or `sqlite::memory:`, and run migrations.
     pub async fn open(url: &str) -> anyhow::Result<Self> {
-        let opts = SqliteConnectOptions::from_str(url)?
-            .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Wal)
-            .foreign_keys(true);
+        let opts = SqliteConnectOptions::from_str(url)?.create_if_missing(true).journal_mode(SqliteJournalMode::Wal).foreign_keys(true);
         // An in-memory database exists per connection, so keep exactly one.
         let max = if url.contains(":memory:") { 1 } else { 8 };
         let pool = SqlitePoolOptions::new().max_connections(max).connect_with(opts).await?;
@@ -94,9 +91,7 @@ impl Store {
 
     pub async fn set_revision(&self, id: &ReviewId, revision: Revision, at: Millis) -> anyhow::Result<()> {
         let (rev, at) = (revision as i64, at as i64);
-        sqlx::query!("UPDATE reviews SET revision = ?, updated_at = ? WHERE id = ?", rev, at, id.0)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query!("UPDATE reviews SET revision = ?, updated_at = ? WHERE id = ?", rev, at, id.0).execute(&self.pool).await?;
         Ok(())
     }
 
@@ -141,9 +136,7 @@ impl Store {
 
     /// Reviews, most recently active first, with their unread activity counts.
     pub async fn recent(&self, limit: i64) -> anyhow::Result<Vec<(ReviewMeta, u32)>> {
-        let ids = sqlx::query!("SELECT id FROM reviews ORDER BY updated_at DESC LIMIT ?", limit)
-            .fetch_all(&self.pool)
-            .await?;
+        let ids = sqlx::query!("SELECT id FROM reviews ORDER BY updated_at DESC LIMIT ?", limit).fetch_all(&self.pool).await?;
         let mut out = Vec::with_capacity(ids.len());
         for row in ids {
             let id = ReviewId(row.id);
@@ -163,22 +156,16 @@ impl Store {
     pub async fn insert_revision(&self, id: &ReviewId, snapshot: &Snapshot, at: Millis) -> anyhow::Result<()> {
         let blob = zstd::encode_all(serde_json::to_vec(snapshot)?.as_slice(), 3)?;
         let (rev, at) = (snapshot.revision as i64, at as i64);
-        sqlx::query!(
-            "INSERT INTO revisions (review_id, number, snapshot, created_at) VALUES (?, ?, ?, ?)",
-            id.0, rev, blob, at
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query!("INSERT INTO revisions (review_id, number, snapshot, created_at) VALUES (?, ?, ?, ?)", id.0, rev, blob, at)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
     pub async fn latest_snapshot(&self, id: &ReviewId) -> anyhow::Result<Option<Snapshot>> {
-        let row = sqlx::query!(
-            "SELECT snapshot FROM revisions WHERE review_id = ? ORDER BY number DESC LIMIT 1",
-            id.0
-        )
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query!("SELECT snapshot FROM revisions WHERE review_id = ? ORDER BY number DESC LIMIT 1", id.0)
+            .fetch_optional(&self.pool)
+            .await?;
         row.map(|r| Ok(serde_json::from_slice(&zstd::decode_all(r.snapshot.as_slice())?)?)).transpose()
     }
 
@@ -188,7 +175,14 @@ impl Store {
         sqlx::query!(
             "INSERT INTO threads (id, review_id, kind, anchor, resolved, changed_in, outdated, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            t.id.0, review.0, kind, anchor, t.resolved, changed, t.outdated, created
+            t.id.0,
+            review.0,
+            kind,
+            anchor,
+            t.resolved,
+            changed,
+            t.outdated,
+            created
         )
         .execute(&self.pool)
         .await?;
@@ -204,7 +198,11 @@ impl Store {
         let changed = t.changed_in.map(i64::from);
         sqlx::query!(
             "UPDATE threads SET anchor = ?, resolved = ?, changed_in = ?, outdated = ? WHERE id = ?",
-            anchor, t.resolved, changed, t.outdated, t.id.0
+            anchor,
+            t.resolved,
+            changed,
+            t.outdated,
+            t.id.0
         )
         .execute(&self.pool)
         .await?;
@@ -239,9 +237,7 @@ impl Store {
 
     /// A thread and the review it belongs to.
     pub async fn thread(&self, id: &ThreadId) -> anyhow::Result<Option<(ReviewId, Thread)>> {
-        let row = sqlx::query!("SELECT review_id FROM threads WHERE id = ?", id.0)
-            .fetch_optional(&self.pool)
-            .await?;
+        let row = sqlx::query!("SELECT review_id FROM threads WHERE id = ?", id.0).fetch_optional(&self.pool).await?;
         let Some(row) = row else { return Ok(None) };
         let review = ReviewId(row.review_id);
         let thread = self.threads(&review).await?.into_iter().find(|t| &t.id == id);
@@ -272,7 +268,13 @@ impl Store {
         let (author, created, delivered) = (author_str(m.author), m.created_at as i64, m.delivered_at.map(|d| d as i64));
         sqlx::query!(
             "INSERT INTO messages (id, review_id, thread_id, author, body, created_at, delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            m.id.0, review.0, thread, author, m.body, created, delivered
+            m.id.0,
+            review.0,
+            thread,
+            author,
+            m.body,
+            created,
+            delivered
         )
         .execute(&self.pool)
         .await?;
@@ -343,10 +345,15 @@ impl Store {
 
     pub async fn add_activity(&self, review: &ReviewId, at: Millis, kind: ActivityKind) -> anyhow::Result<ActivityItem> {
         let (at_i, kind_json) = (at as i64, json(&kind));
-        let seq = sqlx::query!("INSERT INTO activity (review_id, at, kind) VALUES (?, ?, ?) RETURNING seq AS \"seq!: i64\"", review.0, at_i, kind_json)
-            .fetch_one(&self.pool)
-            .await?
-            .seq;
+        let seq = sqlx::query!(
+            "INSERT INTO activity (review_id, at, kind) VALUES (?, ?, ?) RETURNING seq AS \"seq!: i64\"",
+            review.0,
+            at_i,
+            kind_json
+        )
+        .fetch_one(&self.pool)
+        .await?
+        .seq;
         Ok(ActivityItem { seq: seq as u64, at, kind })
     }
 
@@ -354,9 +361,7 @@ impl Store {
         let rows = sqlx::query!("SELECT seq AS \"seq!: i64\", at, kind FROM activity WHERE review_id = ? ORDER BY seq", review.0)
             .fetch_all(&self.pool)
             .await?;
-        rows.into_iter()
-            .map(|r| Ok(ActivityItem { seq: r.seq as u64, at: r.at as Millis, kind: parse(&r.kind)? }))
-            .collect()
+        rows.into_iter().map(|r| Ok(ActivityItem { seq: r.seq as u64, at: r.at as Millis, kind: parse(&r.kind)? })).collect()
     }
 
     pub async fn read_seq(&self, review: &ReviewId) -> anyhow::Result<u64> {
@@ -369,7 +374,8 @@ impl Store {
         sqlx::query!(
             "INSERT INTO read_marks (review_id, seq) VALUES (?, ?)
              ON CONFLICT (review_id) DO UPDATE SET seq = MAX(seq, excluded.seq)",
-            review.0, seq
+            review.0,
+            seq
         )
         .execute(&self.pool)
         .await?;
@@ -378,9 +384,7 @@ impl Store {
 
     async fn unread(&self, review: &ReviewId) -> anyhow::Result<u32> {
         let read = self.read_seq(review).await? as i64;
-        let rows = sqlx::query!("SELECT kind FROM activity WHERE review_id = ? AND seq > ?", review.0, read)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query!("SELECT kind FROM activity WHERE review_id = ? AND seq > ?", review.0, read).fetch_all(&self.pool).await?;
         let mut n = 0;
         for r in rows {
             if parse::<ActivityKind>(&r.kind)?.from_agent() {

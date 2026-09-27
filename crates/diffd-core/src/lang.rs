@@ -199,11 +199,7 @@ impl Lang {
             Lang::Toml => (h(tree_sitter_toml_ng::HIGHLIGHTS_QUERY), "", ""),
             Lang::Yaml => (h(tree_sitter_yaml::HIGHLIGHTS_QUERY), "", ""),
             Lang::C => (h(tree_sitter_c::HIGHLIGHT_QUERY), "", ""),
-            Lang::Cpp => (
-                format!("{}\n{}", tree_sitter_cpp::HIGHLIGHT_QUERY, tree_sitter_c::HIGHLIGHT_QUERY),
-                "",
-                "",
-            ),
+            Lang::Cpp => (format!("{}\n{}", tree_sitter_cpp::HIGHLIGHT_QUERY, tree_sitter_c::HIGHLIGHT_QUERY), "", ""),
             Lang::Css => (h(tree_sitter_css::HIGHLIGHTS_QUERY), "", ""),
             Lang::Html => (h(tree_sitter_html::HIGHLIGHTS_QUERY), tree_sitter_html::INJECTIONS_QUERY, ""),
             Lang::Nix => (h(tree_sitter_nix::HIGHLIGHTS_QUERY), tree_sitter_nix::INJECTIONS_QUERY, ""),

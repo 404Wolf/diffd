@@ -242,13 +242,8 @@ user's chat messages, or telling them what you're doing. Refer to code as `path:
 something is.")]
     async fn show(&self, Parameters(p): Parameters<ShowParams>) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
-        let request = ShowRequest {
-            path: p.file,
-            side: p.side.unwrap_or(Side::New),
-            start: p.lines[0],
-            end: p.lines[1],
-            message: p.message,
-        };
+        let request =
+            ShowRequest { path: p.file, side: p.side.unwrap_or(Side::New), start: p.lines[0], end: p.lines[1], message: p.message };
         try_app!(self.app.show(&id, request).await);
         ok(&serde_json::json!({ "shown": true }))
     }

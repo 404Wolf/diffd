@@ -78,12 +78,11 @@ impl App {
         };
         let (source, engine, spec2) = (self.repo.clone(), self.engine.clone(), spec.clone());
         let (from, to) = (req.from.clone(), req.to.clone());
-        let (repo, inputs, files, fp) = tokio::task::spawn_blocking(move || {
-            read_and_build(source.as_ref(), engine.as_ref(), &repo_path, &from, to.as_deref(), &spec2)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| AppError::Invalid(format!("{e:#}")))?;
+        let (repo, inputs, files, fp) =
+            tokio::task::spawn_blocking(move || read_and_build(source.as_ref(), engine.as_ref(), &repo_path, &from, to.as_deref(), &spec2))
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?
+                .map_err(|e| AppError::Invalid(format!("{e:#}")))?;
 
         let snap = build_snapshot(1, &inputs, files);
         let mut spec = spec;

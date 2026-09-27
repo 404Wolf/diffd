@@ -20,9 +20,8 @@ pub fn reanchor(text: &str, start: u32, lines: &[String]) -> Reanchor {
         return Reanchor::Changed;
     }
     let origin = start.saturating_sub(1) as usize;
-    let best = (0..=lines.len() - n)
-        .filter(|&i| lines[i..i + n].iter().zip(&want).all(|(a, b)| a == b))
-        .min_by_key(|&i| i.abs_diff(origin));
+    let best =
+        (0..=lines.len() - n).filter(|&i| lines[i..i + n].iter().zip(&want).all(|(a, b)| a == b)).min_by_key(|&i| i.abs_diff(origin));
     match best {
         Some(i) if i == origin => Reanchor::Same,
         Some(i) => Reanchor::Moved { start: i as u32 + 1, end: (i + n) as u32 },

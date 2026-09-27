@@ -10,9 +10,9 @@ use clap::{Parser, Subcommand};
 use diffd_server::App;
 use diffd_server::adapters::difft::{Difftastic, NoEngine};
 use diffd_server::adapters::git::GitCli;
+use diffd_server::adapters::http;
 use diffd_server::adapters::store::Store;
 use diffd_server::adapters::watch::Watcher;
-use diffd_server::adapters::http;
 use diffd_server::ports::{DiffEngine, SystemClock};
 
 /// The review page, built by `web/` and embedded at compile time.

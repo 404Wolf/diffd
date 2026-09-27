@@ -46,9 +46,6 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> Millis {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as Millis)
-            .unwrap_or_default()
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as Millis).unwrap_or_default()
     }
 }

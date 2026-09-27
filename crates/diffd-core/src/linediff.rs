@@ -77,7 +77,15 @@ fn tokens(line: &str) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let mut chars = line.char_indices().peekable();
     while let Some((i, c)) = chars.next() {
-        let class = |c: char| if c.is_alphanumeric() || c == '_' { 0 } else if c.is_whitespace() { 1 } else { 2 };
+        let class = |c: char| {
+            if c.is_alphanumeric() || c == '_' {
+                0
+            } else if c.is_whitespace() {
+                1
+            } else {
+                2
+            }
+        };
         let k = class(c);
         let mut end = i + c.len_utf8();
         if k != 2 {

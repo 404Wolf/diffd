@@ -58,10 +58,14 @@ async fn agent_and_page_talk_through_the_server() {
         assert!(tools.contains(&t.to_owned()), "missing tool {t}: {tools:?}");
     }
 
-    let shared = call(&client, "share_diff", json!({
-        "repo_path": repo.path(), "from": "HEAD", "title": "Say hello",
-        "annotations": [{ "file": "src/main.rs", "lines": [2, 2], "body": "Friendlier greeting.", "kind": "why" }]
-    }))
+    let shared = call(
+        &client,
+        "share_diff",
+        json!({
+            "repo_path": repo.path(), "from": "HEAD", "title": "Say hello",
+            "annotations": [{ "file": "src/main.rs", "lines": [2, 2], "body": "Friendlier greeting.", "kind": "why" }]
+        }),
+    )
     .await;
     let id = shared["review_id"].as_str().unwrap().to_owned();
 
@@ -73,7 +77,8 @@ async fn agent_and_page_talk_through_the_server() {
     // Requests for other hosts are refused (DNS rebinding).
     let evil = reqwest::Client::new().get(format!("{base}/")).header("host", "evil.example").send().await.unwrap();
     assert_eq!(evil.status(), 403);
-    let cross = reqwest::Client::new().delete(format!("{base}/api/reviews/{id}")).header("origin", "https://evil.example").send().await.unwrap();
+    let cross =
+        reqwest::Client::new().delete(format!("{base}/api/reviews/{id}")).header("origin", "https://evil.example").send().await.unwrap();
     assert_eq!(cross.status(), 403);
 
     // The page connects and gets the full state.

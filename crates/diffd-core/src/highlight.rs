@@ -69,14 +69,7 @@ fn config(lang: Lang) -> Option<&'static HighlightConfiguration> {
     slots[lang.index()]
         .get_or_init(|| {
             let (highlights, injections, locals) = lang.highlight_queries();
-            let mut cfg = HighlightConfiguration::new(
-                lang.language(),
-                lang.display_name(),
-                &highlights,
-                injections,
-                locals,
-            )
-            .ok()?;
+            let mut cfg = HighlightConfiguration::new(lang.language(), lang.display_name(), &highlights, injections, locals).ok()?;
             let names: Vec<&str> = CAPTURES.iter().map(|(n, _)| *n).collect();
             cfg.configure(&names);
             Some(cfg)
@@ -92,9 +85,7 @@ pub fn highlight(lang: Lang, source: &str, line_count: usize) -> Vec<Vec<u32>> {
     }
     let Some(cfg) = config(lang) else { return out };
     let mut highlighter = Highlighter::new();
-    let Ok(events) = highlighter.highlight(cfg, source.as_bytes(), None, |name| {
-        Lang::from_name(name).and_then(config)
-    }) else {
+    let Ok(events) = highlighter.highlight(cfg, source.as_bytes(), None, |name| Lang::from_name(name).and_then(config)) else {
         return out;
     };
 
@@ -117,14 +108,7 @@ pub fn highlight(lang: Lang, source: &str, line_count: usize) -> Vec<Vec<u32>> {
 }
 
 /// Record a byte span, split across the lines it covers.
-fn push_span(
-    out: &mut [Vec<u32>],
-    source: &str,
-    starts: &[usize],
-    start: usize,
-    end: usize,
-    class: SyntaxClass,
-) {
+fn push_span(out: &mut [Vec<u32>], source: &str, starts: &[usize], start: usize, end: usize, class: SyntaxClass) {
     let mut line = starts.partition_point(|&s| s <= start).saturating_sub(1);
     let mut pos = start;
     while pos < end && line < out.len() {

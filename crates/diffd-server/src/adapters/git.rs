@@ -18,12 +18,7 @@ const MAX_FILE_BYTES: usize = 3 * 1024 * 1024;
 pub struct GitCli;
 
 fn git(root: &Path, args: &[&str]) -> anyhow::Result<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .output()
-        .context("running git (is it installed?)")?;
+    let out = Command::new("git").arg("-C").arg(root).args(args).output().context("running git (is it installed?)")?;
     if !out.status.success() {
         bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
     }
@@ -32,8 +27,8 @@ fn git(root: &Path, args: &[&str]) -> anyhow::Result<String> {
 
 impl RepoSource for GitCli {
     fn open(&self, path: &Path) -> anyhow::Result<Repo> {
-        let root = git(path, &["rev-parse", "--show-toplevel"])
-            .with_context(|| format!("{} is not inside a git repository", path.display()))?;
+        let root =
+            git(path, &["rev-parse", "--show-toplevel"]).with_context(|| format!("{} is not inside a git repository", path.display()))?;
         let root = std::path::PathBuf::from(root.trim());
         let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         Ok(Repo { root, name })

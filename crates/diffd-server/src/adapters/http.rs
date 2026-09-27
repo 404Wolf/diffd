@@ -33,11 +33,7 @@ pub fn router(app: Arc<App>, template: &'static str) -> Router {
     let mcp_app = app.clone();
     // The default config already only accepts loopback `Host`s.
     let mcp_config = StreamableHttpServerConfig::default();
-    let mcp = StreamableHttpService::new(
-        move || Ok(DiffdMcp::new(mcp_app.clone())),
-        Arc::new(LocalSessionManager::default()),
-        mcp_config,
-    );
+    let mcp = StreamableHttpService::new(move || Ok(DiffdMcp::new(mcp_app.clone())), Arc::new(LocalSessionManager::default()), mcp_config);
     let web = Web { app, template };
     Router::new()
         .route("/", get(home))
@@ -60,13 +56,12 @@ async fn local_only(req: Request, next: Next) -> Response {
         return (StatusCode::FORBIDDEN, "diffd only answers requests for localhost").into_response();
     }
     let is_mcp = req.uri().path().starts_with("/mcp");
-    if !is_mcp
-        && let Some(origin) = req.headers().get(header::ORIGIN).and_then(|o| o.to_str().ok()) {
-            let expected = [format!("http://{host}"), format!("https://{host}")];
-            if !expected.iter().any(|e| e == origin) {
-                return (StatusCode::FORBIDDEN, "cross-origin requests are not allowed").into_response();
-            }
+    if !is_mcp && let Some(origin) = req.headers().get(header::ORIGIN).and_then(|o| o.to_str().ok()) {
+        let expected = [format!("http://{host}"), format!("https://{host}")];
+        if !expected.iter().any(|e| e == origin) {
+            return (StatusCode::FORBIDDEN, "cross-origin requests are not allowed").into_response();
         }
+    }
     next.run(req).await
 }
 
@@ -85,22 +80,12 @@ fn error_response(e: AppError) -> Response {
 fn page(template: &str, boot: &Boot, status: StatusCode) -> Response {
     let json = serde_json::to_string(boot).unwrap_or_else(|_| "null".into()).replace('<', "\\u003c");
     let script = format!(r#"<script id="diffd-boot" type="application/json">{json}</script>"#);
-    let html = if template.contains(BOOT_MARKER) {
-        template.replacen(BOOT_MARKER, &script, 1)
-    } else {
-        format!("{template}{script}")
-    };
+    let html = if template.contains(BOOT_MARKER) { template.replacen(BOOT_MARKER, &script, 1) } else { format!("{template}{script}") };
     (status, [(header::CACHE_CONTROL, "no-store")], Html(html)).into_response()
 }
 
 async fn recent(app: &App) -> Result<Vec<ReviewSummary>, AppError> {
-    Ok(app
-        .store()
-        .recent(100)
-        .await?
-        .into_iter()
-        .map(|(review, unread)| ReviewSummary { review, unread })
-        .collect())
+    Ok(app.store().recent(100).await?.into_iter().map(|(review, unread)| ReviewSummary { review, unread }).collect())
 }
 
 async fn home(State(web): State<Web>) -> Response {

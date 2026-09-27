@@ -12,9 +12,7 @@ use crate::text::{line_starts, utf16_col};
 fn config(lang: Lang) -> Option<&'static TagsConfiguration> {
     static CONFIGS: OnceLock<Vec<OnceLock<Option<TagsConfiguration>>>> = OnceLock::new();
     let slots = CONFIGS.get_or_init(|| Lang::ALL.iter().map(|_| OnceLock::new()).collect());
-    slots[lang.index()]
-        .get_or_init(|| TagsConfiguration::new(lang.language(), &lang.tags_query()?, "").ok())
-        .as_ref()
+    slots[lang.index()].get_or_init(|| TagsConfiguration::new(lang.language(), &lang.tags_query()?, "").ok()).as_ref()
 }
 
 /// Definitions in one side of one file.

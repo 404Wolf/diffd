@@ -6,10 +6,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::model::{
-    ActivityItem, Anchor, ChatMessage, MessageId, Presence, Region, ReviewMeta, ShowRequest, Snapshot,
-    Thread, ThreadId,
-};
+use crate::model::{ActivityItem, Anchor, ChatMessage, MessageId, Presence, Region, ReviewMeta, ShowRequest, Snapshot, Thread, ThreadId};
 
 /// Everything the page needs to render a review. It's embedded in the HTML so
 /// the page works offline, and re-sent when the socket (re)connects.
@@ -35,22 +32,43 @@ pub struct ReviewState {
 #[ts(export)]
 pub enum ServerMsg {
     /// Full state, sent on connect.
-    State { state: Box<ReviewState> },
+    State {
+        state: Box<ReviewState>,
+    },
     /// A new revision of the diff.
-    Revision { review: ReviewMeta, snapshot: Box<Snapshot> },
+    Revision {
+        review: ReviewMeta,
+        snapshot: Box<Snapshot>,
+    },
     /// The agent's region labels changed.
-    Regions { regions: Vec<Region> },
+    Regions {
+        regions: Vec<Region>,
+    },
     /// A thread was created or changed.
-    Thread { thread: Thread },
-    Chat { message: ChatMessage },
-    Activity { item: ActivityItem },
-    Presence { presence: Presence },
+    Thread {
+        thread: Thread,
+    },
+    Chat {
+        message: ChatMessage,
+    },
+    Activity {
+        item: ActivityItem,
+    },
+    Presence {
+        presence: Presence,
+    },
     /// The agent wants to point the user at some code.
-    Show { request: ShowRequest },
+    Show {
+        request: ShowRequest,
+    },
     /// The server applied the page's message with this id (see [`ClientMsg`]).
-    Ack { id: MessageId },
+    Ack {
+        id: MessageId,
+    },
     /// A request from the page failed.
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

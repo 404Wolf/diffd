@@ -34,9 +34,7 @@ pub(super) fn read_and_build(
         .par_iter()
         .map(|input| {
             let engine_diff = match (&input.old, &input.new) {
-                (Some(old), Some(new)) if !input.binary && input.status != FileStatus::Added => {
-                    engine.diff(&input.path, old, new)
-                }
+                (Some(old), Some(new)) if !input.binary && input.status != FileStatus::Added => engine.diff(&input.path, old, new),
                 _ => None,
             };
             build_file(input, engine_diff)
