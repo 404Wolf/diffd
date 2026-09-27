@@ -11,6 +11,7 @@ import type { Snapshot } from "../gen/Snapshot";
 import type { ThreadId } from "../gen/ThreadId";
 import { applyFolds, initialVisible, regionRows, rowOf } from "../lib/diffModel";
 import { JumpList } from "../lib/jumps";
+import { fromRuns, loadSession, sessionWriter, toRuns } from "./persist";
 import type { Review } from "./review";
 
 /** Lines of context around each change. */
@@ -108,6 +109,15 @@ function save(key: string, value: unknown): void {
 
 export function createView(review: Review) {
   const id = review.meta().id;
+  const persist = sessionWriter(id, loadSession(id));
+  /** Expanded lines are remembered for the whole review, not for walks through its commits. */
+  const rememberVisible = (file: number, v: Uint8Array) => {
+    const path = review.snapshot().files[file]?.path;
+    if (path === undefined || review.span() !== null) return;
+    persist.update((s) => {
+      s.visibility[path] = { rows: v.length, runs: toRuns(v) };
+    });
+  };
 
   // Rows shown per file. Files whose rows didn't change across a revision keep their folds.
   const visibleSignals: [Accessor<Uint8Array>, Setter<Uint8Array>][] = [];
@@ -149,8 +159,10 @@ export function createView(review: Review) {
     next.files.forEach((f, i) => {
       const model = review.models()[i];
       const pinned = pinnedRows(i);
+      const saved = prev === null && review.span() === null ? persist.session.visibility[f.path] : undefined;
       const initial =
         keep.get(f.path) ??
+        (saved ? fromRuns(saved, f.rows.length) : null) ??
         (model
           ? applyFolds(initialVisible(model, CONTEXT, pinned), foldsFor(i, false), new Set(pinned))
           : new Uint8Array());
@@ -187,18 +199,30 @@ export function createView(review: Review) {
     visibilityVersion();
     return visibleSignals[file]?.[0]() ?? new Uint8Array();
   };
-  const setVisible = (file: number, v: Uint8Array) => visibleSignals[file]?.[1](v);
+  const setVisible = (file: number, v: Uint8Array) => {
+    visibleSignals[file]?.[1](v);
+    rememberVisible(file, v);
+  };
 
   const [flags, setFlags] = createStore<Flags>({
-    collapsed: Object.fromEntries(
-      review
-        .snapshot()
-        .files.filter((f) => f.collapsed)
-        .map((f) => [f.path, true]),
-    ),
+    collapsed: {
+      ...Object.fromEntries(
+        review
+          .snapshot()
+          .files.filter((f) => f.collapsed)
+          .map((f) => [f.path, true]),
+      ),
+      ...persist.session.collapsed,
+    },
     viewed: load(`diffd:viewed:${id}`, {}),
   });
   createEffect(() => save(`diffd:viewed:${id}`, { ...flags.viewed }));
+  createEffect(() => {
+    const collapsed = { ...flags.collapsed };
+    persist.update((s) => {
+      s.collapsed = collapsed;
+    });
+  });
   // Files the agent asked to collapse start collapsed in every part of the history too.
   createEffect(
     on(review.snapshot, (snap) => {
@@ -247,6 +271,7 @@ export function createView(review: Review) {
   createEffect(() => save(`diffd:marks:${id}`, { ...marks }));
 
   return {
+    persist,
     marks,
     setMarks,
     rightTab,

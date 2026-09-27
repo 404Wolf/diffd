@@ -408,8 +408,28 @@ try {
     const kinds = got.items.map((i) => i.type).sort().join(",");
     check(got.items.length === 2 && kinds === "chat,thread", `the agent receives the queued comment and chat (${kinds})`);
 
+    // Leave a comment half-written, then reload.
+    await cursorTo(page, "cmd/probe/main.go", 12);
+    await keys(page, "g", "c", "c");
+    await page.keyboard.type("Half-written thought");
+    const before = await at(page);
+    const shownRows = () => page.locator("section:has([data-path='src/routes.rs']) .row:not(.gap-body[hidden] .row)").count();
+    const routesBefore = await shownRows();
+    const rowTop = () =>
+      page.evaluate(() => document.querySelector("section:has([data-path='cmd/probe/main.go']) .row[data-nl='12']")?.getBoundingClientRect().top ?? -1);
+    const topBefore = await rowTop();
+    await sleep(600);
     await page.reload();
     await page.waitForSelector("[data-thread]");
+    await sleep(300);
+    check((await at(page)) === before, `the cursor comes back to ${before}`);
+    const topAfter = await rowTop();
+    check(Math.abs(topAfter - topBefore) < 4, `and the page is where you were reading (${topBefore} → ${topAfter})`);
+    const draft = page.getByRole("dialog", { name: "Write a comment" }).locator("textarea");
+    check((await draft.inputValue()) === "Half-written thought", "the half-written comment is still there");
+    check((await shownRows()) === routesBefore, `lines you expanded stay expanded (${routesBefore} rows of routes.rs)`);
+    await keys(page, "Escape");
+    await keys(page, "Escape");
     const copies = await page.getByText("Written while the server was down.").count();
     check(copies === 1, "after a reload the comment exists exactly once");
     check((await page.locator("section[aria-label='Marks']").innerText()).includes("main.go:11"), "marks survive a reload");

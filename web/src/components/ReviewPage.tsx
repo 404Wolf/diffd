@@ -1,11 +1,19 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { match } from "ts-pattern";
 import type { ReviewState } from "../gen/ReviewState";
 import { spanLabel } from "../lib/history";
 import { KeyEngine, keyToken, type Mode } from "../lib/keymap";
+import { fillAll } from "../lib/lazyRows";
 import { BINDINGS, type Ctx } from "../state/bindings";
 import { createCommands } from "../state/commands";
-import { bufferEl, keepViewport, navigableRows } from "../state/dom";
+import {
+  bufferEl,
+  keepViewport,
+  navigableRows,
+  readingPosition,
+  restoreReadingPosition,
+  rowEl,
+} from "../state/dom";
 import { createReview } from "../state/review";
 import { createView, type View } from "../state/view";
 import { Buffer } from "./Buffer";
@@ -67,6 +75,45 @@ export function ReviewPage(props: { state: ReviewState }) {
       else break;
     }
     setCurrentFile(current ?? (review.snapshot().files.length ? 0 : null));
+    rememberReading();
+  };
+
+  // -- Picking up where you left off ------------------------------------------------
+  const rememberReading = () => {
+    const pos = review.span() === null && v.mode().kind === "diff" ? readingPosition() : null;
+    const path = pos ? review.snapshot().files[pos.file]?.path : undefined;
+    if (!pos || path === undefined) return;
+    v.persist.update((s) => {
+      s.reading = { path, row: pos.row, offset: pos.offset, side: "new" };
+    });
+  };
+  createEffect(() => {
+    const c = v.cursor();
+    const path = c ? review.snapshot().files[c.file]?.path : undefined;
+    if (!c || path === undefined || review.span() !== null) return;
+    v.persist.update((s) => {
+      s.cursor = { path, row: c.row, offset: 0, side: c.side };
+    });
+  });
+  /** Put the cursor and the page back where they were before the reload. Returns whether it could. */
+  const restorePlace = (): boolean => {
+    const { cursor, reading, draft } = v.persist.session;
+    const find = (path: string, row: number) => {
+      const file = review.paths().indexOf(path);
+      if (file < 0) return null;
+      if (!rowEl(file, row)) fillAll();
+      return rowEl(file, row) ? file : null;
+    };
+    const readAt = reading ? find(reading.path, reading.row) : null;
+    const cursorAt = cursor ? find(cursor.path, cursor.row) : null;
+    if (reading && readAt !== null)
+      restoreReadingPosition({ file: readAt, row: reading.row, offset: reading.offset });
+    if (cursor && cursorAt !== null) {
+      const el = rowEl(cursorAt, cursor.row);
+      if (el) cmd.place(el, { side: cursor.side, scroll: readAt === null ? "center" : false });
+    }
+    if (draft) v.setComposer(draft.composer);
+    return readAt !== null || cursorAt !== null;
   };
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -112,6 +159,13 @@ export function ReviewPage(props: { state: ReviewState }) {
 
   onMount(() => {
     review.start();
+    // Layout can change without scrolling (threads arriving): take the reading position fresh on the way out.
+    const leaving = () => {
+      rememberReading();
+      v.persist.flush();
+    };
+    window.addEventListener("pagehide", leaving);
+    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && leaving());
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", () => v.setSymKey(false));
@@ -119,8 +173,10 @@ export function ReviewPage(props: { state: ReviewState }) {
     document.addEventListener("focusout", () => queueMicrotask(onFocus));
     const buf = bufferEl();
     buf?.addEventListener("scroll", () => requestAnimationFrame(trackScroll), { passive: true });
-    const first = navigableRows().find((r) => r.dataset.chg === "1") ?? navigableRows()[0];
-    if (first) cmd.place(first, { scroll: false });
+    if (!restorePlace()) {
+      const first = navigableRows().find((r) => r.dataset.chg === "1") ?? navigableRows()[0];
+      if (first) cmd.place(first, { scroll: false });
+    }
     trackScroll();
     buf?.focus({ preventScroll: true });
     document.title = `${review.meta().title} · diffd`;

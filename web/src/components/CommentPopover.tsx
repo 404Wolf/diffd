@@ -62,14 +62,30 @@ export function CommentPopover(props: {
     });
   });
   createEffect(() => {
-    if (props.view.composer()) {
+    const c = props.view.composer();
+    if (c) {
       setArmed(false);
       queueMicrotask(() => {
+        // A comment you were writing before a reload comes back as you left it.
+        const draft = props.view.persist.session.draft;
+        if (input && draft && JSON.stringify(draft.composer) === JSON.stringify(c)) input.value = draft.text;
         place();
         input?.focus({ preventScroll: true });
       });
+    } else {
+      props.view.persist.update((s) => {
+        s.draft = null;
+      });
     }
   });
+  const saveDraft = () => {
+    const composer = props.view.composer();
+    const text = input?.value ?? "";
+    if (!composer) return;
+    props.view.persist.update((s) => {
+      s.draft = text.trim() ? { composer, text } : null;
+    });
+  };
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -121,6 +137,7 @@ export function CommentPopover(props: {
             placeholder={`What should ${AGENT} know about this code?`}
             class="block min-h-16 w-full resize-y rounded-md border border-line-strong bg-bg px-2 py-1.5 text-[12.5px] leading-normal focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
             onKeyDown={onKey}
+            onInput={saveDraft}
           />
           <div class="mt-1.5 flex items-center gap-1.5 text-[11px] text-subtle">
             <span>{AGENT} sees it once you pause</span>

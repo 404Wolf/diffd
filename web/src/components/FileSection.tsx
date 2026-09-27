@@ -1,4 +1,4 @@
-import { createMemo, createRenderEffect, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import { createMemo, createRenderEffect, For, Match, Show, Switch } from "solid-js";
 import type { FileDiff } from "../gen/FileDiff";
 import type { Thread } from "../gen/Thread";
 import { type Block, blocks, gapContext, regionRows, rowOf } from "../lib/diffModel";
@@ -304,14 +304,7 @@ function Gap(props: {
   const n = () => props.end - props.start;
   const top = () => props.start === 0;
   const bottom = () => props.end === props.file.rows.length;
-  let body: HTMLDivElement | undefined;
-  onMount(() => {
-    if (!body) return;
-    body.setAttribute("hidden", "until-found");
-    const onMatch = () => props.onExpand("all");
-    body.addEventListener("beforematch", onMatch);
-    onCleanup(() => body?.removeEventListener("beforematch", onMatch));
-  });
+
   const button = "cursor-pointer rounded px-1.5 text-[11.5px] font-medium text-accent hover:bg-accent-soft";
   return (
     <>
@@ -359,7 +352,10 @@ function Gap(props: {
       </div>
       <Show when={props.html}>
         {(html) => {
-          const el = (<div ref={body} class="gap-body" />) as HTMLDivElement;
+          const el = (<div class="gap-body" />) as HTMLDivElement;
+          // Hidden from the start (not on mount), so nothing measures the page with it open.
+          el.setAttribute("hidden", "until-found");
+          el.addEventListener("beforematch", () => props.onExpand("all"));
           createRenderEffect(() => props.setRows(el, html()()));
           return el;
         }}
