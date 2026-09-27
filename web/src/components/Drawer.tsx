@@ -2,7 +2,8 @@ import type { JSX } from "solid-js";
 import type { Drawer as DrawerState } from "../state/view";
 
 const MIN = 160;
-const MAX = 520;
+/** As wide as you like, short of squeezing the diff out. */
+const max = () => Math.max(MIN, Math.round(window.innerWidth * 0.6));
 /** Dragging narrower than this collapses the drawer to its handle. */
 const COLLAPSE_BELOW = 110;
 
@@ -33,7 +34,7 @@ export function Drawer(props: {
       if (!moved || !box) return;
       const width = props.side === "left" ? ev.clientX - box.left : box.right - ev.clientX;
       if (width < COLLAPSE_BELOW) props.onChange({ size: props.state.size, collapsed: true });
-      else props.onChange({ size: Math.max(MIN, Math.min(MAX, width)), collapsed: false });
+      else props.onChange({ size: Math.max(MIN, Math.min(max(), width)), collapsed: false });
     };
     const onUp = () => {
       handle.removeEventListener("pointermove", onMove);
@@ -52,7 +53,7 @@ export function Drawer(props: {
       e.preventDefault();
       const grow = (e.key === "ArrowRight") === (props.side === "left");
       props.onChange({
-        size: Math.max(MIN, Math.min(MAX, props.state.size + (grow ? 16 : -16))),
+        size: Math.max(MIN, Math.min(max(), props.state.size + (grow ? 16 : -16))),
         collapsed: false,
       });
     }
@@ -79,7 +80,7 @@ export function Drawer(props: {
         aria-orientation="vertical"
         aria-label={`Resize ${props.label.toLowerCase()}`}
         aria-valuemin={0}
-        aria-valuemax={MAX}
+        aria-valuemax={max()}
         aria-valuenow={props.state.collapsed ? 0 : props.state.size}
         tabindex="0"
         title={
@@ -99,7 +100,7 @@ export function Drawer(props: {
         onKeyDown={onKey}
       >
         <span
-          class="absolute inset-y-0 left-[3px] w-0.5 bg-transparent transition-colors group-hover:bg-accent"
+          class="absolute inset-y-0 left-[3px] w-0.5 bg-transparent transition-colors group-hover:bg-accent group-focus-visible:bg-accent"
           classList={{ hidden: props.state.collapsed }}
         />
         <span

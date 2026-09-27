@@ -1,6 +1,7 @@
-import { createEffect, createMemo, For, Index, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
 import { match } from "ts-pattern";
 import type { Thread } from "../gen/Thread";
+import { columnAtPoint, wordAt } from "../lib/code";
 import { rowOf } from "../lib/diffModel";
 import { rowsRenderedEvent } from "../lib/lazyRows";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
@@ -8,6 +9,7 @@ import type { Commands } from "../state/commands";
 import { bufferEl, rowEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { Pane, View } from "../state/view";
+import { ContextMenu, type MenuAt } from "./ContextMenu";
 import { FileSection } from "./FileSection";
 import { useMouseHover } from "./Hover";
 import { Markdown } from "./Markdown";
@@ -66,6 +68,25 @@ export function Buffer(props: Props) {
     if (word && (e.ctrlKey || e.metaKey)) void props.cmd.gotoDefinition(word.text);
   };
 
+  // Right-click on code: the language-server actions for what's under the pointer.
+  // Shift+right-click, or right-clicking a selection, keeps the browser's own menu.
+  const [menu, setMenu] = createSignal<MenuAt | null>(null);
+  const onContextMenu = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const row = target.closest<HTMLElement>(".row");
+    const cell = target.closest<HTMLElement>(".code[data-side], .num[data-side]");
+    const selection = getSelection();
+    if (!row || !cell || e.shiftKey || (selection && !selection.isCollapsed)) return;
+    e.preventDefault();
+    const side = cell.dataset.side as "old" | "new";
+    const code = cell.classList.contains("code") ? cell : null;
+    const col = code ? columnAtPoint(code, e.clientX, e.clientY) : null;
+    const hit = code && col !== null ? wordAt(code.textContent ?? "", col) : null;
+    const word = hit ? { text: hit.text, range: [hit.col, hit.col + hit.text.length] as const } : null;
+    props.cmd.place(row, { side, word, scroll: false });
+    setMenu({ x: e.clientX, y: e.clientY, word: hit?.text ?? null });
+  };
+
   return (
     // Clicks are delegated from static rows; every click action also has a key binding.
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard equivalents live in state/bindings.ts
@@ -82,7 +103,9 @@ export function Buffer(props: Props) {
       onPointerDown={() => props.view.focusPane(props.pane.id)}
       onFocusIn={() => props.view.focusPane(props.pane.id)}
       onClick={onClick}
+      onContextMenu={onContextMenu}
     >
+      <ContextMenu at={menu()} cmd={props.cmd} onClose={() => setMenu(null)} />
       <Show
         // An object, not the index: `Show` treats file 0 as false.
         when={match(props.pane.mode())

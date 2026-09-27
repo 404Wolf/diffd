@@ -215,30 +215,47 @@ export function createCommands(review: Review, view: View) {
     }
   };
 
-  const goTo = (file: number, side: Side, line: number, opts: { word?: Word | null; card?: string } = {}) => {
+  /**
+   * Put the cursor on a line and show it. With `card`, show that thread too,
+   * and with `message`, that message in it. Whether the line was found.
+   */
+  const goTo = (
+    file: number,
+    side: Side,
+    line: number,
+    opts: { word?: Word | null; card?: string; message?: string | undefined } = {},
+  ): boolean => {
     completeRows();
     const model = review.models()[file];
-    if (!model) return;
+    if (!model) return false;
     const row = rowOf(model, side, line);
-    if (row < 0) return view.say(`Line ${line} isn't in ${fileName(file)}`);
+    if (row < 0) {
+      view.say(`Line ${line} isn't in ${fileName(file)}`);
+      return false;
+    }
     remember();
     const m = view.mode();
-    // Files outside the diff only have a file view.
+    // Files outside the diff only have a file view; threads only show in the diff.
     if (review.isContext(file)) view.setMode({ kind: "file", file });
-    else if (m.kind === "file" && m.file !== file) view.setMode({ kind: "diff" });
+    else if (m.kind === "file" && (m.file !== file || opts.card)) view.setMode({ kind: "diff" });
     if (view.mode().kind === "diff") ensureRow(file, row);
     const el = rowEl(file, row);
-    if (!el) return;
+    if (!el) return false;
     place(el, { side, word: opts.word ?? null, scroll: "center" });
     flash(el);
     if (opts.card) {
       const card = bufferEl()?.querySelector<HTMLElement>(`[data-thread="${opts.card}"]`);
       if (card) {
-        card.scrollIntoView({ block: "nearest" });
+        // A long thread: the message asked for, else the card's start.
+        const target =
+          (opts.message && card.querySelector<HTMLElement>(`[data-message="${opts.message}"]`)) || card;
+        reveal(target, target === card ? "nearest" : "center");
         card.classList.add("ring-2", "ring-accent");
         setTimeout(() => card.classList.remove("ring-2", "ring-accent"), 1600);
+        if (target !== card) flash(target);
       }
     }
+    return true;
   };
   // -- Marks -----------------------------------------------------------------------
 
@@ -266,9 +283,19 @@ export function createCommands(review: Review, view: View) {
       }),
     );
 
-  const goToThread = async (t: Thread) => {
-    const file = await review.openContext(t.anchor.path);
-    if (file !== null) goTo(file, t.anchor.side, t.anchor.end, { card: t.id });
+  /** Show a thread, and in it `message` (default: its latest message). */
+  const goToThread = async (t: Thread, message = t.messages.at(-1)?.id) => {
+    const show = async () => {
+      const file = await review.openContext(t.anchor.path);
+      return file !== null && goTo(file, t.anchor.side, t.anchor.end, { card: t.id, message });
+    };
+    if (await show()) return;
+    // Viewing one commit, where the thread's lines may not be: go back to the whole review.
+    if (review.span() !== null) {
+      await review.showSpan(null);
+      await new Promise(requestAnimationFrame);
+      await show();
+    }
   };
 
   const order = () => treeOrder(buildTree(review.paths()));
@@ -349,9 +376,14 @@ export function createCommands(review: Review, view: View) {
   const activityGo = (item: ActivityItem) => {
     review.markRead(item.seq);
     match(item.kind)
-      .with({ type: "userCommented" }, { type: "agentReplied" }, { type: "agentNoted" }, ({ threadId }) => {
+      .with({ type: "userCommented" }, { type: "agentNoted" }, ({ threadId }) => {
         const t = review.threads().find((x) => x.id === threadId);
-        if (t) goToThread(t);
+        if (t) void goToThread(t);
+      })
+      // The reply itself: the agent's latest message in the thread.
+      .with({ type: "agentReplied" }, ({ threadId }) => {
+        const t = review.threads().find((x) => x.id === threadId);
+        if (t) void goToThread(t, t.messages.findLast((m) => m.author === "agent")?.id);
       })
       .with({ type: "revision" }, ({ paths }) => {
         const file = review.paths().indexOf(paths[0] ?? "");

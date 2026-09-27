@@ -78,6 +78,7 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
       <For each={t().messages}>
         {(m) => (
           <div
+            data-message={m.id}
             class="grid grid-cols-[18px_minmax(0,1fr)] gap-x-2 border-line px-2 py-1 [&+&]:border-t"
             classList={{ "opacity-75": props.review.isPending(m.id) }}
             data-pending={props.review.isPending(m.id) ? "" : undefined}

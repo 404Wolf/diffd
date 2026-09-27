@@ -142,7 +142,8 @@ export function ReviewPage(props: { state: ReviewState }) {
     if (composing(e)) return;
     if (e.key === "Control" || e.key === "Meta") v.setSymKey(true);
     const target = e.target as HTMLElement;
-    if (target.closest("input, textarea, select, [contenteditable]") || v.picker() || v.help()) return;
+    if (target.closest("input, textarea, select, [contenteditable], [role=menu]") || v.picker() || v.help())
+      return;
     if (v.nudge() && (e.key === "Enter" || e.key === "Escape")) {
       e.preventDefault();
       return cmd.nudgeDone(e.key === "Enter");

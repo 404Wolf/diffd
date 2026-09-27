@@ -83,6 +83,15 @@ export interface Mark {
 
 export type RightTab = "activity" | "commits";
 
+/** The files drawer lists the diff's files, or the whole project. */
+export type TreeMode = "diff" | "project";
+
+/** Which folders are open in one tree mode: per folder, else `all`, else that mode's default. */
+export interface Folders {
+  all: boolean | null;
+  open: Record<string, boolean>;
+}
+
 /** A hover card: a language server's docs and/or the diagnostics at a spot. */
 export interface HoverCard {
   /** What it's about, so the same spot isn't asked twice. */
@@ -374,6 +383,21 @@ export function createView(review: Review) {
   createEffect(() => save("diffd:drawers", { left: { ...drawers.left }, right: { ...drawers.right } }));
   const [rightTab, setRightTab] = createSignal<RightTab>(load<RightTab>("diffd:right-tab", "activity"));
   createEffect(() => save("diffd:right-tab", rightTab()));
+  const [treeMode, setTreeMode] = createSignal<TreeMode>(load<TreeMode>("diffd:tree-mode", "diff"));
+  createEffect(() => save("diffd:tree-mode", treeMode()));
+  const [folders, setFolders] = createStore<Record<TreeMode, Folders>>({
+    diff: { all: null, open: {} },
+    project: { all: null, open: {} },
+  });
+  /**
+   * Whether a folder is open. The diff's tree starts open; the project's
+   * starts with only the folders holding changes open (`hasChanges`).
+   */
+  const folderOpen = (mode: TreeMode, path: string, hasChanges: boolean): boolean =>
+    folders[mode].open[path] ?? folders[mode].all ?? (mode === "diff" || hasChanges);
+  const setFolderOpen = (mode: TreeMode, path: string, open: boolean) => setFolders(mode, "open", path, open);
+  /** Open or close every folder of the current tree. */
+  const setAllFolders = (open: boolean) => setFolders(treeMode(), { all: open, open: {} });
 
   const [marks, setMarks] = createStore<Record<string, Mark>>(load(`diffd:marks:${id}`, {}));
   createEffect(() => save(`diffd:marks:${id}`, { ...marks }));
@@ -427,6 +451,11 @@ export function createView(review: Review) {
     split,
     closePane,
     drawers,
+    treeMode,
+    setTreeMode,
+    folderOpen,
+    setFolderOpen,
+    setAllFolders,
     setDrawers,
   };
 }

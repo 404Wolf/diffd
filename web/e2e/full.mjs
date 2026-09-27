@@ -874,6 +874,104 @@ try {
     check(await statusSoon(page, "Definition of fetchQuota"), "on the old side, gd falls back to the diff's symbols");
   });
 
+  await section("Right-click menu, context around a hunk, chat panel, tree neighbours", async () => {
+    await page.keyboard.press("Escape");
+    // Right-click a symbol: the language-server actions for it.
+    const ref = page.locator('.buffer.focused [data-file-section]:has([data-path$="bucket.rs"]) .code[data-side="new"] .ref').first();
+    await ref.scrollIntoViewIfNeeded();
+    const name = (await ref.textContent()).trim();
+    await ref.click({ button: "right" });
+    const menu = page.getByRole("menu");
+    check(await menu.isVisible(), "right-clicking code opens a menu");
+    check((await menu.innerText()).includes(name), `it's about the symbol clicked (${name})`);
+    const labels = await menu.getByRole("menuitem").allInnerTexts();
+    check(["Go to definition", "Go to type definition", "Find references", "Docs and errors"].every((l) => labels.some((x) => x.startsWith(l))), "with go to definition, type definition, references and docs");
+    await page.keyboard.press("Escape");
+    check(!(await menu.isVisible()), "escape closes it");
+    await ref.click({ button: "right" });
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await sleep(300);
+    check(await page.locator("[role=listbox], [role=dialog]").first().isVisible(), "arrow keys and enter pick an item (find references opens its picker)");
+    await page.keyboard.press("Escape");
+
+    // Ctrl+Enter: more lines above and below the hunk; Ctrl+Shift+Enter: fewer again.
+    const shown = () =>
+      page.evaluate(() => {
+        const sec = document.querySelector('.buffer.focused [data-file-section]:has([data-path$="routes.rs"])');
+        return [...sec.querySelectorAll(".row")].filter((r) => !r.closest(".gap-body[hidden]")).length;
+      });
+    const changed = page.locator('.buffer.focused [data-file-section]:has([data-path$="routes.rs"]) .row[data-chg="1"] .code[data-side="new"]').first();
+    await changed.scrollIntoViewIfNeeded();
+    await changed.click({ position: { x: 4, y: 4 } });
+    const before = await shown();
+    await keys(page, "Control+Enter");
+    const grown = await shown();
+    check(grown > before, `ctrl+enter shows more lines around the hunk (${before} → ${grown})`);
+    await keys(page, "Control+Shift+Enter");
+    check((await shown()) < grown, "ctrl+shift+enter shows fewer again");
+
+    // The chat sits at the bottom of the right panel, at a fixed share of it.
+    const chat = page.getByRole("region", { name: /Chat with/ });
+    const [panel, box] = await Promise.all([page.locator("#tabpanel-right").evaluate((e) => e.parentElement.getBoundingClientRect().height), chat.boundingBox()]);
+    check(Math.abs(box.height / panel - 0.3) < 0.05, `the chat is 30% of the side panel (${Math.round((100 * box.height) / panel)}%)`);
+
+    // Clicking a file in the tree shows its folder's other files; clicking it again hides them.
+    const file = page.locator('[data-tree-file$="bucket.rs"]');
+    await file.click();
+    await page.waitForSelector("[data-neighbour]", { timeout: 5000 });
+    check((await page.locator("[data-neighbour]").count()) > 0, "opening a file lists its neighbours");
+    await file.click();
+    await sleep(200);
+    check((await page.locator("[data-neighbour]").count()) === 0, "clicking it again hides them");
+
+    // The whole project, a click away; folders collapse and expand all at once.
+    await page.getByRole("tab", { name: /^Project/ }).click();
+    await page.waitForSelector('[data-neighbour="web/src/format.ts"], [data-tree-dir]', { timeout: 5000 });
+    check((await page.getByRole("navigation", { name: "Project files" }).count()) === 1, "the Project tab lists the whole repository");
+    await page.getByRole("button", { name: "Collapse all folders" }).click();
+    check((await page.locator("[data-tree-file], [data-neighbour]").count()) === 0 || (await page.locator('[data-tree-dir][aria-expanded="true"]').count()) === 0, "collapse all closes every folder");
+    await page.getByRole("button", { name: "Expand all folders" }).click();
+    check((await page.locator('[data-tree-dir][aria-expanded="false"]').count()) === 0, "expand all opens them");
+    check((await page.locator('[data-tree-file$="bucket.rs"]').count()) === 1, "changed files are marked in the project tree");
+    await page.getByRole("tab", { name: /^Diff/ }).click();
+    check((await page.getByRole("navigation", { name: "Changed files" }).count()) === 1, "and the Diff tab is back to the changes");
+
+    // The files drawer is as wide as you drag it.
+    const drawer = page.getByRole("complementary", { name: "Files" });
+    const width = (await drawer.boundingBox()).width;
+    const grip = page.getByRole("separator", { name: "Resize files" });
+    const g = await grip.boundingBox();
+    await page.mouse.move(g.x + 3, g.y + g.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(g.x + 3 + 300, g.y + g.height / 2, { steps: 5 });
+    await page.mouse.up();
+    const wider = (await drawer.boundingBox()).width;
+    check(wider > width + 250, `dragging its edge widens the files drawer (${Math.round(width)} → ${Math.round(wider)}px)`);
+    await page.mouse.move(g.x + 303, g.y + g.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(g.x + 3, g.y + g.height / 2, { steps: 5 });
+    await page.mouse.up();
+
+    // "Claude replied" in the activity feed lands on the reply itself.
+    const replied = page.locator("#tabpanel-right li", { hasText: "Claude replied" }).first();
+    if (await replied.count()) {
+      await page.getByRole("tab", { name: /^Activity/ }).click();
+      await replied.click();
+      await sleep(600);
+      const onScreen = await page.evaluate(() => {
+        const buf = document.querySelector(".buffer.focused").getBoundingClientRect();
+        return [...document.querySelectorAll("[data-thread] [data-message]")].some((m) => {
+          const r = m.getBoundingClientRect();
+          return m.textContent.includes("Claude") && r.top >= buf.top && r.bottom <= buf.bottom;
+        });
+      });
+      check(onScreen, "clicking “Claude replied” shows the reply");
+    }
+    await page.locator(".buffer.focused").focus();
+  });
+
   await section("Home page", async () => {
     await page.goto(base);
     check(await page.getByText("Add burst capacity to the limiter").isVisible(), "recent reviews are listed");
