@@ -95,10 +95,12 @@ What's still open is in §15.
 
 ```sh
 diffd                      # = diffd serve: one local server on localhost:3433
-diffd setup claude         # claude mcp add --transport http --scope user diffd http://localhost:3433/mcp?agent=claude,
-                           # plus the wake-up hooks in ~/.claude/settings.json (§5.3)
-diffd setup codex          # codex mcp add diffd --url …, plus the hooks in ~/.codex/hooks.json
-diffd setup claude --print # just prints what it would do
+diffd install              # the binary in ~/.local/bin, a login service (systemd user
+                           # unit or launchd agent), and diffd as a Claude Code and a Codex
+                           # plugin: the MCP server (…/mcp?agent=claude|codex) and the
+                           # wake-up hooks (§5.3). Again to upgrade; --print to preview
+diffd uninstall            # undoes exactly that (recorded in ~/.local/share/diffd/install.json)
+diffd setup claude|codex   # just the plugin for one agent, no service
 diffd config               # prints the default config, documented
 ```
 
@@ -303,7 +305,7 @@ comment arrives. The MCP spec has no way to wake a model: servers can send
 notifications, but clients don't turn them into turns (Codex logs them and
 nothing more). Claude Code's research-preview "channels" can, but only for
 stdio servers it spawns, behind a flag. So diffd uses each harness's hooks,
-installed by `diffd setup claude|codex`:
+which diffd's agent plugins carry (`diffd install`, or the Nix modules):
 
 - The hook (`diffd hook claude|codex`) runs in the background on
   SessionStart, UserPromptSubmit and Stop. It long-polls `GET /api/wake`

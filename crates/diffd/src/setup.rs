@@ -1,8 +1,10 @@
-//! `diffd setup claude|codex`: register diffd's MCP server with an agent and
-//! install the hooks that wake it when the user leaves feedback (see `hook`).
-//! Running it again replaces diffd's hooks instead of adding more.
+//! diffd as an agent plugin: the files of the Claude Code and Codex plugins
+//! (its MCP server, and the hooks that wake the agent when the user leaves
+//! feedback; see `hook`), for `diffd install`, `diffd plugin` and the Nix
+//! modules. Also recognises hooks an older `diffd setup` merged into a
+//! settings file, so they can be taken out again.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Context;
 use serde_json::{Value, json};
@@ -10,18 +12,6 @@ use serde_json::{Value, json};
 use crate::hook::Harness;
 
 const DEFAULT_PORT: u16 = 3433;
-
-/// How hooks should call this binary: `diffd` when it was found on `PATH`,
-/// else the path it was run by (not resolved, so a Nix profile link keeps working).
-fn self_command() -> String {
-    let argv0 = std::env::args_os().next().map(PathBuf::from).unwrap_or_else(|| "diffd".into());
-    let program = if argv0.components().count() == 1 {
-        "diffd".to_owned()
-    } else {
-        std::path::absolute(&argv0).unwrap_or(argv0).to_string_lossy().into_owned()
-    };
-    shell_quote(&program)
-}
 
 fn shell_quote(s: &str) -> String {
     if s.chars().all(|c| c.is_ascii_alphanumeric() || "/._-+:@".contains(c)) {
@@ -31,10 +21,10 @@ fn shell_quote(s: &str) -> String {
     }
 }
 
-/// `diffd … hook <args>`, with the port when it isn't the default.
-fn hook_command(args: &str, port: u16) -> String {
+/// `<program> hook <args>`, with the port when it isn't the default.
+fn hook_command(program: &str, args: &str, port: u16) -> String {
     let port = if port == DEFAULT_PORT { String::new() } else { format!(" --port {port}") };
-    format!("{} hook{port} {args}", self_command())
+    format!("{} hook{port} {args}", shell_quote(program))
 }
 
 /// Whether a hook command is one of ours: a `diffd` binary (any path) running `hook …`.
@@ -45,7 +35,7 @@ fn is_ours(command: &str) -> bool {
 }
 
 /// The hooks to install, per event: what the harness should run.
-fn hooks(harness: Harness, port: u16) -> Vec<(&'static str, Value)> {
+fn hooks(harness: Harness, program: &str, port: u16) -> Vec<(&'static str, Value)> {
     let name = match harness {
         Harness::Claude => "claude",
         Harness::Codex => "codex",
@@ -54,27 +44,28 @@ fn hooks(harness: Harness, port: u16) -> Vec<(&'static str, Value)> {
         // Runs in the background; exit 2 wakes Claude with the notice.
         Harness::Claude => json!({
             "type": "command",
-            "command": hook_command(name, port),
+            "command": hook_command(program, name, port),
             "async": true,
             "asyncRewake": true,
         }),
         // Runs in the background; queues the notice into the session.
         Harness::Codex => json!({
             "type": "command",
-            "command": hook_command(name, port),
+            "command": hook_command(program, name, port),
             "async": true,
             "timeout": 86_400,
         }),
     };
-    let end = json!({ "type": "command", "command": hook_command(&format!("end {name}"), port), "timeout": 3 });
+    let end = json!({ "type": "command", "command": hook_command(program, &format!("end {name}"), port), "timeout": 3 });
     // Waiting starts again when a session starts (a restart shouldn't need a first
     // message) and when the user writes (an interrupted turn runs no Stop hook).
     // All share one waiter per session: each replaces the one before.
     vec![("SessionStart", stop.clone()), ("UserPromptSubmit", stop.clone()), ("Stop", stop), ("SessionEnd", end)]
 }
 
-/// Put our hooks into a hooks settings document, replacing earlier ones of ours.
-fn merge_hooks(mut doc: Value, hooks: &[(&str, Value)]) -> anyhow::Result<Value> {
+/// Put our hooks into a hooks settings document, replacing earlier ones of ours
+/// (with none, it just takes ours out).
+pub(crate) fn merge_hooks(mut doc: Value, hooks: &[(&str, Value)]) -> anyhow::Result<Value> {
     if !doc.is_object() {
         doc = json!({});
     }
@@ -98,7 +89,7 @@ fn merge_hooks(mut doc: Value, hooks: &[(&str, Value)]) -> anyhow::Result<Value>
     Ok(doc)
 }
 
-fn read_json(path: &Path) -> anyhow::Result<Value> {
+pub(crate) fn read_json(path: &Path) -> anyhow::Result<Value> {
     match std::fs::read_to_string(path) {
         Ok(text) if text.trim().is_empty() => Ok(json!({})),
         Ok(text) => serde_json::from_str(&text).with_context(|| format!("{} isn't valid JSON", path.display())),
@@ -107,81 +98,39 @@ fn read_json(path: &Path) -> anyhow::Result<Value> {
     }
 }
 
-/// Write through a temporary file, so a crash never leaves half a settings file.
-fn write_json(path: &Path, doc: &Value) -> anyhow::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+/// A plugin's files, relative to its root: the manifest, the hooks (which call
+/// `program`), and unless `with_mcp` is off (another place registers it), the MCP server.
+pub fn plugin_files(harness: Harness, program: &str, port: u16, with_mcp: bool) -> Vec<(String, String)> {
+    let (agent, manifest_dir) = match harness {
+        Harness::Claude => ("claude", ".claude-plugin"),
+        Harness::Codex => ("codex", ".codex-plugin"),
+    };
+    let url = format!("http://localhost:{port}/mcp?agent={agent}");
+    let mut manifest = json!({
+        "name": "diffd",
+        "version": env!("CARGO_PKG_VERSION"),
+        "description": "Live code review of your changes in the browser; wakes you when the user leaves feedback",
+        "homepage": "https://github.com/404Wolf/diffd",
+        "license": "MIT",
+    });
+    // Claude finds hooks/hooks.json and .mcp.json by convention; Codex is told where they are.
+    let server = match harness {
+        Harness::Claude => json!({ "type": "http", "url": url }),
+        Harness::Codex => {
+            manifest["hooks"] = json!("./hooks/hooks.json");
+            if with_mcp {
+                manifest["mcpServers"] = json!("./.mcp.json");
+            }
+            json!({ "url": url })
+        }
+    };
+    let pretty = |v: &Value| serde_json::to_string_pretty(v).expect("JSON") + "\n";
+    let hooks = merge_hooks(json!({}), &hooks(harness, program, port)).expect("an empty document");
+    let mut files = vec![(format!("{manifest_dir}/plugin.json"), pretty(&manifest)), ("hooks/hooks.json".to_owned(), pretty(&hooks))];
+    if with_mcp {
+        files.push((".mcp.json".to_owned(), pretty(&json!({ "mcpServers": { "diffd": server } }))));
     }
-    let tmp = path.with_extension("json.diffd-tmp");
-    std::fs::write(&tmp, format!("{}\n", serde_json::to_string_pretty(doc)?))?;
-    std::fs::rename(&tmp, path).with_context(|| format!("writing {}", path.display()))
-}
-
-fn home() -> anyhow::Result<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from).context("HOME isn't set")
-}
-
-fn run(program: &str, args: &[&str]) -> anyhow::Result<std::process::Output> {
-    std::process::Command::new(program)
-        .args(args)
-        .output()
-        .with_context(|| format!("running `{program}` (is it installed? use --print to see what to do by hand)"))
-}
-
-pub fn claude(print: bool, port: u16) -> anyhow::Result<()> {
-    // The page names the agent from this (its MCP client doesn't say).
-    let url = format!("http://localhost:{port}/mcp?agent=claude");
-    let add = ["mcp", "add", "--transport", "http", "--scope", "user", "diffd", url.as_str()];
-    let dir = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).map_or_else(|| home().map(|h| h.join(".claude")), Ok)?;
-    let settings = dir.join("settings.json");
-    let hooks = hooks(Harness::Claude, port);
-    if print {
-        println!(
-            "claude {}\n\nand in {}:\n{}",
-            add.join(" "),
-            settings.display(),
-            serde_json::to_string_pretty(&merge_hooks(json!({}), &hooks)?)?
-        );
-        return Ok(());
-    }
-    let out = run("claude", &add)?;
-    let said = String::from_utf8_lossy(&out.stderr);
-    anyhow::ensure!(out.status.success() || said.contains("already exists"), "`claude mcp add` failed: {}", said.trim());
-    write_json(&settings, &merge_hooks(read_json(&settings)?, &hooks)?)?;
-    println!(
-        "Added diffd to Claude Code, with hooks in {} so Claude hears your review comments even when it's idle.\n\
-         Start the server with `diffd`, then ask Claude to share its changes.",
-        settings.display()
-    );
-    Ok(())
-}
-
-pub fn codex(print: bool, port: u16) -> anyhow::Result<()> {
-    let url = format!("http://localhost:{port}/mcp?agent=codex");
-    let add = ["mcp", "add", "diffd", "--url", url.as_str()];
-    let home = std::env::var_os("CODEX_HOME").map(PathBuf::from).map_or_else(|| home().map(|h| h.join(".codex")), Ok)?;
-    let file = home.join("hooks.json");
-    let hooks = hooks(Harness::Codex, port);
-    if print {
-        println!(
-            "codex {}\n\nand in {}:\n{}",
-            add.join(" "),
-            file.display(),
-            serde_json::to_string_pretty(&merge_hooks(json!({}), &hooks)?)?
-        );
-        return Ok(());
-    }
-    let out = run("codex", &add)?;
-    let said = String::from_utf8_lossy(&out.stderr);
-    anyhow::ensure!(out.status.success() || said.contains("already exists"), "`codex mcp add` failed: {}", said.trim());
-    write_json(&file, &merge_hooks(read_json(&file)?, &hooks)?)?;
-    println!(
-        "Added diffd to Codex, with hooks in {} so Codex hears your review comments even when it's idle.\n\
-         Codex runs new hooks only once you trust them: open Codex, run /hooks, and trust diffd's hooks (press t to trust all).\n\
-         Start the server with `diffd`, then ask Codex to share its changes.",
-        file.display()
-    );
-    Ok(())
+    files
 }
 
 #[cfg(test)]
@@ -197,7 +146,7 @@ mod tests {
                 "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "/old/diffd hook claude" }] }],
             }
         });
-        let ours = hooks(Harness::Claude, 3433);
+        let ours = hooks(Harness::Claude, "/bin/diffd", 3433);
         let once = merge_hooks(theirs, &ours).unwrap();
         let twice = merge_hooks(once.clone(), &ours).unwrap();
         assert_eq!(once, twice, "running setup again changes nothing");
@@ -212,11 +161,22 @@ mod tests {
 
     #[test]
     fn commands_carry_the_port_and_are_recognised() {
-        let c = hook_command("codex", 4000);
-        assert!(c.ends_with(" hook --port 4000 codex"), "{c}");
+        let c = hook_command("/opt/diffd", "codex", 4000);
+        assert_eq!(c, "/opt/diffd hook --port 4000 codex");
         assert!(is_ours(&c));
         assert!(is_ours("'/a b/diffd' hook claude"));
         assert!(!is_ours("notdiffd hook claude"));
         assert_eq!(shell_quote("/a b/diffd"), "'/a b/diffd'");
+    }
+
+    #[test]
+    fn plugins_carry_hooks_and_the_mcp_server() {
+        let files: std::collections::BTreeMap<_, _> = plugin_files(Harness::Codex, "/opt/diffd", 3433, true).into_iter().collect();
+        let manifest: Value = serde_json::from_str(&files[".codex-plugin/plugin.json"]).unwrap();
+        assert_eq!(manifest["hooks"], "./hooks/hooks.json");
+        assert!(files[".mcp.json"].contains("/mcp?agent=codex"));
+        assert!(files["hooks/hooks.json"].contains("/opt/diffd hook codex"));
+        let claude: Vec<String> = plugin_files(Harness::Claude, "/opt/diffd", 3433, false).into_iter().map(|(p, _)| p).collect();
+        assert_eq!(claude, [".claude-plugin/plugin.json", "hooks/hooks.json"]);
     }
 }

@@ -23,3 +23,11 @@ serde.workspace = true
 serde_json.workspace = true
 # Only for `diffd hook`, which talks to the local server over plain HTTP.
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
+# XDG directories (on macOS too, like the rest of diffd's files).
+etcetera = "0.11"
+# Edits Codex's config.toml for `diffd install`, keeping the user's comments.
+toml_edit = "0.23"
+
+[dev-dependencies]
+tempfile.workspace = true
+toml = "0.9"

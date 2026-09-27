@@ -33,10 +33,10 @@ in its thread, and keep it short; if you change code, the review updates by itse
 chat box arrive too: answer those with say. If the user asks where something is, or code outside the diff would help, call show:
 it can open any file in the repository. Comments can be on those files too.
 Keep calling wait_for_feedback while you're in a review conversation. When you finish your turn instead, diffd can still reach
-you: with its hooks set up (`diffd setup claude` / `diffd setup codex`), a message saying \"New feedback on your diffd review\"
+you: with its plugin installed (`diffd install`), a message saying \"New feedback on your diffd review\"
 arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.";
 
-/// Who's calling: the `agent` in the MCP URL (`diffd setup` registers
+/// Who's calling: the `agent` in the MCP URL (diffd's plugins register
 /// `/mcp?agent=claude` or `?agent=codex`), else the HTTP client's User-Agent,
 /// else the name its MCP client gives. Library defaults (Claude Code's HTTP
 /// client calls itself `rmcp`) say nothing.

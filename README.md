@@ -40,45 +40,75 @@ the agent hears each comment once you pause.
 
 ## Install
 
-With Nix:
+diffd is a single file. Download it for your machine and let it install
+itself:
 
 ```sh
-nix run github:404Wolf/diffd            # or: nix profile install github:404Wolf/diffd
+# Linux (x86_64; for ARM use diffd-linux-aarch64). Static: any distribution.
+curl -fLo diffd https://github.com/404Wolf/diffd/releases/latest/download/diffd-linux-x86_64
+# macOS (one binary for Apple silicon and Intel)
+curl -fLo diffd https://github.com/404Wolf/diffd/releases/latest/download/diffd-macos
+
+chmod +x diffd
+./diffd install          # --print first to see what it will do
+rm diffd                 # it copied itself to ~/.local/bin
 ```
 
-From source, with Rust (1.85+), Node 22 and [just](https://just.systems):
+(`SHA256SUMS` on the [release](https://github.com/404Wolf/diffd/releases/latest)
+has the checksums. On macOS, a binary downloaded with a browser instead of
+curl is quarantined: `xattr -d com.apple.quarantine diffd` first.)
 
-```sh
-just setup build        # target/release/diffd, with the page built in
-```
+Or build it: with Rust (1.85+), Node 22 and [just](https://just.systems),
+`just setup build` makes `target/release/diffd`, then run
+`target/release/diffd install`.
+
+`diffd install`:
+
+- copies the binary to `~/.local/bin/diffd` (`$XDG_BIN_HOME` if you set it);
+- starts diffd at login: a systemd user unit on Linux, a launchd agent on
+  macOS, at http://localhost:3433. It keeps your `PATH`, so it finds `git`,
+  `difft` and your language servers;
+- installs diffd as a **Claude Code plugin and a Codex plugin**, for the
+  ones on your `PATH` (`--agents claude,codex` to choose): the MCP server,
+  and the hooks that wake an idle agent when you comment. Restart the agent
+  to load it. Codex asks you to trust new hooks once: run `/hooks` in Codex.
+
+To upgrade, download the new binary and run `./diffd install` again. `diffd uninstall`
+removes exactly what it installed; your reviews stay in
+`~/.local/share/diffd` unless you add `--purge`. Other options:
+`--no-service` (start `diffd` yourself), `--port`.
+
+On a server you log out of, run `sudo loginctl enable-linger $USER` so the
+service keeps running.
+
+**With Nix**, try it with `nix run github:404Wolf/diffd`, or use the NixOS
+or home-manager module, which does all of the above declaratively (see
+[Run it as a service](#run-it-as-a-service)). `diffd install` refuses to
+run from the Nix store and points you there.
 
 diffd needs `git`. It uses `difft` (difftastic) when it's on your PATH, and
 any language servers you have installed.
 
 ## Use it
 
-```sh
-diffd                   # start the server (http://localhost:3433)
-diffd setup claude      # register it with Claude Code (once)
-diffd setup codex       # or with Codex (once; then trust its hooks when Codex asks)
-```
-
-Then ask the agent to show you its changes ("share your changes with
-diffd"). It calls `share_diff` and gives you a link. Leave comments; the
-agent answers in the threads. Press `?` on the page for every key.
+Ask the agent to show you its changes ("share your changes with diffd"). It
+calls `share_diff` and gives you a link. Leave comments; the agent answers
+in the threads. Press `?` on the page for every key.
 
 **The agent hears you even when it's idle.** An agent in its terminal ends
-its turn and waits for you, so it can't be listening for comments.
-`diffd setup` also installs hooks that wait in the background (whenever a
-session starts, you write to the agent, or a turn ends) and wake the agent
-when you comment: Claude Code through an `asyncRewake` hook, Codex by
-queueing a message into the session with `codex queue`. You can keep
-talking to the agent in its terminal at the same time; feedback that
-arrives mid-turn is picked up with that turn or right after it. For any
-other agent, `diffd hook wait` blocks until there's feedback on a review of
-the current directory, then prints what to do and exits 2
-(`--json` for scripts). `diffd setup claude --print` shows everything setup
-would do.
+its turn and waits for you, so it can't be listening for comments. diffd's
+plugin has hooks that wait in the background (whenever a session starts,
+you write to the agent, or a turn ends) and wake the agent when you
+comment: Claude Code through an `asyncRewake` hook, Codex by queueing a
+message into the session with `codex queue`. You can keep talking to the
+agent in its terminal at the same time; feedback that arrives mid-turn is
+picked up with that turn or right after it.
+
+Other agents can use the MCP server at `http://localhost:3433/mcp` directly.
+For their hooks, `diffd hook wait` blocks until there's feedback on a
+review of the current directory, then prints what to do and exits 2
+(`--json` for scripts). `diffd setup claude|codex` adds the plugin for one
+agent without installing the service.
 
 ### The MCP tools
 
@@ -191,8 +221,8 @@ integration is on (`services.diffd.mcp.enable = false` to skip that).
 It also installs diffd as a **Claude Code plugin and a Codex plugin**
 (`programs.claude-code.plugins.diffd`, `programs.codex.plugins`) when those
 programs are enabled: the hooks that wake an idle agent when you leave
-feedback, the same ones `diffd setup` writes into your settings, but packaged,
-so they come and go with the plugin and never touch your own hooks. Turn
+feedback, the same plugins `diffd install` writes, so they come and go with
+the plugin and never touch your own hooks. Turn
 either off with `services.diffd.agents.claude.enable = false` (or `codex`).
 The plugins carry the MCP server too when `mcp.enable` is off. Without
 home-manager, use the flake's `claude-plugin` and `codex-plugin` packages, e.g.

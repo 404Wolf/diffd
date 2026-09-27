@@ -5,7 +5,7 @@
 #   scripts/e2e-wake.sh codex    # real Codex TUI, on a scripted stand-in model (no network, no key)
 #   scripts/e2e-wake.sh claude   # real Claude Code TUI, on a real model (must be signed in)
 #
-# Each run: `diffd setup <agent>` into a throwaway config, a review of a
+# Each run: `diffd setup <agent>` (the plugin) into a throwaway config, a review of a
 # scratch repository, the agent's TUI in tmux, then
 #   1. a comment while the user has the agent busy with something else, and
 #   2. a chat message while the agent is idle;
@@ -19,6 +19,8 @@ port=${DIFFD_E2E_PORT:-3530}
 mock_port=${DIFFD_E2E_MOCK_PORT:-18090}
 # Codex refuses homes under /tmp, and its daemon socket path must stay short.
 work=$(mktemp -d "$HOME/.diffd-e2e-wake.XXXX")
+# `diffd setup` records what it installed under XDG_DATA_HOME: keep that in the throwaway too.
+export XDG_DATA_HOME="$work/data"
 session="diffd-wake-$$"
 pids=()
 cleanup() {
@@ -89,7 +91,11 @@ EOF
       screen | grep -q 'need review' || fail "Codex's /hooks didn't list diffd's hooks for review"
       tmux send-keys -t "$session" t; sleep 2
       screen | grep -q 'need review' && fail "the hooks weren't trusted"
-      tmux send-keys -t "$session" Escape; sleep 1
+      # Back out of the menu (it can be a level or two deep) to the composer.
+      for _ in 1 2 3 4; do
+        tmux send-keys -t "$session" Escape; sleep 1
+        screen | grep -q 'hooks' || break
+      done
     fi
     # The hooks run from the next event on: a first message arms them.
     type_line "hello"
@@ -108,7 +114,7 @@ json.dump({"hasCompletedOnboarding": True, "theme": "dark",
 EOF
     diffd setup claude --port "$port" >/dev/null
     tmux new-session -d -s "$session" -x 200 -y 50 \
-      "cd '$repo' && env CLAUDE_CONFIG_DIR='$CLAUDE_CONFIG_DIR' PATH='$PATH' claude --allowedTools mcp__diffd Edit Write; sleep 600"
+      "cd '$repo' && env CLAUDE_CONFIG_DIR='$CLAUDE_CONFIG_DIR' PATH='$PATH' claude --allowedTools mcp__plugin_diffd_diffd Edit Write; sleep 600"
     until_screen '❯' 60 || fail "Claude Code didn't start"
     sleep 3
     type_line "Share the uncommitted changes in this repo for review with diffd's share_diff (from HEAD, title 'e2e wake'), then stop."
