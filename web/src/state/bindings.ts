@@ -95,6 +95,11 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "z R", run: ({ cmd }) => cmd.expandAll(), help: ["Context", "Show everything / back to hunks"] },
   { keys: "z M", run: ({ cmd }) => cmd.collapseAll() },
   { keys: "g enter", run: ({ cmd }) => cmd.fileView(), help: ["Context", "The plain file here, no diff"] },
+  {
+    keys: "g space",
+    run: ({ cmd }) => cmd.fileInSplit(),
+    help: ["Context", "The plain file here, in a split"],
+  },
   // Talk
   {
     keys: "g c c",
@@ -138,6 +143,15 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     },
     { keys: `\` ${name}`, run: ({ cmd }) => cmd.jumpToMark(name) },
   ]),
+  // Splits
+  { keys: "ctrl-\\", run: ({ cmd }) => cmd.splitPane(), help: ["Splits", "Split to the right"] },
+  { keys: "ctrl-esc", run: ({ cmd }) => cmd.closePane(), help: ["Splits", "Close this split"] },
+  {
+    keys: "ctrl-h",
+    run: ({ cmd }) => cmd.focusSplit(-1),
+    help: ["Splits", "Focus the split to the left / right"],
+  },
+  { keys: "ctrl-l", run: ({ cmd }) => cmd.focusSplit(1) },
   // Panels
   { keys: "space e", run: ({ cmd }) => cmd.toggleDrawer("left"), help: ["Panels", "Files drawer"] },
   { keys: "space n", run: ({ cmd }) => cmd.toggleDrawer("right"), help: ["Panels", "Activity drawer"] },

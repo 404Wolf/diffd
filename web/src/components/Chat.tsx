@@ -1,4 +1,5 @@
 import { createEffect, For, Show } from "solid-js";
+import { bufferEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
 import { Markdown } from "./Markdown";
@@ -59,7 +60,7 @@ export function Chat(props: { review: Review; view: View }) {
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.currentTarget.blur();
-              document.getElementById("buffer")?.focus({ preventScroll: true });
+              bufferEl()?.focus({ preventScroll: true });
             }
           }}
         />

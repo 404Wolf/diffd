@@ -39,7 +39,6 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
   };
   return (
     <div
-      id={`thread-${t().id}`}
       data-thread={t().id}
       class="max-w-[720px] scroll-mt-11 overflow-hidden rounded-md border bg-bg font-sans text-[12.5px] leading-normal"
       classList={{

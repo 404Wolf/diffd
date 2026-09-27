@@ -1,6 +1,17 @@
 /** Finding rows in the rendered diff, and changing the DOM without moving the reader. */
 
-export const bufferEl = (): HTMLElement | null => document.getElementById("buffer");
+let focusedPane = 0;
+/** Which split keys and commands act on (see `View.focusPane`). */
+export const setFocusedPane = (id: number): void => {
+  focusedPane = id;
+};
+
+/** A pane's scrolling buffer; the focused pane's by default. */
+export const bufferEl = (pane: number = focusedPane): HTMLElement | null =>
+  document.getElementById(`buffer-${pane}`);
+
+/** Every pane's buffer, left to right. */
+export const allBuffers = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>(".buffer")];
 
 /**
  * Every row in the buffer, indexed. Big diffs have 100k+ rows, so the index is
@@ -17,28 +28,28 @@ interface RowIndex {
   readonly hunks: HTMLElement[];
 }
 
-let index: RowIndex | null = null;
-let watching: { buf: HTMLElement; observer: MutationObserver } | null = null;
+/** One index per pane's buffer, dropped when the buffer's DOM changes. */
+const indexes = new WeakMap<HTMLElement, { observer: MutationObserver; index: RowIndex | null }>();
 
 /** Only structural changes matter; repainting a line's code (the symbol cursor) doesn't. */
 const structural = (records: MutationRecord[]) =>
   records.some((m) => !(m.target instanceof Element && m.target.closest(".code")));
 
-function rowIndex(): RowIndex | null {
-  const buf = bufferEl();
+function rowIndex(buf: HTMLElement | null = bufferEl()): RowIndex | null {
   if (!buf) return null;
-  if (watching?.buf !== buf) {
-    watching?.observer.disconnect();
+  let watching = indexes.get(buf);
+  if (!watching) {
     const observer = new MutationObserver((records) => {
-      if (structural(records)) index = null;
+      const w = indexes.get(buf);
+      if (w && structural(records)) w.index = null;
     });
     observer.observe(buf, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
-    watching = { buf, observer };
-    index = null;
+    watching = { observer, index: null };
+    indexes.set(buf, watching);
   }
   // Changes made earlier in this same task haven't reached the observer's callback yet.
-  if (structural(watching.observer.takeRecords())) index = null;
-  if (index) return index;
+  if (structural(watching.observer.takeRecords())) watching.index = null;
+  if (watching.index) return watching.index;
 
   const rows: HTMLElement[] = [];
   const position = new Map<HTMLElement, number>();
@@ -53,12 +64,13 @@ function rowIndex(): RowIndex | null {
     if (r.dataset.chg === "1" && (prev?.dataset.chg !== "1" || prev.dataset.f !== r.dataset.f)) hunks.push(r);
     prev = r;
   }
-  index = { rows, position, byKey, hunks };
-  return index;
+  watching.index = { rows, position, byKey, hunks };
+  return watching.index;
 }
 
-export function rowEl(file: number, row: number): HTMLElement | null {
-  return rowIndex()?.byKey.get(`${file}:${row}`) ?? null;
+/** A row in a pane (the focused one by default). */
+export function rowEl(file: number, row: number, buf: HTMLElement | null = bufferEl()): HTMLElement | null {
+  return rowIndex(buf)?.byKey.get(`${file}:${row}`) ?? null;
 }
 
 /** Rows the cursor can move through: rendered and not inside a folded gap. */
@@ -77,11 +89,10 @@ export function hunkStarts(): readonly HTMLElement[] {
 }
 
 /** The first row whose bottom is below the top of the viewport (under sticky headers). */
-export function topVisibleRow(): HTMLElement | null {
-  const buf = bufferEl();
+export function topVisibleRow(buf: HTMLElement | null = bufferEl()): HTMLElement | null {
   if (!buf) return null;
   const top = buf.getBoundingClientRect().top + 34;
-  const rows = navigableRows();
+  const rows = rowIndex(buf)?.rows ?? [];
   // Rows are in document order, so their positions only grow: binary search
   // touches ~17 rows even in huge diffs (and lays out only their chunks).
   let lo = 0;
@@ -100,17 +111,17 @@ export function topVisibleRow(): HTMLElement | null {
  * where it was. Every structural change in the diff goes through this.
  */
 export function keepViewport(update: () => void): void {
-  const buf = bufferEl();
-  const anchor = topVisibleRow();
-  if (!buf || !anchor) {
-    update();
-    return;
-  }
-  const { f, r } = anchor.dataset;
-  const before = anchor.getBoundingClientRect().top;
+  const held = allBuffers().flatMap((buf) => {
+    const anchor = topVisibleRow(buf);
+    return anchor
+      ? [{ buf, f: anchor.dataset.f, r: anchor.dataset.r, before: anchor.getBoundingClientRect().top }]
+      : [];
+  });
   update();
-  const after = buf.querySelector<HTMLElement>(`.row[data-f="${f}"][data-r="${r}"]`);
-  if (after) buf.scrollTop += after.getBoundingClientRect().top - before;
+  for (const { buf, f, r, before } of held) {
+    const after = buf.querySelector<HTMLElement>(`.row[data-f="${f}"][data-r="${r}"]`);
+    if (after) buf.scrollTop += after.getBoundingClientRect().top - before;
+  }
 }
 
 export const follows = (a: Node, b: Node): boolean =>
@@ -128,9 +139,10 @@ export function flash(el: Element): void {
 }
 
 /** Where the reader is: the top visible row and its offset. */
-export function readingPosition(): { file: number; row: number; offset: number } | null {
-  const buf = bufferEl();
-  const top = topVisibleRow();
+export function readingPosition(
+  buf: HTMLElement | null = bufferEl(),
+): { file: number; row: number; offset: number } | null {
+  const top = topVisibleRow(buf);
   if (!buf || !top) return null;
   return {
     file: Number(top.dataset.f),
@@ -140,9 +152,11 @@ export function readingPosition(): { file: number; row: number; offset: number }
 }
 
 /** Scroll so that a row sits at `offset` from the buffer's top edge again. */
-export function restoreReadingPosition(pos: { file: number; row: number; offset: number }): void {
-  const buf = bufferEl();
-  const el = rowEl(pos.file, pos.row);
+export function restoreReadingPosition(
+  pos: { file: number; row: number; offset: number },
+  buf: HTMLElement | null = bufferEl(),
+): void {
+  const el = rowEl(pos.file, pos.row, buf);
   if (!buf || !el) return;
   // Twice: the first scroll can render sections whose real height differs from their placeholder.
   for (let i = 0; i < 2; i++) {

@@ -14,7 +14,8 @@ type Render = () => string;
 const renders = new WeakMap<HTMLElement, Render>();
 /** Placeholders not filled in yet, in no particular order. */
 const pending = new Set<HTMLElement>();
-let observer: IntersectionObserver | null = null;
+/** One observer per split's buffer, which is its scroll root. */
+const observers = new WeakMap<HTMLElement, IntersectionObserver>();
 let idle = false;
 
 /** How far outside the viewport chunks are filled in ahead of scrolling. */
@@ -29,15 +30,16 @@ export function placeholderHtml(start: number, end: number, text: string): strin
 
 /** Register the placeholders inside `root`; `render(el)` gives each one's real rows. */
 export function lazyChunks(root: HTMLElement, render: (el: HTMLElement) => Render): void {
-  const buf = root.closest<HTMLElement>("#buffer");
-  if (!observer || observer.root !== buf) {
-    observer?.disconnect();
+  const buf = root.closest<HTMLElement>(".buffer");
+  let observer = buf ? observers.get(buf) : undefined;
+  if (!observer) {
     observer = new IntersectionObserver(
       (entries) => {
         for (const e of entries) if (e.isIntersecting) fill(e.target as HTMLElement);
       },
       { root: buf, rootMargin: AHEAD },
     );
+    if (buf) observers.set(buf, observer);
   }
   for (const el of root.querySelectorAll<HTMLElement>(".chunk.lazy")) {
     renders.set(el, render(el));
@@ -51,9 +53,9 @@ export function lazyChunks(root: HTMLElement, render: (el: HTMLElement) => Rende
 function fill(el: HTMLElement): void {
   const render = renders.get(el);
   pending.delete(el);
-  observer?.unobserve(el);
+  const buf = el.closest<HTMLElement>(".buffer");
+  if (buf) observers.get(buf)?.unobserve(el);
   if (!render || !el.isConnected || !el.classList.contains("lazy")) return;
-  const buf = el.closest<HTMLElement>("#buffer");
   const before = el.getBoundingClientRect();
   const top = buf?.getBoundingClientRect().top ?? 0;
   el.innerHTML = render();

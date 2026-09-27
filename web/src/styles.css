@@ -327,6 +327,13 @@
   .row.cur .code.caret {
     box-shadow: inset 2px 0 0 var(--accent);
   }
+  /* The cursor in a split that doesn't have focus: still there, quieter. */
+  .buffer:not(.focused) .row.cur::after {
+    background: color-mix(in srgb, var(--cursor) 45%, transparent);
+  }
+  .buffer:not(.focused) .row.cur .code.caret {
+    box-shadow: inset 2px 0 0 var(--line-strong);
+  }
   /* Test code, as marked by the agent: a line along the far left. */
   .row.test::before {
     content: "";

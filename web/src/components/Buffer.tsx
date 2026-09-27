@@ -1,9 +1,9 @@
 import { createEffect, createMemo, Index, Show } from "solid-js";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
 import type { Commands } from "../state/commands";
-import { rowEl } from "../state/dom";
+import { bufferEl, rowEl } from "../state/dom";
 import type { Review } from "../state/review";
-import type { View } from "../state/view";
+import type { Pane, View } from "../state/view";
 import { FileSection } from "./FileSection";
 import { Markdown } from "./Markdown";
 
@@ -11,6 +11,8 @@ interface Props {
   review: Review;
   view: View;
   cmd: Commands;
+  /** The split this buffer shows. */
+  pane: Pane;
 }
 
 /** The scrolling area: every file as excerpts (the multibuffer), or one plain file (file view). */
@@ -33,15 +35,15 @@ export function Buffer(props: Props) {
     if (!side) return;
     const selection = getSelection();
     if (selection && !selection.isCollapsed) return;
-    if (num && props.view.mode().kind === "diff") {
+    if (num && props.pane.mode().kind === "diff") {
       // Clicking a line number starts a comment there; shift-click extends from the cursor.
       const line = Number(num.dataset.n);
       const file = Number(row.dataset.f);
-      const cur = props.view.cursor();
+      const cur = props.pane.cursor();
       const key = side === "old" ? "ol" : "nl";
       const from =
         cur && cur.file === file && cur.side === side
-          ? Number(rowEl(cur.file, cur.row)?.dataset[key] || line)
+          ? Number(rowEl(cur.file, cur.row, bufferEl(props.pane.id))?.dataset[key] || line)
           : line;
       if (!e.shiftKey) props.cmd.place(row, { side, scroll: false });
       props.cmd.openComposer(file, side, Math.min(from, line), Math.max(from, line));
@@ -64,14 +66,17 @@ export function Buffer(props: Props) {
     // Clicks are delegated from static rows; every click action also has a key binding.
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard equivalents live in state/bindings.ts
     <main
-      id="buffer"
+      id={`buffer-${props.pane.id}`}
+      data-pane={props.pane.id}
       tabindex="-1"
-      class="min-h-0 flex-1 overflow-auto overscroll-contain bg-inset pb-6 outline-none [overflow-anchor:none]"
-      classList={{ sym: props.view.symKey() }}
+      class="buffer min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-inset pb-6 outline-none [overflow-anchor:none]"
+      classList={{ sym: props.view.symKey(), focused: props.view.focused().id === props.pane.id }}
+      onPointerDown={() => props.view.focusPane(props.pane.id)}
+      onFocusIn={() => props.view.focusPane(props.pane.id)}
       onClick={onClick}
     >
       <Show
-        when={props.view.mode().kind === "file" ? (props.view.mode() as { file: number }).file : null}
+        when={props.pane.mode().kind === "file" ? (props.pane.mode() as { file: number }).file : null}
         fallback={
           <>
             <Summary review={props.review} cmd={props.cmd} />
@@ -179,10 +184,10 @@ function usePaintCursor(props: Props) {
     word: null,
   };
   createEffect(() => {
-    const cursor = props.view.cursor();
-    const visual = props.view.visual();
+    const cursor = props.pane.cursor();
+    const visual = props.pane.visual();
     // Re-paint after anything that re-renders rows.
-    props.view.mode();
+    props.pane.mode();
     props.review.snapshot();
     props.review.threads().length;
     for (let i = 0; i < props.review.snapshot().files.length; i++) props.view.visible(i);
@@ -192,7 +197,8 @@ function usePaintCursor(props: Props) {
       if (painted.word?.el.isConnected) painted.word.el.innerHTML = painted.word.html;
       painted = { rows: [], word: null };
       if (!cursor) return;
-      const row = rowEl(cursor.file, cursor.row);
+      const buf = bufferEl(props.pane.id);
+      const row = rowEl(cursor.file, cursor.row, buf);
       if (!row) return;
       row.classList.add("cur");
       painted.rows.push(row);
@@ -208,7 +214,7 @@ function usePaintCursor(props: Props) {
         const line = r ? (code.dataset.side === "old" ? r[0] : r[1]) : null;
         if (side && line !== null && line !== undefined) {
           painted.word = { el: code, html: code.innerHTML };
-          const inDiff = props.view.mode().kind === "diff";
+          const inDiff = props.pane.mode().kind === "diff";
           code.innerHTML = lineHtml(
             side.lines[line] ?? "",
             side.syntax[line],
@@ -224,7 +230,7 @@ function usePaintCursor(props: Props) {
       if (visual && visual.file === cursor.file) {
         const [a, b] = [Math.min(visual.row, cursor.row), Math.max(visual.row, cursor.row)];
         for (let r = a; r <= b; r++) {
-          const el = rowEl(cursor.file, r);
+          const el = rowEl(cursor.file, r, buf);
           if (el) {
             el.classList.add("vsel");
             painted.rows.push(el);

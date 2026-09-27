@@ -142,7 +142,6 @@ export function FileSection(props: Props) {
 
   return (
     <section
-      id={`file-${props.index}`}
       data-file-section={props.index}
       class="mx-2.5 my-2 overflow-clip rounded-md border border-line-strong bg-bg"
     >

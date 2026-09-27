@@ -202,7 +202,7 @@ export function createCommands(review: Review, view: View) {
     place(el, { side, word: opts.word ?? null, scroll: "center" });
     flash(el);
     if (opts.card) {
-      const card = document.getElementById(opts.card);
+      const card = bufferEl()?.querySelector<HTMLElement>(`[data-thread="${opts.card}"]`);
       if (card) {
         card.scrollIntoView({ block: "nearest" });
         card.classList.add("ring-2", "ring-accent");
@@ -237,7 +237,7 @@ export function createCommands(review: Review, view: View) {
 
   const goToThread = (t: Thread) => {
     const file = review.paths().indexOf(t.anchor.path);
-    if (file >= 0) goTo(file, t.anchor.side, t.anchor.end, { card: `thread-${t.id}` });
+    if (file >= 0) goTo(file, t.anchor.side, t.anchor.end, { card: t.id });
   };
 
   const order = () => treeOrder(buildTree(review.paths()));
@@ -251,7 +251,7 @@ export function createCommands(review: Review, view: View) {
       return;
     }
     unhide(file);
-    const section = document.getElementById(`file-${file}`);
+    const section = bufferEl()?.querySelector<HTMLElement>(`[data-file-section="${file}"]`);
     const buf = bufferEl();
     if (!section || !buf) return;
     buf.scrollTop += section.getBoundingClientRect().top - buf.getBoundingClientRect().top - 6;
@@ -336,7 +336,7 @@ export function createCommands(review: Review, view: View) {
   const toggleFold = (file: number) => {
     const path = files()[file]?.path;
     if (!path) return;
-    const header = () => document.querySelector(`#file-${file} [data-file-head]`);
+    const header = () => bufferEl()?.querySelector(`[data-file-section="${file}"] [data-file-head]`);
     const before = header()?.getBoundingClientRect().top ?? 0;
     const open = view.hidden(file);
     batch(() => {
@@ -351,7 +351,7 @@ export function createCommands(review: Review, view: View) {
   const setViewed = (file: number, viewed: boolean) => {
     const path = files()[file]?.path;
     if (!path) return;
-    const header = () => document.querySelector(`#file-${file} [data-file-head]`);
+    const header = () => bufferEl()?.querySelector(`[data-file-section="${file}"] [data-file-head]`);
     const before = header()?.getBoundingClientRect().top ?? 0;
     view.setFlags("viewed", path, viewed);
     const buf = bufferEl();
@@ -384,6 +384,47 @@ export function createCommands(review: Review, view: View) {
     view.setMode({ kind: "file", file: c.file });
     const el = rowEl(c.file, c.row) ?? bufferEl()?.querySelector<HTMLElement>(".row") ?? null;
     if (el) place(el, { scroll: "center" });
+  };
+
+  // -- Splits ------------------------------------------------------------------
+
+  /** `ctrl-\`: split the focused pane; the new one opens at the same place and takes focus. */
+  const splitPane = () => {
+    const from = bufferEl();
+    const reading = readingPosition(from);
+    view.split();
+    const buf = bufferEl();
+    if (reading) restoreReadingPosition(reading, buf);
+    buf?.focus({ preventScroll: true });
+    view.say(`${view.panes().length} splits · ctrl-h / ctrl-l to move · ctrl-esc to close`);
+  };
+  /** `ctrl-esc`: close the focused split. */
+  const closePane = () => {
+    if (!view.closePane()) return view.say("This is the only split");
+    bufferEl()?.focus({ preventScroll: true });
+  };
+  /** `ctrl-h` / `ctrl-l`: focus the split to the left or right. */
+  const focusSplit = (dir: 1 | -1) => {
+    const ps = view.panes();
+    const next = ps[ps.indexOf(view.focused()) + dir];
+    if (!next) return;
+    view.focusPane(next.id);
+    bufferEl()?.focus({ preventScroll: true });
+  };
+  /** `g space`: the plain file at this line, in the split beside this one (made if needed). */
+  const fileInSplit = () => {
+    const c = view.cursor();
+    if (!c) return view.say("Put the cursor on a line first");
+    const ps = view.panes();
+    const at = ps.indexOf(view.focused());
+    const other = ps[at + 1] ?? ps[at - 1];
+    if (other) view.focusPane(other.id);
+    else view.split();
+    remember();
+    view.setMode({ kind: "file", file: c.file });
+    const el = rowEl(c.file, c.row) ?? bufferEl()?.querySelector<HTMLElement>(".row") ?? null;
+    if (el) place(el, { side: c.side, scroll: "center" });
+    bufferEl()?.focus({ preventScroll: true });
   };
 
   // -- Symbols -----------------------------------------------------------------
@@ -666,6 +707,10 @@ export function createCommands(review: Review, view: View) {
     references,
     outline,
     filePicker,
+    splitPane,
+    closePane,
+    focusSplit,
+    fileInSplit,
     setMark,
     jumpToMark,
     deleteMark,

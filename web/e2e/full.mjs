@@ -86,7 +86,7 @@ const shot = (page, name) => page.screenshot({ path: `${shots}/${String(step).pa
 /** The top visible row and its offset, to prove the page didn't move. */
 const viewport = (page) =>
   page.evaluate(() => {
-    const buf = document.getElementById("buffer");
+    const buf = document.querySelector(".buffer.focused");
     const top = buf.getBoundingClientRect().top + 34;
     for (const r of buf.querySelectorAll(".row")) {
       if (r.closest(".gap-body[hidden]")) continue;
@@ -95,9 +95,9 @@ const viewport = (page) =>
     }
     return null;
   });
-async function cursorTo(page, fileName, line, side = "new") {
+async function cursorTo(page, fileName, line, side = "new", pane = ".buffer.focused") {
   // Click the code cell of that line, like a user would.
-  const cell = page.locator(`section:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`).first();
+  const cell = page.locator(`${pane} section:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`).first();
   await cell.scrollIntoViewIfNeeded();
   await cell.click({ position: { x: 4, y: 4 } });
   await sleep(80);
@@ -278,7 +278,7 @@ try {
   });
 
   await section("The agent shows you something", async () => {
-    await page.locator("#buffer").focus();
+    await page.locator(".buffer.focused").focus();
     await agent.call("show", { review_id: reviewId, file: "src/lib.rs", lines: [60, 62], message: "where refill is clamped" });
     await page.waitForSelector("text=wants to show you something");
     check(true, "a prompt appears instead of a jump");
@@ -352,6 +352,70 @@ try {
     await page.locator("[data-thread] button", { hasText: "Resolve" }).first().click();
     await page.waitForFunction(() => document.body.innerText.includes("RESOLVED") || document.body.innerText.toLowerCase().includes("resolved"));
     check(true, "resolving a thread marks it resolved");
+  });
+
+  await section("Splits", async () => {
+    const panes = () => page.locator(".buffer").count();
+    const inPane = (n, sel) => page.locator(`.buffer >> nth=${n}`).locator(sel);
+    await cursorTo(page, "src/lib.rs", 50);
+    const left = await at(page);
+    const vp = await viewport(page);
+    await keys(page, "Control+Backslash");
+    check((await panes()) === 2, "ctrl-\\ splits the view in two");
+    check((await page.locator(".buffer.focused").getAttribute("data-pane")) !== "0", "the new split has focus");
+    const vp2 = await viewport(page);
+    check(vp && vp2 && vp.key === vp2.key && Math.abs(vp.y - vp2.y) < 3, "and opens at the same place");
+    check((await at(page)) === left, "with the same cursor");
+
+    await keys(page, "]", "f");
+    const right = await at(page);
+    check(right !== left, `]f moves only this split's cursor (${right})`);
+    await keys(page, "Control+h");
+    check((await at(page)) === left, "ctrl-h focuses the left split, with its own cursor");
+    await keys(page, "Control+l");
+    check((await at(page)) === right, "ctrl-l back to the right one");
+
+    // g space: the file itself, in the split beside this one.
+    await keys(page, "Control+h");
+    await keys(page, "g", "Space");
+    check((await status(page)).includes("FILE"), "g space opens the plain file");
+    check((await inPane(1, ".fv").count()) === 1 && (await inPane(0, ".fv").count()) === 0, "in the other split; this one keeps the diff");
+    check((await at(page)) === left, "at the same line");
+    await shot(page, "split-file");
+    await keys(page, "Control+o");
+    check(!(await status(page)).includes("FILE") && (await inPane(1, ".fv").count()) === 0, "ctrl-o takes that split back to its diff");
+
+    // Commenting in one split shows the thread in both and moves neither.
+    await keys(page, "Control+h");
+    const otherBefore = await page.evaluate(() => document.querySelectorAll(".buffer")[1].scrollTop);
+    await cursorTo(page, "src/bucket.rs", 3);
+    await keys(page, "g", "c", "c");
+    await page.keyboard.type("Commented from the left split.");
+    await keys(page, "Control+Enter");
+    await page.waitForFunction(() => [...document.querySelectorAll(".buffer")].every((b) => b.textContent.includes("Commented from the left split.")));
+    check(true, "a comment in one split shows up in both");
+    const otherAfter = await page.evaluate(() => document.querySelectorAll(".buffer")[1].scrollTop);
+    check(Math.abs(otherAfter - otherBefore) < 3, "and the other split didn't move");
+    const heard = await agent.call("wait_for_feedback", { review_id: reviewId, timeout_seconds: 20 });
+    check(heard.items.some((i) => i.path === "src/bucket.rs" && i.new[0] === "Commented from the left split."), "the agent hears it");
+
+    // Clicking a split focuses it.
+    const second = await page.locator(".buffer").nth(1).getAttribute("data-pane");
+    await cursorTo(page, "src/lib.rs", 45, "new", `.buffer[data-pane="${second}"]`);
+    check((await page.locator(".buffer.focused").getAttribute("data-pane")) === second, "clicking in a split focuses it");
+    check((await at(page)).startsWith("lib.rs"), "and puts the cursor there");
+
+    await keys(page, "Control+Escape");
+    check((await panes()) === 1, "ctrl-esc closes the focused split");
+    await keys(page, "Control+Escape");
+    check((await status(page)).includes("only split"), "the last split stays");
+
+    // With one split, g space makes the second.
+    await cursorTo(page, "web/src/api.ts", 16);
+    await keys(page, "g", "Space");
+    check((await panes()) === 2 && (await inPane(1, ".fv").count()) === 1, "g space splits when there's only one");
+    await keys(page, "Control+Escape");
+    check((await panes()) === 1, "and closes again");
   });
 
   await section("Marks", async () => {
@@ -443,7 +507,7 @@ try {
     const chip = () => page.locator("header").innerText();
     const all = (await paths()).length;
 
-    await page.locator("#buffer").focus();
+    await page.locator(".buffer.focused").focus();
     await keys(page, "]", "r");
     await page.waitForFunction(() => document.querySelector("header").innerText.includes("×"));
     let shown = await paths();

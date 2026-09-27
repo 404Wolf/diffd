@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { match } from "ts-pattern";
 import type { ReviewState } from "../gen/ReviewState";
 import { spanLabel } from "../lib/history";
@@ -172,7 +172,11 @@ export function ReviewPage(props: { state: ReviewState }) {
     document.addEventListener("focusin", onFocus);
     document.addEventListener("focusout", () => queueMicrotask(onFocus));
     const buf = bufferEl();
-    buf?.addEventListener("scroll", () => requestAnimationFrame(trackScroll), { passive: true });
+    // Scroll events don't bubble, but they can be captured: one listener for every split.
+    container?.addEventListener("scroll", () => requestAnimationFrame(trackScroll), {
+      passive: true,
+      capture: true,
+    });
     if (!restorePlace()) {
       const first = navigableRows().find((r) => r.dataset.chg === "1") ?? navigableRows()[0];
       if (first) cmd.place(first, { scroll: false });
@@ -196,7 +200,18 @@ export function ReviewPage(props: { state: ReviewState }) {
           <FileTree review={review} view={v} cmd={cmd} current={currentFile} />
         </Drawer>
         <div class="flex min-w-0 flex-1 flex-col">
-          <Buffer review={review} view={v} cmd={cmd} />
+          <div class="flex min-h-0 flex-1">
+            <For each={v.panes()}>
+              {(pane, i) => (
+                <>
+                  <Show when={i() > 0}>
+                    <div class="w-px flex-none bg-line-strong" />
+                  </Show>
+                  <Buffer review={review} view={v} cmd={cmd} pane={pane} />
+                </>
+              )}
+            </For>
+          </div>
           <Chat review={review} view={v} />
         </div>
         <Drawer

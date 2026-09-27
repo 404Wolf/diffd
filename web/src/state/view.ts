@@ -11,6 +11,7 @@ import type { Snapshot } from "../gen/Snapshot";
 import type { ThreadId } from "../gen/ThreadId";
 import { applyFolds, initialVisible, regionRows, rowOf } from "../lib/diffModel";
 import { JumpList } from "../lib/jumps";
+import { setFocusedPane } from "./dom";
 import { fromRuns, loadSession, sessionWriter, toRuns } from "./persist";
 import type { Review } from "./review";
 
@@ -235,9 +236,42 @@ export function createView(review: Review) {
     return Boolean(flags.collapsed[path] || flags.viewed[path]);
   };
 
-  const [cursor, setCursor] = createSignal<Cursor | null>(null);
-  const [visual, setVisual] = createSignal<{ file: number; row: number } | null>(null);
-  const [mode, setMode] = createSignal<Mode>({ kind: "diff" });
+  // -- Splits ------------------------------------------------------------------------
+  // Each pane has its own cursor, mode and jump list; folds and everything else are shared.
+  let nextPane = 0;
+  const [panes, setPanes] = createSignal<Pane[]>([createPane(nextPane++)]);
+  const [focusedId, setFocusedId] = createSignal(0);
+  const focused = (): Pane => panes().find((p) => p.id === focusedId()) ?? (panes()[0] as Pane);
+  const focusPane = (id: number) => {
+    if (id === focusedId() || !panes().some((p) => p.id === id)) return;
+    setFocusedId(id);
+    setFocusedPane(id);
+  };
+  /** Split the focused pane to the right; the new pane starts where this one is, and gets focus. */
+  const split = (): Pane => {
+    const from = focused();
+    const pane = createPane(nextPane++, { cursor: from.cursor(), mode: from.mode() });
+    const at = panes().indexOf(from);
+    setPanes((ps) => [...ps.slice(0, at + 1), pane, ...ps.slice(at + 1)]);
+    focusPane(pane.id);
+    return pane;
+  };
+  /** Close the focused pane (never the last one); focus moves to its neighbour. */
+  const closePane = (): boolean => {
+    const ps = panes();
+    if (ps.length < 2) return false;
+    const at = ps.indexOf(focused());
+    const next = ps[at + 1] ?? ps[at - 1];
+    setPanes(ps.filter((_, i) => i !== at));
+    if (next) focusPane(next.id);
+    return true;
+  };
+  const cursor = () => focused().cursor();
+  const setCursor = (c: Cursor | null) => focused().setCursor(c);
+  const visual = () => focused().visual();
+  const setVisual = (v: { file: number; row: number } | null) => focused().setVisual(v);
+  const mode = () => focused().mode();
+  const setMode = (m: Mode) => focused().setMode(m);
   const [composer, setComposer] = createSignal<Composer | null>(null);
   const [nudge, setNudge] = createSignal<ShowRequest | null>(null);
   const [selection, setSelection] = createSignal<Selection | null>(null);
@@ -247,8 +281,6 @@ export function createView(review: Review) {
   const [message, setMessageRaw] = createSignal("");
   const [noteIndex, setNoteIndex] = createSignal(-1);
   const [symKey, setSymKey] = createSignal(false);
-  const jumps = new JumpList<Place>();
-  const [jumpPos, setJumpPos] = createSignal(jumps.position);
 
   let messageTimer: ReturnType<typeof setTimeout> | undefined;
   const say = (m: string) => {
@@ -305,12 +337,53 @@ export function createView(review: Review) {
     setNoteIndex,
     symKey,
     setSymKey,
-    jumps,
-    jumpPos,
-    syncJumps: () => setJumpPos(jumps.position),
+    get jumps() {
+      return focused().jumps;
+    },
+    jumpPos: () => focused().jumpPos(),
+    syncJumps: () => focused().syncJumps(),
+    panes,
+    focused,
+    focusPane,
+    split,
+    closePane,
     drawers,
     setDrawers,
   };
 }
 
 export type View = ReturnType<typeof createView>;
+
+/** One side of a split: its own cursor, mode and jump list. */
+export interface Pane {
+  readonly id: number;
+  readonly cursor: Accessor<Cursor | null>;
+  readonly setCursor: (c: Cursor | null) => void;
+  readonly visual: Accessor<{ file: number; row: number } | null>;
+  readonly setVisual: (v: { file: number; row: number } | null) => void;
+  readonly mode: Accessor<Mode>;
+  readonly setMode: (m: Mode) => void;
+  readonly jumps: JumpList<Place>;
+  readonly jumpPos: Accessor<JumpList<Place>["position"]>;
+  readonly syncJumps: () => void;
+}
+
+function createPane(id: number, from: { cursor?: Cursor | null; mode?: Mode } = {}): Pane {
+  const [cursor, setCursor] = createSignal<Cursor | null>(from.cursor ?? null);
+  const [visual, setVisual] = createSignal<{ file: number; row: number } | null>(null);
+  const [mode, setMode] = createSignal<Mode>(from.mode ?? { kind: "diff" });
+  const jumps = new JumpList<Place>();
+  const [jumpPos, setJumpPos] = createSignal(jumps.position);
+  return {
+    id,
+    cursor,
+    setCursor,
+    visual,
+    setVisual,
+    mode,
+    setMode,
+    jumps,
+    jumpPos,
+    syncJumps: () => setJumpPos(jumps.position),
+  };
+}

@@ -2,6 +2,7 @@ import { createMemo, For, type JSX, Show } from "solid-js";
 import type { Commit } from "../gen/Commit";
 import { type Span, step, steps } from "../lib/history";
 import { ago } from "../lib/time";
+import { bufferEl } from "../state/dom";
 import type { Review } from "../state/review";
 
 /**
@@ -19,7 +20,7 @@ export function Commits(props: { review: Review }) {
   /** Keys keep working after a click: they go to the diff, not the list. */
   const show = (span: Span) => {
     void props.review.showSpan(span);
-    document.getElementById("buffer")?.focus({ preventScroll: true });
+    bufferEl()?.focus({ preventScroll: true });
   };
   const pick = (i: number, e: MouseEvent) => {
     const s = props.review.span();

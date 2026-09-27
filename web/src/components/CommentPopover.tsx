@@ -25,8 +25,10 @@ export function CommentPopover(props: {
     const c = props.view.composer();
     if (!c) return null;
     return match(c)
-      .with({ kind: "reply" }, ({ threadId }) =>
-        document.querySelector<HTMLElement>(`#thread-${threadId} > div:last-child`),
+      .with(
+        { kind: "reply" },
+        ({ threadId }) =>
+          bufferEl()?.querySelector<HTMLElement>(`[data-thread="${threadId}"] > div:last-child`) ?? null,
       )
       .with({ kind: "new" }, ({ anchor: a }) => {
         const file = props.review.paths().indexOf(a.path);
