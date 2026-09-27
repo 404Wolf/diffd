@@ -13,6 +13,7 @@ import type { Snapshot } from "../gen/Snapshot";
 import type { ThreadId } from "../gen/ThreadId";
 import { applyFolds, initialVisible, regionRows, rowOf } from "../lib/diffModel";
 import { JumpList } from "../lib/jumps";
+import type { Match } from "../lib/search";
 import { setFocusedPane } from "./dom";
 import { fromRuns, loadSession, sessionWriter, toRuns } from "./persist";
 import type { Review } from "./review";
@@ -51,6 +52,18 @@ export interface Picker {
   /** Items for a query; `literal` pickers filter themselves instead of fuzzy matching. */
   readonly items: (query: string) => readonly PickerItem[];
   readonly literal?: boolean;
+  /** A line under the query, e.g. how many matches there are. */
+  readonly status?: (query: string) => string;
+}
+
+/** The last search (`/`, Ctrl+F): what `n` / `N` walk and what's highlighted. */
+export interface Search {
+  readonly query: string;
+  /** The diff it was run on: another revision or commit means searching again. */
+  readonly snapshot: Snapshot;
+  readonly matches: readonly Match[];
+  /** The match last gone to, or -1. */
+  readonly index: number;
 }
 
 /** Lines picked with the mouse, waiting to be commented on. */
@@ -380,6 +393,7 @@ export function createView(review: Review) {
   const [nudge, setNudge] = createSignal<ShowRequest | null>(null);
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [picker, setPicker] = createSignal<Picker | null>(null);
+  const [search, setSearch] = createSignal<Search | null>(null);
   const [help, setHelp] = createSignal(false);
   const [pending, setPending] = createSignal("");
   const [message, setMessageRaw] = createSignal("");
@@ -450,6 +464,8 @@ export function createView(review: Review) {
     setSelection,
     picker,
     setPicker,
+    search,
+    setSearch,
     help,
     setHelp,
     pending,

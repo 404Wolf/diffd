@@ -23,8 +23,8 @@ import {
   shrinkAround,
 } from "../lib/diffModel";
 import { step, steps } from "../lib/history";
-import { fillAll, hasPending } from "../lib/lazyRows";
 import { rowChanged } from "../lib/render";
+import { findMatches, MAX_MATCHES, type Match, nextMatch, type Place as SearchPlace } from "../lib/search";
 import {
   CLASS_KINDS,
   definition,
@@ -39,23 +39,25 @@ import { buildTree, treeOrder } from "../lib/tree";
 import {
   bufferEl,
   flash,
-  follows,
-  hunkStarts,
   keepViewport,
-  navigableRows,
   readingPosition,
   restoreReadingPosition,
   reveal,
   rowEl,
-  rowPosition,
+  windowed,
 } from "./dom";
+import type { ListNav, RowItem } from "./layout";
 import type { Review } from "./review";
-import { CONTEXT, type Cursor, EXPAND_STEP, type PickerItem, type Place, type View, type Word } from "./view";
-
-/** Fill in every lazily rendered row, keeping the reader where they are. */
-const completeRows = () => {
-  if (hasPending()) keepViewport(fillAll);
-};
+import {
+  CONTEXT,
+  type Cursor,
+  EXPAND_STEP,
+  type PickerItem,
+  type Place,
+  type Search,
+  type View,
+  type Word,
+} from "./view";
 
 /** How long `gd` waits for a language server before using the diff's own symbols. */
 const LSP_PATIENCE_MS = 1500;
@@ -100,37 +102,80 @@ export function createCommands(review: Review, view: View) {
     return c ? rowEl(c.file, c.row) : null;
   };
 
-  /** Put the cursor on a rendered row, keeping the side when that side exists there. */
-  const place = (
-    el: HTMLElement,
-    opts: { side?: Side; word?: Word | null; scroll?: "nearest" | "center" | false } = {},
-  ) => {
-    const file = Number(el.dataset.f);
-    const row = Number(el.dataset.r);
-    const has = (s: Side) => el.querySelector(`.code[data-side="${s}"]`) !== null;
+  /** Whether a row has a line on this side, as shown: file view shows one side only. */
+  const hasSide = (file: number, row: number, side: Side): boolean => {
+    const f = files()[file];
+    const m = view.mode();
+    if (m.kind === "file") return side === (f?.new ? "new" : "old");
+    const r = f?.rows[row];
+    return r !== undefined && r[side === "old" ? 0 : 1] !== null;
+  };
+
+  /**
+   * What the focused pane shows (the multibuffer or a file view), as a list of
+   * items to move through: only rows near the screen are rendered.
+   */
+  const nav = (): ListNav | null => windowed()?.nav ?? null;
+  /** Scroll a row into view, rendering it. */
+  const revealRow = (file: number, row: number, how: "nearest" | "center") => {
+    const win = windowed();
+    const at = win ? win.nav.indexOfRow(file, row) : -1;
+    if (win && at >= 0) win.reveal(at, how);
+  };
+
+  type PlaceOptions = { side?: Side; word?: Word | null; scroll?: "nearest" | "center" | false };
+  /** Put the cursor on a row, keeping the side when that side exists there. */
+  const placeRow = (file: number, row: number, opts: PlaceOptions = {}) => {
+    const has = (s: Side) => hasSide(file, row, s);
     const current = view.cursor()?.side ?? "new";
     const side =
       opts.side && has(opts.side) ? opts.side : has(current) ? current : current === "new" ? "old" : "new";
     view.setCursor({ file, row, side, word: opts.word ?? null });
-    if (opts.scroll !== false) reveal(el, opts.scroll ?? "nearest");
+    if (opts.scroll !== false) revealRow(file, row, opts.scroll ?? "nearest");
+  };
+  /** Put the cursor on a rendered row (a click). */
+  const place = (el: HTMLElement, opts: PlaceOptions = {}) =>
+    placeRow(Number(el.dataset.f), Number(el.dataset.r), opts);
+  const placeItem = (item: RowItem | null | undefined, opts: PlaceOptions = {}) => {
+    if (item) placeRow(item.file, item.row, opts);
+  };
+  /** Where the cursor's row is in the pane's items, or -1. */
+  const cursorIndex = (): number => {
+    const c = view.cursor();
+    return c ? (nav()?.indexOfRow(c.file, c.row) ?? -1) : -1;
   };
 
   const move = (delta: number) => {
-    const rows = navigableRows();
-    if (rows.length === 0) return;
-    const cur = cursorEl();
-    const at = cur ? rowPosition(cur) : -1;
-    const next = rows[at < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, at + delta))];
-    if (next) place(next);
+    const n = nav();
+    if (n) placeItem(n.stepRow(cursorIndex(), delta));
   };
   const edge = (last: boolean) => {
-    completeRows();
-    const rows = navigableRows();
-    const el = last ? rows.at(-1) : rows[0];
-    if (!el) return;
+    const n = nav();
+    if (!n) return;
+    const { rows, items } = n.layout();
+    const at = last ? rows.at(-1) : rows[0];
+    if (at === undefined) return;
     remember();
-    place(el, { scroll: "center" });
+    placeItem(items[at] as RowItem, { scroll: "center" });
   };
+  /** The first changed row the pane shows (or of one file), else its first row. */
+  const firstChange = (file?: number): RowItem | null => {
+    const n = nav();
+    if (!n) return null;
+    const { items, fileStart } = n.layout();
+    const from = file === undefined ? 0 : (fileStart[file] ?? 0);
+    const to = file === undefined ? items.length : (fileStart[file + 1] ?? items.length);
+    let first: RowItem | null = null;
+    for (let i = from; i < to; i++) {
+      const it = items[i];
+      if (it?.kind !== "row") continue;
+      first ??= it;
+      if (review.models()[it.file]?.changed[it.row] === 1) return it;
+    }
+    return first;
+  };
+  /** Start at the first change: on load, and when another part of the history comes up. */
+  const startAtFirstChange = (scroll: "center" | false) => placeItem(firstChange(), { scroll });
   const halfPage = () => Math.max(5, Math.floor((bufferEl()?.clientHeight ?? 600) / 36));
 
   const lineText = (c: Cursor): string => {
@@ -146,8 +191,7 @@ export function createCommands(review: Review, view: View) {
     const c = view.cursor();
     if (!c || view.mode().kind !== "diff") return;
     const other: Side = c.side === "new" ? "old" : "new";
-    const el = cursorEl();
-    if (el?.querySelector(`.code[data-side="${other}"]`)) view.setCursor({ ...c, side: other, word: null });
+    if (hasSide(c.file, c.row, other)) view.setCursor({ ...c, side: other, word: null });
     else view.say(`This line has no ${other} side`);
   };
 
@@ -181,16 +225,15 @@ export function createCommands(review: Review, view: View) {
   // -- Moving around the diff -----------------------------------------------
 
   const hunk = (dir: 1 | -1) => {
-    completeRows();
-    const cur = cursorEl();
-    const starts = hunkStarts();
+    const n = nav();
+    if (!n) return;
+    const { hunks, items } = n.layout();
+    const at = cursorIndex();
     const target =
-      dir > 0
-        ? starts.find((h) => !cur || follows(cur, h))
-        : [...starts].reverse().find((h) => cur && follows(h, cur));
-    if (!target) return view.say(dir > 0 ? "No more hunks below" : "No more hunks above");
+      dir > 0 ? hunks.find((h) => h > at) : at < 0 ? undefined : [...hunks].reverse().find((h) => h < at);
+    if (target === undefined) return view.say(dir > 0 ? "No more hunks below" : "No more hunks above");
     remember();
-    place(target, { scroll: "center" });
+    placeItem(items[target] as RowItem, { scroll: "center" });
   };
 
   const unhide = (file: number) => {
@@ -225,7 +268,6 @@ export function createCommands(review: Review, view: View) {
     line: number,
     opts: { word?: Word | null; card?: string; message?: string | undefined } = {},
   ): boolean => {
-    completeRows();
     const model = review.models()[file];
     if (!model) return false;
     const row = rowOf(model, side, line);
@@ -239,10 +281,9 @@ export function createCommands(review: Review, view: View) {
     if (review.isContext(file)) view.setMode({ kind: "file", file });
     else if (m.kind === "file" && (m.file !== file || opts.card)) view.setMode({ kind: "diff" });
     if (view.mode().kind === "diff") ensureRow(file, row);
+    placeRow(file, row, { side, word: opts.word ?? null, scroll: "center" });
     const el = rowEl(file, row);
-    if (!el) return false;
-    place(el, { side, word: opts.word ?? null, scroll: "center" });
-    flash(el);
+    if (el) flash(el);
     if (opts.card) {
       const card = bufferEl()?.querySelector<HTMLElement>(`[data-thread="${opts.card}"]`);
       if (card) {
@@ -309,32 +350,27 @@ export function createCommands(review: Review, view: View) {
   let rowless: { readonly file: number; readonly cursorFile: number | undefined } | null = null;
   const openFile = (file: number, rememberIt = true) => {
     rowless = null;
-    completeRows();
     if (rememberIt) remember();
     const m = view.mode();
     if (m.kind === "file" || review.isContext(file)) {
       view.setMode({ kind: "file", file });
       bufferEl()?.scrollTo({ top: 0 });
-      const first = bufferEl()?.querySelector<HTMLElement>(".row");
-      if (first) place(first, { scroll: false });
+      const n = nav();
+      const first = n?.layout().rows[0];
+      if (n && first !== undefined) placeItem(n.layout().items[first] as RowItem, { scroll: false });
       return;
     }
     unhide(file);
-    const section = bufferEl()?.querySelector<HTMLElement>(`[data-file-section="${file}"]`);
-    const buf = bufferEl();
-    if (!section || !buf) return;
-    buf.scrollTop += section.getBoundingClientRect().top - buf.getBoundingClientRect().top - 6;
-    const first =
-      section.querySelector<HTMLElement>('.row[data-chg="1"]') ?? section.querySelector<HTMLElement>(".row");
-    if (first) place(first, { scroll: false });
-    else {
-      rowless = { file, cursorFile: view.cursor()?.file };
-      view.say(`${review.paths()[file] ?? "This file"} has nothing to show`);
-    }
+    const win = windowed();
+    if (!win) return;
+    win.reveal(win.nav.layout().fileStart[file] ?? 0, "start");
+    const first = firstChange(file);
+    if (first) return placeItem(first, { scroll: false });
+    rowless = { file, cursorFile: view.cursor()?.file };
+    view.say(`${review.paths()[file] ?? "This file"} has nothing to show`);
   };
   /** `]f` / `[f`, in tree order, skipping collapsed and viewed files. */
   const fileJump = (dir: 1 | -1) => {
-    completeRows();
     const list = order();
     const mode = view.mode();
     const cursorFile = view.cursor()?.file;
@@ -388,16 +424,26 @@ export function createCommands(review: Review, view: View) {
     goToThread(note);
   };
 
+  /** Threads in the pane's order, with the index of the item holding their cards. */
+  const threadsInOrder = (): { index: number; thread: Thread }[] => {
+    const n = nav();
+    if (!n) return [];
+    return n
+      .layout()
+      .items.flatMap((it, index) =>
+        it.kind === "threads" ? n.threadsAt(it.file, it.row).map((thread) => ({ index, thread })) : [],
+      );
+  };
   const threadJump = (dir: 1 | -1) => {
-    const cards = [...(bufferEl()?.querySelectorAll<HTMLElement>("[data-thread]") ?? [])];
-    const cur = cursorEl();
-    const card =
+    const at = cursorIndex();
+    const all = threadsInOrder();
+    // A thread's cards follow the row it ends on (`index - 1`), where going to it puts the cursor.
+    const next =
       dir > 0
-        ? cards.find((c) => !cur || follows(cur, c))
-        : [...cards].reverse().find((c) => cur && follows(c, cur));
-    const t = review.threads().find((x) => x.id === card?.dataset.thread);
-    if (!t) return view.say("No more threads that way");
-    goToThread(t);
+        ? all.find((t) => at < 0 || t.index - 1 > at)
+        : [...all].reverse().find((t) => at >= 0 && t.index - 1 < at);
+    if (!next) return view.say("No more threads that way");
+    void goToThread(next.thread);
   };
 
   const activityGo = (item: ActivityItem) => {
@@ -463,34 +509,21 @@ export function createCommands(review: Review, view: View) {
     keepViewport(() => view.setVisible(c.file, next));
   };
 
-  /**
-   * Collapse or expand a file without moving anyone: in this split its header
-   * stays put (the rows under it come or go); other splits keep their place.
-   */
-  const keepFileHeader = (file: number, update: () => void) => {
-    const buf = bufferEl();
-    const header = () => buf?.querySelector(`[data-file-section="${file}"] [data-file-head]`);
-    const before = header()?.getBoundingClientRect().top ?? 0;
-    keepViewport(update, buf);
-    const after = header()?.getBoundingClientRect().top;
-    if (buf && after !== undefined) buf.scrollTop += after - before;
-  };
-
+  // Collapsing or expanding a file moves no one: each split's window keeps the
+  // item at its top in place, and a collapsed file's header takes its rows' place.
   const toggleFold = (file: number) => {
     const path = files()[file]?.path;
     if (!path) return;
     const open = view.hidden(file);
-    keepFileHeader(file, () =>
-      batch(() => {
-        view.setFlags("collapsed", path, !open);
-        if (open) view.setFlags("viewed", path, false);
-      }),
-    );
+    batch(() => {
+      view.setFlags("collapsed", path, !open);
+      if (open) view.setFlags("viewed", path, false);
+    });
   };
 
   const setViewed = (file: number, viewed: boolean) => {
     const path = files()[file]?.path;
-    if (path) keepFileHeader(file, () => view.setFlags("viewed", path, viewed));
+    if (path) view.setFlags("viewed", path, viewed);
   };
 
   const expandAll = () =>
@@ -516,8 +549,15 @@ export function createCommands(review: Review, view: View) {
     if (view.mode().kind === "file") return view.say("Already in file view · ctrl-o to go back");
     remember();
     view.setMode({ kind: "file", file: c.file });
-    const el = rowEl(c.file, c.row) ?? bufferEl()?.querySelector<HTMLElement>(".row") ?? null;
-    if (el) place(el, { scroll: "center" });
+    placeInFileView(c, "center");
+  };
+  /** In the file view just opened: the cursor's row, or the first row when that side has no line there. */
+  const placeInFileView = (c: Cursor, scroll: "center" | false) => {
+    const n = nav();
+    if (!n) return;
+    if (n.indexOfRow(c.file, c.row) >= 0) return placeRow(c.file, c.row, { side: c.side, scroll });
+    const first = n.layout().rows[0];
+    if (first !== undefined) placeItem(n.layout().items[first] as RowItem, { scroll });
   };
 
   // -- Splits ------------------------------------------------------------------
@@ -556,8 +596,7 @@ export function createCommands(review: Review, view: View) {
     else view.split();
     remember();
     view.setMode({ kind: "file", file: c.file });
-    const el = rowEl(c.file, c.row) ?? bufferEl()?.querySelector<HTMLElement>(".row") ?? null;
-    if (el) place(el, { side: c.side, scroll: "center" });
+    placeInFileView(c, "center");
     bufferEl()?.focus({ preventScroll: true });
   };
 
@@ -765,32 +804,90 @@ export function createCommands(review: Review, view: View) {
       title: "Go to file",
       items: () => files().map((f, i) => ({ label: fileName(i), detail: f.path, run: () => openFile(i) })),
     });
-  const search = () =>
+  // -- Search (`/`, Ctrl+F, `n` / `N`) ------------------------------------------------
+
+  /** Where the cursor is, for finding the match after or before it. */
+  const searchPlace = (dir: 1 | -1, s: Search | null): SearchPlace => {
+    const c = view.cursor();
+    if (!c) return { file: dir > 0 ? -1 : files().length, row: 0, side: "old", col: 0 };
+    // On the match last gone to: from that match. Anywhere else on a row: from the whole row.
+    const cur = s?.matches[s.index];
+    if (cur && cur.file === c.file && cur.row === c.row && cur.side === c.side)
+      return { file: c.file, row: c.row, side: c.side, col: cur.start };
+    return { file: c.file, row: c.row, side: c.side, col: dir > 0 ? -1 : Number.MAX_SAFE_INTEGER };
+  };
+  const showMatch = (s: Search, index: number, wrapped: boolean) => {
+    const m = s.matches[index];
+    if (!m) return;
+    view.setSearch({ ...s, index });
+    goTo(m.file, m.side, m.line);
+    const more = s.matches.length >= MAX_MATCHES ? "+" : "";
+    view.say(`/${s.query} · ${index + 1} of ${s.matches.length}${more}${wrapped ? " · wrapped around" : ""}`);
+  };
+  /** Search every line of both sides, folded ones too; Enter goes to the first match after the cursor. */
+  const search = () => {
+    let last: Search | null = null;
+    const run = (q: string): Search => {
+      if (last?.query !== q || last.snapshot !== review.snapshot())
+        last = {
+          query: q,
+          snapshot: review.snapshot(),
+          matches: findMatches(files(), review.models(), q),
+          index: -1,
+        };
+      return last;
+    };
     view.setPicker({
       title: "Search every line, hidden ones too",
       literal: true,
+      status: (q) => {
+        if (q.length < 2) return "";
+        const n = run(q).matches.length;
+        return n === 0
+          ? "No matches"
+          : `${n}${n >= MAX_MATCHES ? "+" : ""} match${n === 1 ? "" : "es"} · n / N next and previous`;
+      },
       items: (q) => {
         if (q.length < 2) return [];
-        const needle = q.toLowerCase();
+        const s = run(q);
+        // From the next match after the cursor, round to the one before it.
+        const { index: first } = nextMatch(s.matches, searchPlace(1, null), 1);
         const out: PickerItem[] = [];
-        files().forEach((f, file) => {
-          for (const [side, text] of [
-            ["new", f.new],
-            ["old", f.old],
-          ] as const) {
-            text?.lines.forEach((l, i) => {
-              if (out.length < 300 && l.toLowerCase().includes(needle))
-                out.push({
-                  label: where(file, i + 1, side),
-                  detail: l.trim(),
-                  run: () => goTo(file, side, i + 1),
-                });
-            });
-          }
-        });
+        for (let k = 0; k < Math.min(300, s.matches.length); k++) {
+          const i = (first + k) % s.matches.length;
+          const m = s.matches[i] as Match;
+          out.push({
+            label: where(m.file, m.line, m.side),
+            detail:
+              (m.side === "old" ? files()[m.file]?.old : files()[m.file]?.new)?.lines[m.line - 1]?.trim() ??
+              "",
+            run: () => showMatch(s, i, false),
+          });
+        }
         return out;
       },
     });
+  };
+  /** `n` / `N`: the next or previous match of the last search. */
+  const searchNext = (dir: 1 | -1) => {
+    const prev = view.search();
+    if (!prev) return view.say("Nothing searched yet · / or ctrl-f to search");
+    const s =
+      prev.snapshot === review.snapshot()
+        ? prev
+        : {
+            query: prev.query,
+            snapshot: review.snapshot(),
+            matches: findMatches(files(), review.models(), prev.query),
+            index: -1,
+          };
+    const { index, wrapped } = nextMatch(s.matches, searchPlace(dir, s), dir);
+    if (index < 0) {
+      view.setSearch(s);
+      return view.say(`/${s.query} · no matches`);
+    }
+    showMatch(s, index, wrapped);
+  };
 
   // -- Comments ------------------------------------------------------------------
 
@@ -859,8 +956,7 @@ export function createCommands(review: Review, view: View) {
     ensureRow(c.file, first);
     ensureRow(c.file, last);
     view.setVisual({ file: c.file, row: first });
-    const el = rowEl(c.file, last);
-    if (el) place(el, { side: c.side });
+    placeRow(c.file, last, { side: c.side });
   };
   /** The run of changed rows around a row, as lines of one side; `ah` takes a line of context on each end. */
   const hunkLines = (file: number, row: number, side: Side, around: boolean): LineRange | null => {
@@ -910,10 +1006,9 @@ export function createCommands(review: Review, view: View) {
     review.drafting(true);
   };
   const nearThread = (): Thread | undefined => {
-    const cards = [...(bufferEl()?.querySelectorAll<HTMLElement>("[data-thread]") ?? [])];
-    const cur = cursorEl();
-    const card = cards.find((c) => !cur || follows(cur, c)) ?? cards.at(-1);
-    return review.threads().find((t) => t.id === card?.dataset.thread);
+    const at = cursorIndex();
+    const all = threadsInOrder();
+    return (all.find((t) => at < 0 || t.index > at) ?? all.at(-1))?.thread;
   };
   const closeComposer = () => {
     if (!view.composer()) return;
@@ -979,6 +1074,7 @@ export function createCommands(review: Review, view: View) {
     if (view.visual()) return view.setVisual(null);
     const c = view.cursor();
     if (c?.word) return view.setCursor({ ...c, word: null });
+    if (view.search()) view.setSearch(null);
     getSelection()?.removeAllRanges();
   };
   const startVisual = () => {
@@ -990,6 +1086,8 @@ export function createCommands(review: Review, view: View) {
 
   return {
     place,
+    placeRow,
+    startAtFirstChange,
     move,
     edge,
     halfPage,
@@ -1034,6 +1132,7 @@ export function createCommands(review: Review, view: View) {
     stepCommit,
     commitPicker,
     search,
+    searchNext,
     jumpBack,
     jumpForward,
     comment,

@@ -1,9 +1,10 @@
 import { createEffect, createSignal, onCleanup, onMount, Show, untrack } from "solid-js";
 import { match } from "ts-pattern";
 import { agentName } from "../lib/agent";
+import { rowOf } from "../lib/diffModel";
 import { composing } from "../lib/keymap";
 import type { Commands } from "../state/commands";
-import { bufferEl, rowEl } from "../state/dom";
+import { bufferEl, rowEl, windowed } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
 
@@ -45,12 +46,37 @@ export function CommentPopover(props: {
       .exhaustive();
   };
 
+  /**
+   * Where the anchor is when its row isn't rendered (the windowed diff has
+   * scrolled it away): from the window's heights, at the start of its side's code.
+   */
+  const anchorBox = (): { top: number; bottom: number; left: number } | null => {
+    const c = props.view.composer();
+    const win = windowed(pane);
+    const buf = bufferEl(pane)?.getBoundingClientRect();
+    if (!c || !win || !buf) return null;
+    const a = match(c)
+      .with(
+        { kind: "reply" },
+        ({ threadId }) => props.review.threads().find((t) => t.id === threadId)?.anchor,
+      )
+      .with({ kind: "new" }, ({ anchor: a }) => a)
+      .exhaustive();
+    if (!a) return null;
+    const file = props.review.paths().indexOf(a.path);
+    const model = props.review.models()[file];
+    const row = model ? rowOf(model, a.side, a.end) : -1;
+    const box = win.box(file, row, c.kind === "reply");
+    const left = buf.left + (a.side === "new" ? buf.width / 2 : 0) + 52;
+    return box ? { ...box, left } : null;
+  };
+
   const place = () => {
     const a = anchor();
     const box = props.container()?.getBoundingClientRect();
     const buf = bufferEl(pane)?.getBoundingClientRect();
-    if (!a || !box || !buf || !el) return;
-    const r = a.getBoundingClientRect();
+    const r = a?.getBoundingClientRect() ?? anchorBox();
+    if (!r || !box || !buf || !el) return;
     const h = el.offsetHeight;
     const w = el.offsetWidth;
     let top = r.bottom + 4;

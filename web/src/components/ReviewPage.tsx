@@ -3,17 +3,10 @@ import { match } from "ts-pattern";
 import type { ReviewState } from "../gen/ReviewState";
 import { spanLabel } from "../lib/history";
 import { composing, KeyEngine, keyToken, type Mode } from "../lib/keymap";
-import { fillAll } from "../lib/lazyRows";
 import { BINDINGS, type Ctx } from "../state/bindings";
 import { createCommands } from "../state/commands";
-import {
-  bufferEl,
-  keepViewport,
-  navigableRows,
-  readingPosition,
-  restoreReadingPosition,
-  rowEl,
-} from "../state/dom";
+import { bufferEl, keepViewport, readingPosition, restoreReadingPosition } from "../state/dom";
+import { createLayout } from "../state/layout";
 import { createReview } from "../state/review";
 import { createView, type View } from "../state/view";
 import { Buffer } from "./Buffer";
@@ -23,6 +16,7 @@ import { Drawer } from "./Drawer";
 import { FileTree } from "./FileTree";
 import { HoverCard, usePaintDiagnostics } from "./Hover";
 import { RightPanel } from "./RightPanel";
+import { usePaintSearch } from "./SearchHighlights";
 import { ReplyToasts } from "./Toasts";
 
 /** Wait this long for the rest of a key sequence (`g` → `g d`). */
@@ -38,16 +32,17 @@ export function ReviewPage(props: { state: ReviewState }) {
   });
   const v = createView(review);
   view = v;
+  const layout = createLayout(review, v);
   const cmd = createCommands(review, v);
   usePaintDiagnostics({ review, view: v });
+  usePaintSearch({ view: v });
   /** A different part of the history is on screen: start at its first change. */
   const showSpanStart = () => {
     v.setMode({ kind: "diff" });
     v.setVisual(null);
     v.setSelection(null);
     bufferEl()?.scrollTo({ top: 0 });
-    const first = navigableRows().find((r) => r.dataset.chg === "1") ?? navigableRows()[0];
-    if (first) cmd.place(first, { scroll: "center" });
+    cmd.startAtFirstChange("center");
     v.say(spanLabel(review.history(), review.span()));
     trackScroll();
   };
@@ -67,26 +62,9 @@ export function ReviewPage(props: { state: ReviewState }) {
   // Which file is at the top of the buffer, for the tree's highlight.
   const [currentFile, setCurrentFile] = createSignal<number | null>(null);
   const trackScroll = () => {
-    const buf = bufferEl();
-    if (!buf) return;
     const m = v.mode();
     if (m.kind === "file") return setCurrentFile(m.file);
-    const top = buf.getBoundingClientRect().top + 40;
-    // Sections are the buffer's own children: don't search the (possibly huge) rows below them.
-    const sections = Array.prototype.filter.call(
-      buf.children,
-      (el: HTMLElement) => el.dataset.fileSection !== undefined,
-    ) as HTMLElement[];
-    // The last section starting above the line, by binary search.
-    let lo = 0;
-    let hi = sections.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if ((sections[mid] as HTMLElement).getBoundingClientRect().top <= top) lo = mid + 1;
-      else hi = mid;
-    }
-    const current = sections[lo - 1];
-    setCurrentFile(current ? Number(current.dataset.fileSection) : review.snapshot().files.length ? 0 : null);
+    setCurrentFile(readingPosition()?.file ?? null);
     rememberReading();
   };
 
@@ -112,18 +90,14 @@ export function ReviewPage(props: { state: ReviewState }) {
     const { cursor, reading, draft } = v.persist.session;
     const find = (path: string, row: number) => {
       const file = review.paths().indexOf(path);
-      if (file < 0) return null;
-      if (!rowEl(file, row)) fillAll();
-      return rowEl(file, row) ? file : null;
+      return file >= 0 && layout.indexOfRow(file, row) >= 0 ? file : null;
     };
     const readAt = reading ? find(reading.path, reading.row) : null;
     const cursorAt = cursor ? find(cursor.path, cursor.row) : null;
     if (reading && readAt !== null)
       restoreReadingPosition({ file: readAt, row: reading.row, offset: reading.offset });
-    if (cursor && cursorAt !== null) {
-      const el = rowEl(cursorAt, cursor.row);
-      if (el) cmd.place(el, { side: cursor.side, scroll: readAt === null ? "center" : false });
-    }
+    if (cursor && cursorAt !== null)
+      cmd.placeRow(cursorAt, cursor.row, { side: cursor.side, scroll: readAt === null ? "center" : false });
     if (draft) v.setComposer(draft.composer);
     return readAt !== null || cursorAt !== null;
   };
@@ -202,10 +176,7 @@ export function ReviewPage(props: { state: ReviewState }) {
       passive: true,
       capture: true,
     });
-    if (!restorePlace()) {
-      const first = navigableRows().find((r) => r.dataset.chg === "1") ?? navigableRows()[0];
-      if (first) cmd.place(first, { scroll: false });
-    }
+    if (!restorePlace()) cmd.startAtFirstChange(false);
     trackScroll();
     buf?.focus({ preventScroll: true });
     document.title = `${review.meta().title} · diffd`;
@@ -233,7 +204,7 @@ export function ReviewPage(props: { state: ReviewState }) {
                   <Show when={i() > 0}>
                     <div class="w-px flex-none bg-line-strong" />
                   </Show>
-                  <Buffer review={review} view={v} cmd={cmd} pane={pane} />
+                  <Buffer review={review} view={v} cmd={cmd} layout={layout} pane={pane} />
                 </>
               )}
             </For>
@@ -252,7 +223,7 @@ export function ReviewPage(props: { state: ReviewState }) {
         <SelectionBubble cmd={cmd} view={v} container={() => container} />
         <CommentPopover review={review} view={v} cmd={cmd} container={() => container} />
       </div>
-      <StatusLine review={review} view={v} mode={modeLabel} />
+      <StatusLine review={review} view={v} layout={layout} mode={modeLabel} />
       <Picker view={v} />
       <HoverCard review={review} view={v} />
       <Help view={v} />

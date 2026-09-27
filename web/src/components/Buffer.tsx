@@ -1,30 +1,43 @@
-import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { match } from "ts-pattern";
-import type { Thread } from "../gen/Thread";
 import { columnAtPoint, wordAt } from "../lib/code";
-import { rowOf } from "../lib/diffModel";
-import type { FileGroup } from "../lib/kinds";
-import { rowsRenderedEvent } from "../lib/lazyRows";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
+import { wrappedLines } from "../lib/windower";
 import type { Commands } from "../state/commands";
-import { bufferEl, rowEl } from "../state/dom";
+import { bufferEl, rowEl, rowsRenderedEvent } from "../state/dom";
+import { createFileLayout, type Item, type LayoutState } from "../state/layout";
 import type { Review } from "../state/review";
 import type { Pane, View } from "../state/view";
 import { ContextMenu, type MenuAt } from "./ContextMenu";
-import { FileSection } from "./FileSection";
 import { useMouseHover } from "./Hover";
-import { Markdown } from "./Markdown";
+import { CODE_PAD_PX, Multibuffer, ROW_PX } from "./Multibuffer";
 import { ThreadCard } from "./ThreadCard";
+import { WindowedList } from "./WindowedList";
+
+/** File view's card: its side margins and borders, and its change mark and line number columns. */
+const FV_INSET_PX = 20 + 2;
+const FV_GUTTER_PX = 5 + 46;
 
 interface Props {
   review: Review;
   view: View;
   cmd: Commands;
+  layout: LayoutState;
   /** The split this buffer shows. */
   pane: Pane;
 }
 
-/** The scrolling area: every file as excerpts (the multibuffer), or one plain file (file view). */
+/** The scrolling area: every file as excerpts (the windowed multibuffer), or one plain file (file view). */
 export function Buffer(props: Props) {
   usePaintCursor(props);
   let main: HTMLElement | undefined;
@@ -113,157 +126,102 @@ export function Buffer(props: Props) {
           .with({ kind: "file" }, (m) => m)
           .otherwise(() => null)}
         fallback={
-          <>
-            <Summary review={props.review} cmd={props.cmd} />
-            {/* Index, not For: sections stay put across revisions and only their contents update. */}
-            <Index each={props.review.snapshot().files}>
-              {(_, i) => (
-                // Files opened for context aren't part of the diff: they only show in file view.
-                <Show when={!props.review.isContext(i)}>
-                  <Show when={props.review.groupAt(props.review.paths()[i] ?? "")}>
-                    {(g) => <ChapterHeader group={g()} review={props.review} />}
-                  </Show>
-                  <FileSection index={i} review={props.review} view={props.view} cmd={props.cmd} />
-                </Show>
-              )}
-            </Index>
-            <Show when={props.review.diffCount() === 0}>
-              <p class="p-6 text-center text-muted">
-                {props.review.hiddenCount() > 0
-                  ? `All ${props.review.hiddenCount()} files are hidden by labels; show them from the files drawer.`
-                  : "No changes between these revisions."}
-              </p>
-            </Show>
-          </>
+          <Multibuffer
+            review={props.review}
+            view={props.view}
+            cmd={props.cmd}
+            layout={props.layout}
+            pane={props.pane}
+            buf={() => main}
+          />
         }
       >
-        {(m) => <FileView file={m().file} review={props.review} view={props.view} cmd={props.cmd} />}
+        {(m) => (
+          <FileView
+            file={m().file}
+            review={props.review}
+            view={props.view}
+            cmd={props.cmd}
+            pane={props.pane}
+            buf={() => main}
+          />
+        )}
       </Show>
     </section>
   );
 }
 
-/** Where a chapter of the agent's tour starts: its number, title and what it's about. */
-function ChapterHeader(props: { group: FileGroup; review: Review }) {
-  const number = () => props.review.groups().indexOf(props.group) + 1;
-  return (
-    <header
-      class="mx-2.5 mt-3 mb-0.5 flex items-baseline gap-2 border-t border-line pt-2 text-[12.5px]"
-      data-group={props.group.title}
-    >
-      <span class="shrink-0 font-mono text-[11px] text-subtle">
-        {number()}/{props.review.groups().length}
-      </span>
-      <div class="min-w-0">
-        <h2 class="inline font-semibold text-fg">{props.group.title}</h2>
-        <Show when={props.group.summary}>
-          {(summary) => (
-            <Markdown text={summary()} paths={props.review.paths()} class="max-w-[90ch] text-xs text-muted" />
-          )}
-        </Show>
-      </div>
-    </header>
-  );
-}
-
-/** The tour's chapters, as a line of links: the table of contents. */
-function Contents(props: { review: Review; cmd: Commands }) {
-  return (
-    <nav aria-label="Tour" class="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-[11.5px]">
-      <span class="text-muted">
-        Tour <kbd>]g</kbd>
-      </span>
-      <For each={props.review.groups()}>
-        {(g, i) => (
-          <button
-            type="button"
-            class="cursor-pointer text-muted hover:text-fg hover:underline"
-            data-chapter={i()}
-            title={g.summary ?? g.title}
-            onClick={() => props.cmd.chapterGo(i())}
-          >
-            <span class="font-mono text-subtle">{i() + 1}</span> {g.title}
-          </button>
-        )}
-      </For>
-    </nav>
-  );
-}
-
-function Summary(props: { review: Review; cmd: Commands }) {
-  return (
-    <Show
-      when={
-        props.review.meta().summary || props.review.notes().length > 0 || props.review.groups().length > 0
-      }
-    >
-      <div class="mx-2 mt-2 mb-0.5 rounded-md border border-accent-line bg-bg px-2.5 py-1.5 text-[12.5px]">
-        <Show when={props.review.meta().summary}>
-          {(summary) => (
-            <div class="flex gap-2">
-              <b class="shrink-0 font-semibold text-accent">✦ Summary</b>
-              <Markdown text={summary()} paths={props.review.paths()} class="max-w-[90ch]" />
-            </div>
-          )}
-        </Show>
-        <Show when={props.review.groups().length > 0}>
-          <Contents review={props.review} cmd={props.cmd} />
-        </Show>
-        <Show when={props.review.notes().length > 0}>
-          <button
-            type="button"
-            class="mt-1 cursor-pointer text-[11.5px] text-muted hover:text-fg"
-            onClick={() => props.cmd.noteJump(1)}
-          >
-            Walk through {props.review.notes().length} note{props.review.notes().length === 1 ? "" : "s"}{" "}
-            <kbd>]a</kbd>
-          </button>
-        </Show>
-      </div>
-    </Show>
-  );
-}
-
-/** `g enter`: the plain file, with slight marks where it changed, and its threads inline. */
-function FileView(props: { file: number; review: Review; view: View; cmd: Commands }) {
+/**
+ * `g enter`: the plain file, with slight marks where it changed, and its
+ * threads inline. Windowed like the multibuffer, so a huge file opens at once.
+ */
+function FileView(props: {
+  file: number;
+  review: Review;
+  view: View;
+  cmd: Commands;
+  pane: Pane;
+  buf: () => HTMLElement | undefined;
+}) {
   const f = () => props.review.snapshot().files[props.file];
-  const side = (): "old" | "new" => (f()?.new ? "new" : "old");
   const context = () => props.review.isContext(props.file);
-  /** Threads on the side shown, by the row they end on. */
-  const threadsByRow = createMemo(() => {
+  const nav = createFileLayout(props.review, () => props.file);
+  const text = () => (nav.side() === "new" ? f()?.new : f()?.old);
+  const marks = createMemo(() => {
     const file = f();
-    const model = props.review.models()[props.file];
-    const byRow = new Map<number, Thread[]>();
-    if (!file || !model) return byRow;
-    for (const t of props.review.threads()) {
-      if (t.anchor.path !== file.path || t.anchor.side !== side()) continue;
-      const row = rowOf(model, t.anchor.side, t.anchor.end);
-      if (row >= 0) byRow.set(row, [...(byRow.get(row) ?? []), t]);
-    }
-    return byRow;
+    return file && !context() ? changeMarks(file, nav.side()) : [];
   });
-  /** The file's rows as runs of HTML, split where threads go. */
-  const blocks = createMemo(() => {
-    const file = f();
-    const text = file ? (side() === "new" ? file.new : file.old) : null;
-    if (!file || !text) return [];
-    const marks = context() ? [] : changeMarks(file, side());
-    const refs = props.review.definedNames();
-    const out: { html: string; after: Thread[] }[] = [];
-    let html = "";
-    file.rows.forEach((row, r) => {
-      const line = side() === "new" ? row[1] : row[0];
-      if (line === null) return;
-      html += fileViewRowHtml(props.file, r, side(), line, text, marks[line] ?? "", refs);
-      const threads = threadsByRow().get(r);
-      if (threads) {
-        out.push({ html, after: threads });
-        html = "";
-      }
-    });
-    out.push({ html, after: [] });
-    return out;
-  });
+  /** Characters per line of code, for estimating how lines wrap. */
+  let columns = 80;
+  const onWidth = (width: number, charWidth: number) => {
+    columns = Math.max(8, Math.floor((width - FV_INSET_PX - FV_GUTTER_PX - CODE_PAD_PX) / charWidth));
+  };
+  const lineOf = (row: number) => {
+    const r = f()?.rows[row];
+    return r ? (nav.side() === "new" ? r[1] : r[0]) : null;
+  };
+  const estimate = (item: Item): number =>
+    match(item)
+      .with({ kind: "row" }, ({ row }) => {
+        const line = lineOf(row);
+        return ROW_PX * (line === null ? 1 : wrappedLines(text()?.lines[line] ?? "", columns));
+      })
+      .with({ kind: "threads" }, ({ row }) => 14 + 90 * nav.threadsAt(props.file, row).length)
+      .otherwise(() => ROW_PX);
+  const render = (item: Item): JSX.Element =>
+    match(item)
+      .with({ kind: "row" }, ({ row }) => {
+        const el = document.createElement("div");
+        createRenderEffect(() => {
+          const line = lineOf(row);
+          const t = text();
+          el.innerHTML =
+            line === null || !t
+              ? ""
+              : fileViewRowHtml(
+                  props.file,
+                  row,
+                  nav.side(),
+                  line,
+                  t,
+                  marks()[line] ?? "",
+                  props.review.definedNames(),
+                );
+        });
+        return el;
+      })
+      .with({ kind: "threads" }, ({ row }) => (
+        <div class="border-y border-line bg-inset py-1.5 pl-[51px]">
+          <For each={nav.threadsAt(props.file, row)}>
+            {(t) => (
+              <div class="mr-2.5">
+                <ThreadCard thread={t} review={props.review} cmd={props.cmd} />
+              </div>
+            )}
+          </For>
+        </div>
+      ))
+      .otherwise(() => <div />);
   return (
     <>
       <div class="mx-2.5 mt-2.5 flex flex-wrap items-center gap-2 rounded-md border border-line-strong bg-bg px-2.5 py-1.5 text-xs text-muted">
@@ -288,26 +246,15 @@ function FileView(props: { file: number; review: Review; view: View; cmd: Comman
         </span>
       </div>
       <section class="fv mx-2.5 my-2 overflow-clip rounded-md border border-line-strong bg-bg">
-        <div class="rows">
-          <For each={blocks()}>
-            {(b) => (
-              <>
-                <div innerHTML={b.html} />
-                <Show when={b.after.length > 0}>
-                  <div class="border-y border-line bg-inset py-1.5 pl-[51px]">
-                    <For each={b.after}>
-                      {(t) => (
-                        <div class="mr-2.5">
-                          <ThreadCard thread={t} review={props.review} cmd={props.cmd} />
-                        </div>
-                      )}
-                    </For>
-                  </div>
-                </Show>
-              </>
-            )}
-          </For>
-        </div>
+        <WindowedList
+          pane={props.pane}
+          buf={props.buf}
+          nav={nav}
+          estimate={estimate}
+          onWidth={onWidth}
+          render={render}
+          topInset={0}
+        />
       </section>
     </>
   );

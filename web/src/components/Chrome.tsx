@@ -7,7 +7,8 @@ import { spanLabel } from "../lib/history";
 import { composing } from "../lib/keymap";
 import { helpEntries } from "../state/bindings";
 import type { Commands } from "../state/commands";
-import { bufferEl, hunkStarts, rowEl, rowPosition, rowsVersion } from "../state/dom";
+import { bufferEl } from "../state/dom";
+import type { LayoutState } from "../state/layout";
 import type { Review } from "../state/review";
 import type { PickerItem, View } from "../state/view";
 
@@ -102,7 +103,7 @@ function Rev(props: { children: JSX.Element }) {
   );
 }
 
-export function StatusLine(props: { review: Review; view: View; mode: () => string }) {
+export function StatusLine(props: { review: Review; view: View; layout: LayoutState; mode: () => string }) {
   const position = createMemo(() => {
     const c = props.view.cursor();
     if (!c) return "no cursor";
@@ -112,24 +113,20 @@ export function StatusLine(props: { review: Review; view: View; mode: () => stri
     const name = file?.path.split("/").pop() ?? "";
     return `${name}:${line === null || line === undefined ? "-" : line + 1} ${c.side}${c.word ? ` · ${c.word.text}` : ""}`;
   });
+  /** Which hunk the cursor is in, of how many: over the pane's list, by binary search. */
   const hunk = createMemo(() => {
-    props.view.cursor();
-    rowsVersion();
-    if (props.view.mode().kind !== "diff") return "";
-    const starts = hunkStarts();
     const c = props.view.cursor();
-    const cur = c ? rowEl(c.file, c.row) : null;
-    // Hunks at or before the cursor, by binary search over their positions.
-    const pos = cur ? rowPosition(cur) : -1;
+    if (props.view.mode().kind !== "diff") return "";
+    const { hunks } = props.layout.layout();
+    const at = c ? props.layout.indexOfRow(c.file, c.row) : -1;
     let lo = 0;
-    let hi = starts.length;
+    let hi = hunks.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (rowPosition(starts[mid] as HTMLElement) <= pos) lo = mid + 1;
+      if ((hunks[mid] as number) <= at) lo = mid + 1;
       else hi = mid;
     }
-    const at = cur ? lo : 0;
-    return `hunk ${at}/${starts.length}`;
+    return `hunk ${at < 0 ? 0 : lo}/${hunks.length}`;
   });
   /** Which chapter of the agent's tour the cursor is in, when reading the tour. */
   const chapter = createMemo(() => {
@@ -289,6 +286,13 @@ export function Picker(props: { view: View }) {
               aria-label="Filter"
               class="h-8 w-full rounded-md border border-line-strong bg-bg px-2.5 focus:border-accent focus:outline-none"
             />
+            <Show when={props.view.picker()?.status?.(query().trim().toLowerCase())}>
+              {(status) => (
+                <p class="mt-1.5 px-1 text-[11.5px] text-muted" data-picker-status>
+                  {status()}
+                </p>
+              )}
+            </Show>
             <ol class="mt-2 max-h-[min(52vh,420px)] overflow-auto">
               <For
                 each={items()}

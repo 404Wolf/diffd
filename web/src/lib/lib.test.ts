@@ -19,6 +19,7 @@ import { renderMarkdown, resolveRef } from "./markdown";
 import { changeMarks, lineHtml, rowHtml, soloSide } from "./render";
 import { CLASS_KINDS, definition, FUNCTION_KINDS, pair, paragraph, tag } from "./textObjects";
 import { buildTree, parentDir, treeOrder } from "./tree";
+import { Heights, wrappedLines } from "./windower";
 
 const file = (): FileDiff => ({
   path: "src/a.rs",
@@ -481,5 +482,33 @@ describe("help", () => {
     expect(
       ["] c", "g r r", "space c", "g enter", "g space", "ctrl-shift-enter", "space t g"].map(keyLabel),
     ).toEqual(["]c", "grr", "space c", "g enter", "g space", "ctrl-shift-enter", "space t g"]);
+  });
+});
+
+describe("windowed heights", () => {
+  const sizes = [17, 34, 26, 17, 140, 17];
+  const naive = (i: number) => sizes.slice(0, i).reduce((a, b) => a + b, 0);
+  it("gives each item's offset and the item at any y", () => {
+    const h = new Heights(sizes);
+    for (let i = 0; i <= sizes.length; i++) expect(h.offset(i)).toBe(naive(i));
+    expect(h.total()).toBe(naive(sizes.length));
+    expect(h.indexAt(0)).toBe(0);
+    expect(h.indexAt(16.9)).toBe(0);
+    expect(h.indexAt(17)).toBe(1);
+    expect(h.indexAt(94)).toBe(4);
+    expect(h.indexAt(10_000)).toBe(5);
+  });
+  it("updates offsets after one item is measured", () => {
+    const h = new Heights(sizes);
+    expect(h.set(1, 51)).toBe(17);
+    sizes[1] = 51;
+    for (let i = 0; i <= sizes.length; i++) expect(h.offset(i)).toBe(naive(i));
+    expect(h.indexAt(68)).toBe(2);
+  });
+  it("estimates how code wraps", () => {
+    expect(wrappedLines("", 80)).toBe(1);
+    expect(wrappedLines("x".repeat(80), 80)).toBe(1);
+    expect(wrappedLines("x".repeat(81), 80)).toBe(2);
+    expect(wrappedLines("\t\tx", 8)).toBe(2);
   });
 });
