@@ -1127,7 +1127,7 @@ try {
       from: "main",
       title: "Burst capacity, grouped",
       groups: [
-        { title: "The limiter", summary: "Burst capacity and how long to wait.", files: ["src/lib.rs", "src/bucket.rs"] },
+        { title: "The limiter", summary: "Burst capacity and how long to wait. It starts at src/bucket.rs:2.", files: ["src/lib.rs", "src/bucket.rs"] },
         { title: "The web badge", files: ["web/**"] },
         { title: "Storage", files: ["db"] },
       ],
@@ -1209,6 +1209,10 @@ try {
     await page.locator('nav[aria-label=Tour] [data-chapter="1"]').click();
     check((await page.locator("[data-chapter-status]").innerText()) === "ch 2/4", "and each one goes to its chapter");
     check((await page.locator('.buffer.focused header[data-group="The limiter"]').innerText()).includes("Burst capacity and how long to wait."), "a chapter starts with what it's about");
+    const blurb = page.locator('[data-tree-chapter="The limiter"] .md');
+    check((await blurb.innerText()).includes("Burst capacity"), "the sidebar shows each chapter's description under it");
+    await blurb.locator("[data-go]").first().click();
+    check(await statusSoon(page, "bucket.rs:2"), "and its links go to the spots that matter");
     await page.locator(".buffer.focused").focus();
     await keys(page, "Space", "t", "g");
     check((await page.locator(".buffer.focused header[data-group]").count()) === 0, "space t g goes back to the plain diff, in tree order");

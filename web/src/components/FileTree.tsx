@@ -19,13 +19,14 @@ import { buildTree, parentDir, type TreeDir, type TreeFile, type TreeNode } from
 import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";
 import type { TreeMode, View } from "../state/view";
+import { Markdown } from "./Markdown";
 
 /** Rows are one height, so the list only renders the ones in view (a project can have 100k files). */
 const ROW = 20;
 const OVERSCAN = 12;
 
 interface Row {
-  readonly node: TreeNode | GroupNode;
+  readonly node: TreeNode;
   readonly depth: number;
 }
 
@@ -71,24 +72,24 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
   });
   const isOpen = (dir: TreeDir) =>
     filter() !== "" || props.view.folderOpen(mode(), dir.path, changedDirs().has(dir.path));
-  const groupRows = (): Row[] => {
+  /** The tour: each chapter with its files (those the filter and hidden labels leave). */
+  const chapters = createMemo(() => {
     const q = filter().toLowerCase();
     const index = new Map(props.review.paths().map((p, i) => [p, i]));
     return props.review.groups().flatMap((group) => {
-      const files = group.paths.flatMap((path) => {
+      const files = group.paths.flatMap((path): TreeFile[] => {
         const i = index.get(path);
         return i === undefined || (q && !path.toLowerCase().includes(q))
           ? []
-          : [{ node: { kind: "file", name: path, path, index: i } as TreeFile, depth: 1 }];
+          : [{ kind: "file", name: path, path, index: i }];
       });
-      if (files.length === 0) return [];
-      const header: Row = { node: { kind: "group", group, count: files.length }, depth: 0 };
-      return isGroupOpen(group) ? [header, ...files] : [header];
+      return files.length === 0 ? [] : [{ group, files }];
     });
-  };
+  });
   const isGroupOpen = (g: FileGroup) => filter() !== "" || props.view.folderOpen("groups", g.title, true);
   const rows = createMemo(() => {
-    if (mode() === "groups") return groupRows();
+    // The tour is a short list with chapter descriptions: rendered whole, not windowed.
+    if (mode() === "groups") return [];
     const out: Row[] = [];
     const walk = (nodes: readonly TreeNode[], depth: number) => {
       for (const node of nodes) {
@@ -116,6 +117,13 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
   createEffect(() => {
     const current = props.current();
     if (current === null || !list) return;
+    if (untrack(mode) === "groups") {
+      const path = props.review.paths()[current];
+      list
+        .querySelector(`[data-tree-file="${CSS.escape(path ?? "")}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+      return;
+    }
     const at = untrack(rows).findIndex((r) => r.node.kind === "file" && r.node.index === current);
     if (at < 0) return;
     const top = at * ROW;
@@ -374,15 +382,45 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         class="min-h-0 flex-1 overflow-auto px-1.5 pb-2.5"
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
+        <Show when={mode() === "groups"}>
+          <ul>
+            <For each={chapters()}>
+              {(c) => (
+                <li data-tree-chapter={c.group.title}>
+                  <div class="h-5">
+                    <GroupHeader node={{ kind: "group", group: c.group, count: c.files.length }} />
+                  </div>
+                  <Show when={isGroupOpen(c.group)}>
+                    <Show when={c.group.summary}>
+                      {(summary) => (
+                        <Markdown
+                          text={summary()}
+                          paths={props.review.paths()}
+                          class="mb-1 pr-1 pl-5 text-[11.5px] leading-snug text-muted"
+                        />
+                      )}
+                    </Show>
+                    <ul>
+                      <For each={c.files}>
+                        {(f) => (
+                          <li class="h-5 pl-2.5">
+                            <Changed file={f} />
+                          </li>
+                        )}
+                      </For>
+                    </ul>
+                  </Show>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
         <div class="relative" style={{ height: `${rows().length * ROW}px` }}>
           <ul class="absolute inset-x-0" style={{ transform: `translateY(${first() * ROW}px)` }}>
             <For each={shown()}>
               {(row) => (
                 <li style={{ "padding-left": `${row.depth * 10}px` }} class="h-5">
                   <Switch>
-                    <Match when={row.node.kind === "group" && row.node}>
-                      {(g) => <GroupHeader node={g()} />}
-                    </Match>
                     <Match when={row.node.kind === "dir" && row.node}>
                       {(dir) => <Folder dir={dir()} />}
                     </Match>
