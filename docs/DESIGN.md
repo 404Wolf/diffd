@@ -95,7 +95,7 @@ What's still open is in §15.
 
 ```sh
 diffd                      # = diffd serve: one local server on localhost:3433
-diffd setup claude         # claude mcp add --transport http --scope user diffd http://localhost:3433/mcp,
+diffd setup claude         # claude mcp add --transport http --scope user diffd http://localhost:3433/mcp?agent=claude,
                            # plus the wake-up hooks in ~/.claude/settings.json (§5.3)
 diffd setup codex          # codex mcp add diffd --url …, plus the hooks in ~/.codex/hooks.json
 diffd setup claude --print # just prints what it would do
@@ -647,9 +647,11 @@ open pages, which stop reconnecting. `refresh` runs the same rebuild on demand.
   group come last under "Other changes". `annotate` replaces the groups.
   Patterns are paths, directories or globs, matched the same way on the
   server (which rejects one that names no file, as a typo) and the page.
-- **The agent's name** comes from its MCP client (`claude-code` → Claude,
-  `codex-mcp-client` → Codex, anything else tidied up), recorded when it
-  shares, so the page says "Codex replied" to a Codex user.
+- **The agent's name** is recorded when it shares, so the page says "Codex
+  replied" to a Codex user. It comes from `?agent=` on the MCP URL (`diffd
+  setup` registers `/mcp?agent=claude` or `?agent=codex`), else a known agent
+  in the HTTP User-Agent, else the MCP client's name (`codex-mcp-client` →
+  Codex). Library defaults (Claude Code's HTTP client says `rmcp`) are ignored.
 - **New and deleted files** are one column of ordinary highlighted code,
   centred at the width of a split's side, with a coloured gutter line and a
   "New file" / "Deleted" badge, instead of a half-empty split in all green.

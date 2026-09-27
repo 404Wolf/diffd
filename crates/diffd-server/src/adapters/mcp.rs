@@ -35,10 +35,26 @@ Keep calling wait_for_feedback while you're in a review conversation. When you f
 you: with its hooks set up (`diffd setup claude` / `diffd setup codex`), a message saying \"New feedback on your diffd review\"
 arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.";
 
-/// What the page calls the agent, from the name its MCP client gives
-/// (`claude-code`, `codex-mcp-client`, …).
-fn agent_name(client: &str) -> Option<String> {
-    let lower = client.to_lowercase();
+/// Who's calling: the `agent` in the MCP URL (`diffd setup` registers
+/// `/mcp?agent=claude` or `?agent=codex`), else the HTTP client's User-Agent,
+/// else the name its MCP client gives. Library defaults (Claude Code's HTTP
+/// client calls itself `rmcp`) say nothing.
+fn which_agent(context: &RequestContext<RoleServer>) -> Option<String> {
+    let parts = context.extensions.get::<axum::http::request::Parts>();
+    let from_url = parts
+        .and_then(|p| p.uri.query())
+        .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("agent=")).filter(|a| !a.is_empty()).map(str::to_owned));
+    let user_agent = parts.and_then(|p| p.headers.get(axum::http::header::USER_AGENT)).and_then(|v| v.to_str().ok()).map(str::to_owned);
+    let client = context.peer.peer_info().map(|info| info.client_info.name.clone());
+    from_url
+        .and_then(|name| agent_name(&name))
+        .or_else(|| user_agent.and_then(|ua| known_agent(&ua)))
+        .or_else(|| client.and_then(|name| agent_name(&name)))
+}
+
+/// A well-known agent named anywhere in `text`.
+fn known_agent(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
     let known = [
         ("claude", "Claude"),
         ("codex", "Codex"),
@@ -47,11 +63,23 @@ fn agent_name(client: &str) -> Option<String> {
         ("opencode", "opencode"),
         ("goose", "Goose"),
     ];
-    if let Some((_, name)) = known.iter().find(|(key, _)| lower.contains(key)) {
-        return Some((*name).to_owned());
+    known.iter().find(|(key, _)| lower.contains(key)).map(|(_, name)| (*name).to_owned())
+}
+
+/// What the page calls the agent, from a name (`claude-code`, `codex-mcp-client`, …).
+fn agent_name(client: &str) -> Option<String> {
+    if let Some(name) = known_agent(client) {
+        return Some(name);
+    }
+    let client = client.split('/').next().unwrap_or(client).trim();
+    // Generic names from HTTP and MCP libraries say nothing.
+    const GENERIC: &[&str] = &["rmcp", "mcp", "node", "python", "reqwest", "undici", "axios", "curl", "go-http-client", "okhttp"];
+    if GENERIC.contains(&client.to_lowercase().as_str()) {
+        return None;
     }
     // Something else: its own name, tidied ("my-agent" → "My agent").
-    let words = client.split(['-', '_']).filter(|w| !w.is_empty() && !["mcp", "client", "cli", "rs"].contains(&w.to_lowercase().as_str()));
+    let words =
+        client.split(['-', '_', ' ']).filter(|w| !w.is_empty() && !["mcp", "client", "cli", "rs"].contains(&w.to_lowercase().as_str()));
     let name = words.collect::<Vec<_>>().join(" ");
     let mut chars = name.chars();
     let first = chars.next()?;
@@ -259,7 +287,7 @@ with `collapse` or the `generated` label.")]
         Parameters(mut req): Parameters<ShareRequest>,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        req.agent = context.peer.peer_info().and_then(|info| agent_name(&info.client_info.name));
+        req.agent = which_agent(&context);
         let result = try_app!(self.app.share(req).await);
         self.remember(&ReviewId(result.review_id.clone()));
         ok(&result)
@@ -388,5 +416,21 @@ impl ServerHandler for DiffdMcp {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("diffd", env!("CARGO_PKG_VERSION")))
             .with_instructions(INSTRUCTIONS)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agents_are_named_from_what_their_clients_say() {
+        assert_eq!(agent_name("claude-code").as_deref(), Some("Claude"));
+        assert_eq!(agent_name("codex-mcp-client").as_deref(), Some("Codex"));
+        assert_eq!(agent_name("my-agent").as_deref(), Some("My agent"));
+        assert_eq!(agent_name("rmcp"), None, "a library's default name says nothing");
+        assert_eq!(agent_name("rmcp/0.9"), None);
+        assert_eq!(known_agent("claude-cli/2.1.283 (external, cli)").as_deref(), Some("Claude"));
+        assert_eq!(known_agent("Mozilla/5.0 (X11; Linux x86_64)"), None);
     }
 }

@@ -129,7 +129,8 @@ fn run(program: &str, args: &[&str]) -> anyhow::Result<std::process::Output> {
 }
 
 pub fn claude(print: bool, port: u16) -> anyhow::Result<()> {
-    let url = format!("http://localhost:{port}/mcp");
+    // The page names the agent from this (its MCP client doesn't say).
+    let url = format!("http://localhost:{port}/mcp?agent=claude");
     let add = ["mcp", "add", "--transport", "http", "--scope", "user", "diffd", url.as_str()];
     let dir = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).map_or_else(|| home().map(|h| h.join(".claude")), Ok)?;
     let settings = dir.join("settings.json");
@@ -156,7 +157,7 @@ pub fn claude(print: bool, port: u16) -> anyhow::Result<()> {
 }
 
 pub fn codex(print: bool, port: u16) -> anyhow::Result<()> {
-    let url = format!("http://localhost:{port}/mcp");
+    let url = format!("http://localhost:{port}/mcp?agent=codex");
     let add = ["mcp", "add", "diffd", "--url", url.as_str()];
     let home = std::env::var_os("CODEX_HOME").map(PathBuf::from).map_or_else(|| home().map(|h| h.join(".codex")), Ok)?;
     let file = home.join("hooks.json");
