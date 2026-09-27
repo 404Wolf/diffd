@@ -34,6 +34,18 @@ export type Item =
 
 export type RowItem = Extract<Item, { kind: "row" }>;
 
+/**
+ * Whether two items show the same thing. A new revision (or another part of
+ * the history) builds new items; the window finds its place again by this.
+ */
+export function sameItem(a: Item, b: Item): boolean {
+  if (a === b) return true;
+  if (a.kind !== b.kind) return false;
+  const x = a as Record<string, unknown>;
+  const y = b as Record<string, unknown>;
+  return Object.keys(x).every((k) => x[k] === y[k]);
+}
+
 interface FileLayout {
   readonly items: readonly Item[];
   /** Each row's index in `items`, or -1 where it's folded away. */
@@ -262,13 +274,16 @@ export function createLayout(review: Review, view: View) {
   /** Where an item from an earlier layout is now: itself, or the nearest thing that took its place. */
   const relocate = (item: Item): number => {
     const l = layout();
-    if (item.kind === "summary") return l.items[0] === item ? 0 : -1;
+    if (item.kind === "summary") return l.items[0]?.kind === "summary" ? 0 : -1;
     if (item.kind === "row") {
       const at = indexOfRow(item.file, item.row);
       if (at >= 0) return at;
     }
     const start = l.fileStart[item.file] ?? -1;
-    const own = state(item.file)?.layout().items.indexOf(item) ?? -1;
+    const own =
+      state(item.file)
+        ?.layout()
+        .items.findIndex((it) => sameItem(it, item)) ?? -1;
     if (own >= 0) return start + own;
     // Gone (folded away, or the file collapsed): the file's header stands in.
     const head = headIndex(item.file);
@@ -351,7 +366,7 @@ export function createFileLayout(review: Review, file: Accessor<number>): ListNa
       indexOfRow,
       relocate: (item) => {
         if (item.kind === "row") return indexOfRow(item.file, item.row);
-        const at = layout().items.indexOf(item);
+        const at = layout().items.findIndex((it) => sameItem(it, item));
         return at >= 0 ? at : 0;
       },
       headIndex: () => 0,

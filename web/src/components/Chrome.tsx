@@ -238,7 +238,8 @@ export function Picker(props: { view: View }) {
     const p = props.view.picker();
     if (!p) return [];
     const q = query().trim().toLowerCase();
-    const all = p.items(q);
+    // A literal picker (search) gets the query as typed; it matches case-insensitively itself.
+    const all = p.items(p.literal ? query().trim() : q);
     return (
       p.literal || !q ? all : all.filter((it) => fuzzy(q, `${it.label} ${it.detail}`.toLowerCase()))
     ).slice(0, 300);
@@ -286,7 +287,7 @@ export function Picker(props: { view: View }) {
               aria-label="Filter"
               class="h-8 w-full rounded-md border border-line-strong bg-bg px-2.5 focus:border-accent focus:outline-none"
             />
-            <Show when={props.view.picker()?.status?.(query().trim().toLowerCase())}>
+            <Show when={props.view.picker()?.status?.(query().trim())}>
               {(status) => (
                 <p class="mt-1.5 px-1 text-[11.5px] text-muted" data-picker-status>
                   {status()}

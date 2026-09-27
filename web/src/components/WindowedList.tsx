@@ -20,7 +20,7 @@ import { createEffect, createMemo, createSignal, For, type JSX, on, onCleanup, o
 import { match } from "ts-pattern";
 import { Heights } from "../lib/windower";
 import { announceRows, setWindowed, type Windowed } from "../state/dom";
-import type { Item, ListNav, RowItem } from "../state/layout";
+import { type Item, type ListNav, type RowItem, sameItem } from "../state/layout";
 import type { Pane } from "../state/view";
 
 /**
@@ -33,6 +33,11 @@ const BEHIND_PX = 600;
 /** Re-window once less than this is rendered ahead of the viewport (or behind it). */
 const MIN_AHEAD_PX = 1500;
 const MIN_BEHIND_PX = 100;
+/**
+ * A list this short (a few hundred rows) is rendered whole: windowing it
+ * would save little, and every row being in the page keeps things simple.
+ */
+const RENDER_ALL_PX = 12_000;
 /** Keep the cursor this far from the edges when scrolling it into view (like `scroll-margin`). */
 const MARGIN_TOP_PX = 10;
 const MARGIN_BOTTOM_PX = 20;
@@ -105,21 +110,51 @@ export function WindowedList(props: Props) {
 
   // -- Keeping the reader's place ------------------------------------------------------
 
-  /** Take a new list of items (or new estimates for the same ones), keeping the top item in place. */
-  const rebuild = (next: readonly Item[]) => {
+  /**
+   * Heights for a new list. A layout change touches one file (a comment, a
+   * gap expanding), so the unchanged runs at either end keep their heights and
+   * only the items between are sized: cheap even for 100k items.
+   */
+  const heightsFor = (next: readonly Item[], resized: boolean): Heights => {
+    if (resized) return new Heights(next.map(sizeOf));
+    const sizes = new Float64Array(next.length);
+    let head = 0;
+    while (head < next.length && head < list.length && next[head] === list[head]) {
+      sizes[head] = heights.size(head);
+      head++;
+    }
+    let tail = 0;
+    while (
+      tail < next.length - head &&
+      tail < list.length - head &&
+      next[next.length - 1 - tail] === list[list.length - 1 - tail]
+    ) {
+      sizes[next.length - 1 - tail] = heights.size(list.length - 1 - tail);
+      tail++;
+    }
+    for (let i = head; i < next.length - tail; i++) sizes[i] = sizeOf(next[i] as Item);
+    return new Heights(sizes);
+  };
+
+  /**
+   * Take a new list of items (or, `resized`, new estimates for the same ones),
+   * keeping the top item in place.
+   */
+  const rebuild = (next: readonly Item[], resized = false) => {
     const buf = props.buf();
     if (!buf) return;
     const top = viewTop(buf);
     const index = heights.indexAt(Math.max(0, top));
     const held = list.length > 0 && top >= 0 ? list[index] : undefined;
     const into = top - heights.offset(index);
+    heights = heightsFor(next, resized);
     list = next;
-    heights = new Heights(next.map(sizeOf));
     sizer.style.height = `${heights.total()}px`;
     if (held) {
       const at = props.nav.relocate(held);
       // The item itself keeps its offset; one standing in for it (its file's header) goes to the top.
-      if (at >= 0) scrollTo(buf, heights.offset(at) + (list[at] === held ? into : 0));
+      const same = list[at] !== undefined && sameItem(list[at] as Item, held);
+      if (at >= 0) scrollTo(buf, heights.offset(at) + (same ? into : 0));
     }
     update(true);
   };
@@ -134,7 +169,7 @@ export function WindowedList(props: Props) {
   const pinnedIndex = (): number => {
     if (!pinned) return -1;
     const at = props.nav.relocate(pinned);
-    return list[at] === pinned ? at : -1;
+    return list[at] !== undefined && sameItem(list[at] as Item, pinned) ? at : -1;
   };
   const onSelectionChange = () => {
     const sel = getSelection();
@@ -168,8 +203,12 @@ export function WindowedList(props: Props) {
       heights.offset(range.end) >= Math.min(total, bottom + below);
     if (force || !covered) {
       const [before, after] = down ? [BEHIND_PX, AHEAD_PX] : [AHEAD_PX, BEHIND_PX];
-      let start = list.length ? heights.indexAt(Math.max(0, top - before)) : 0;
-      let end = list.length ? Math.min(list.length, heights.indexAt(Math.max(0, bottom + after)) + 1) : 0;
+      const whole = total <= RENDER_ALL_PX;
+      let start = list.length && !whole ? heights.indexAt(Math.max(0, top - before)) : 0;
+      let end =
+        list.length && !whole
+          ? Math.min(list.length, heights.indexAt(Math.max(0, bottom + after)) + 1)
+          : list.length;
       // Keep where a text selection starts, and everything up to it, rendered.
       if (pin >= 0) {
         start = Math.min(start, pin);
@@ -335,7 +374,7 @@ export function WindowedList(props: Props) {
     document.addEventListener("selectionchange", onSelectionChange);
     let height = buf.clientHeight;
     const resized = new ResizeObserver(() => {
-      if (measureWidth(buf)) rebuild(list);
+      if (measureWidth(buf)) rebuild(list, true);
       else if (buf.clientHeight !== height) update();
       height = buf.clientHeight;
     });

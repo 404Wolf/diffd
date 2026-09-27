@@ -706,8 +706,12 @@ The connection state is always visible, with the number of queued messages.
   were removed. `ctrl-o` returns to the diff where you left it. `g space`
   opens the file view in a split instead (§8.11). You can comment in file view.
 - **Ctrl+F (Cmd+F) opens our own search**, the same as `/`: every line of
-  both sides, folded ones too. The diff is windowed (§10), so the browser's
-  find could only see the rows near the screen. Nothing scrolls on its own.
+  both sides, folded ones too, with the number of matches. Enter goes to the
+  first match after the cursor (unfolding it if needed), `n` / `N` to the next
+  and previous, wrapping around, and the status line says which match of how
+  many. Matches on screen are highlighted (CSS Custom Highlight API); `esc`
+  clears them. The diff is windowed (§10), so the browser's find could only
+  see the rows near the screen. Nothing scrolls on its own.
 
 ### 8.7 When the agent wants to show you something
 
@@ -878,7 +882,7 @@ table is plain data in `web/src/state/bindings.ts`, which also generates the
 | `ctrl-h` / `ctrl-l` | focus the split to the left / right |
 | `space e` · `space n` | files drawer · activity drawer |
 | `space f` / `ctrl-p` | go to file (fuzzy) |
-| `/` | search every line, hidden ones too |
+| `/`, ctrl-f | search every line, hidden ones too; `n` / `N` next and previous match |
 | `?` | key help |
 | `esc` | close whatever is open, leave visual or symbol mode |
 
@@ -897,8 +901,10 @@ How we get there:
   file's header, rows, gaps, thread cards and end form one flat list of items
   (`web/src/state/layout.ts`), and only the items within a couple of screens
   of the viewport are in the DOM (a few hundred elements, whatever the diff's
-  size). Rendering runs in the scroll event, before the frame is drawn, and
-  reaches further ahead in the direction of scrolling.
+  size), each file's in its own `<section>`. Rendering runs in the scroll
+  event, before the frame is drawn, and reaches further ahead in the
+  direction of scrolling (`web/src/components/WindowedList.tsx`). A list
+  under ~12,000 px (a few hundred rows) is rendered whole.
 - **Heights: estimated, then measured.** An item that hasn't been rendered is
   stood in for by its height: rows from how their code wraps in the current
   column width, the rest from typical sizes. Once rendered, items are
@@ -912,6 +918,10 @@ How we get there:
   the place of its rows.
 - **Sticky file headers** are one overlay showing the file at the top of the
   screen, pushed up by the end of its card.
+- **Selections and the composer.** A text selection keeps the item it starts
+  in rendered, and everything between, however far it's dragged. The comment
+  composer follows its line from the window's heights when the line itself
+  isn't rendered.
 - **Keys work on the list, not the DOM.** The cursor, `j`/`k`, `]c`, `]f`,
   `G`, `]t` and jumps move through the list's row and hunk indices and then
   ask the window to reveal an item, which renders it right away.
@@ -922,7 +932,8 @@ How we get there:
   the rows that come into the window.
 - **Search is ours.** The browser's find can't see rows that aren't rendered,
   so Ctrl+F opens `/` (§8.6).
-- **File view** (one file) renders all its rows; files are small enough.
+- **File view** is a windowed list too (one file's rows and its threads), so
+  a huge file opens at once.
 - **Compact wire.** The WebSocket is compressed (§4), and so are pages and
   JSON responses (zstd or gzip; a 9 MB review page is 1.3 MB). Reconnects and
   new revisions send only what the page doesn't have (§4). Snapshots are

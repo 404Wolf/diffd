@@ -17,6 +17,7 @@ import { KeyEngine, keyToken } from "./keymap";
 import { Lru } from "./lru";
 import { renderMarkdown, resolveRef } from "./markdown";
 import { changeMarks, lineHtml, rowHtml, soloSide } from "./render";
+import { findMatches, nextMatch, occurrences } from "./search";
 import { CLASS_KINDS, definition, FUNCTION_KINDS, pair, paragraph, tag } from "./textObjects";
 import { buildTree, parentDir, treeOrder } from "./tree";
 import { Heights, wrappedLines } from "./windower";
@@ -510,5 +511,38 @@ describe("windowed heights", () => {
     expect(wrappedLines("x".repeat(80), 80)).toBe(1);
     expect(wrappedLines("x".repeat(81), 80)).toBe(2);
     expect(wrappedLines("\t\tx", 8)).toBe(2);
+  });
+});
+
+describe("the page's own find", () => {
+  const files = [file(), { ...file(), path: "src/b.rs" }];
+  const models = files.map(fileModel);
+  it("finds every occurrence, folded or not, in the buffer's order", () => {
+    const m = findMatches(files, models, "X =");
+    // Old side before new on the same row, then the next file.
+    expect(m.map((x) => `${x.file}:${x.row}:${x.side}:${x.line}:${x.start}`)).toEqual([
+      "0:1:old:2:4",
+      "0:1:new:2:4",
+      "1:1:old:2:4",
+      "1:1:new:2:4",
+    ]);
+    expect(findMatches(files, models, "")).toEqual([]);
+  });
+  it("steps to the next and previous match from a place, wrapping around", () => {
+    const m = findMatches(files, models, "x");
+    expect(nextMatch(m, { file: 0, row: 0, side: "new", col: 0 }, 1)).toEqual({ index: 0, wrapped: false });
+    // From a match: the one after it, not itself.
+    expect(nextMatch(m, { file: 0, row: 1, side: "old", col: 4 }, 1)).toEqual({ index: 1, wrapped: false });
+    expect(nextMatch(m, { file: 1, row: 1, side: "new", col: 4 }, 1)).toEqual({ index: 0, wrapped: true });
+    expect(nextMatch(m, { file: 0, row: 1, side: "old", col: 4 }, -1)).toEqual({ index: 3, wrapped: true });
+    expect(nextMatch(m, { file: 1, row: 1, side: "old", col: 4 }, -1)).toEqual({ index: 1, wrapped: false });
+    expect(nextMatch([], { file: 0, row: 0, side: "old", col: 0 }, 1).index).toBe(-1);
+  });
+  it("finds occurrences in a line, case-insensitively", () => {
+    expect(occurrences("Foo foo FOO", "foo")).toEqual([
+      [0, 3],
+      [4, 7],
+      [8, 11],
+    ]);
   });
 });

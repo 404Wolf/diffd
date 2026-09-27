@@ -106,9 +106,31 @@ const viewport = (page) =>
 /** Wait until the part of the history the header names is on screen (the chip shows it while it loads). */
 const spanReady = (page) => page.waitForFunction(() => !document.querySelector('[data-span-chip][aria-busy="true"]'));
 
+/**
+ * A long diff is windowed: only rows near the screen are in the page. Scroll
+ * through the buffer, as a reader would, until `selector` is there.
+ */
+async function scrollUntil(page, selector, pane = ".buffer.focused") {
+  for (let i = 0; i < 400; i++) {
+    if ((await page.locator(`${pane} ${selector}`).count()) > 0) return;
+    const end = await page.evaluate(
+      ({ pane, first }) => {
+        const buf = document.querySelector(pane);
+        const before = buf.scrollTop;
+        buf.scrollTop = first ? 0 : before + buf.clientHeight * 0.8;
+        return !first && buf.scrollTop === before;
+      },
+      { pane, first: i === 0 },
+    );
+    if (end && (await page.locator(`${pane} ${selector}`).count()) === 0) return;
+    await sleep(30);
+  }
+}
 async function cursorTo(page, fileName, line, side = "new", pane = ".buffer.focused") {
   // Click the code cell of that line, like a user would.
-  const cell = page.locator(`${pane} [data-file-section]:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`).first();
+  const selector = `[data-file-section]:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`;
+  await scrollUntil(page, selector, pane);
+  const cell = page.locator(`${pane} ${selector}`).first();
   // Rows far from the screen are filled in as they come near it, which can
   // replace the element being scrolled to: look it up again then.
   for (let attempt = 0; ; attempt++) {
@@ -224,15 +246,20 @@ try {
     await page.locator('[data-file-section]:has([data-path="web/src/badge.css"])').scrollIntoViewIfNeeded();
     check(await page.getByText("Adds a .low style (amber)").isVisible(), "Claude's fold shows its summary");
     const routes = page.locator('[data-file-section]:has([data-path="src/routes.rs"])');
-    const hiddenBefore = await routes.locator(".gap-body").evaluateAll((els) => els.reduce((n, e) => n + e.querySelectorAll(".row").length, 0));
+    // Folded rows aren't in the page (it's windowed): each gap says how many it holds.
+    const hidden = () => routes.locator(".gap").evaluateAll((els) => els.reduce((n, e) => n + Number(e.textContent.match(/(\d+) hidden line/)?.[1] ?? 0), 0));
+    const hiddenBefore = await hidden();
     await cursorTo(page, "src/routes.rs", 23);
     const vp = await viewport(page);
     await keys(page, "g", "e");
-    const hiddenAfter = await routes.locator(".gap-body").evaluateAll((els) => els.reduce((n, e) => n + e.querySelectorAll(".row").length, 0));
+    const hiddenAfter = await hidden();
     check(hiddenBefore - hiddenAfter === 5, `g e reveals 5 lines (${hiddenBefore} → ${hiddenAfter} hidden)`);
     const vp2 = await viewport(page);
     check(vp.key === vp2.key && Math.abs(vp.y - vp2.y) < 3, "without moving the page");
-    check((await page.locator(".gap-body[hidden='until-found']").count()) > 0, "folded lines stay findable with Ctrl+F (hidden=until-found)");
+    // Ctrl+F is the page's own find: it searches folded lines too.
+    await keys(page, "Control+f");
+    check(await page.getByText("Search every line, hidden ones too").isVisible(), "Ctrl+F opens the page's search, which sees folded lines");
+    await keys(page, "Escape");
     check((await page.locator('[data-file-section]:has([data-path="src/lib.rs"]) .row.test').count()) >= 20, "test code is marked along its side");
     await page.locator('[data-file-section]:has([data-path="tests/limiter.rs"])').scrollIntoViewIfNeeded();
     check(await page.locator('[data-file-section]:has([data-path="tests/limiter.rs"])').getByText("test file").isVisible(), "whole test files get a chip");
@@ -371,6 +398,12 @@ try {
     check((await page.locator("[role=dialog] li").count()) >= 1, "/ finds text anywhere, hidden lines included");
     await keys(page, "Enter");
     check((await status(page)).includes("main.go"), "and jumps to it");
+    check((await status(page)).includes("Retry-After · 1 of"), "saying which match of how many");
+    check(await page.evaluate(() => (CSS.highlights.get("search-current")?.size ?? 0) === 1), "the match is highlighted");
+    await keys(page, "n");
+    check(/Retry-After · \d+ of/.test(await status(page)), "n goes to the next match");
+    await keys(page, "Escape");
+    check(await page.evaluate(() => (CSS.highlights.get("search")?.size ?? 0) === 0), "esc clears the highlights");
     await keys(page, "g", "S");
     await page.keyboard.type("Limiter");
     check((await page.locator("[role=dialog] li").count()) >= 1, "gS lists symbols across the diff");
@@ -432,15 +465,23 @@ try {
 
     // Commenting in one split shows the thread in both and moves neither.
     await keys(page, "Control+h");
-    const otherBefore = await page.evaluate(() => document.querySelectorAll(".buffer")[1].scrollTop);
+    /** The other split's scroll position and the row at its top. */
+    const other = () =>
+      page.evaluate(() => {
+        const buf = document.querySelectorAll(".buffer")[1];
+        const top = buf.getBoundingClientRect().top + 34;
+        const row = [...buf.querySelectorAll(".row")].find((r) => r.getBoundingClientRect().bottom > top);
+        return { scroll: buf.scrollTop, row: row && `${row.dataset.f}:${row.dataset.r}@${Math.round(row.getBoundingClientRect().top)}` };
+      });
+    const otherBefore = await other();
     await cursorTo(page, "src/bucket.rs", 3);
     await keys(page, "g", "c", "c");
     await page.keyboard.type("Commented from the left split.");
     await keys(page, "Control+Enter");
     await page.waitForFunction(() => [...document.querySelectorAll(".buffer")].every((b) => b.textContent.includes("Commented from the left split.")));
     check(true, "a comment in one split shows up in both");
-    const otherAfter = await page.evaluate(() => document.querySelectorAll(".buffer")[1].scrollTop);
-    check(Math.abs(otherAfter - otherBefore) < 3, "and the other split didn't move");
+    const otherAfter = await other();
+    check(otherAfter.row === otherBefore.row, `and the other split didn't move (${JSON.stringify(otherBefore)} → ${JSON.stringify(otherAfter)})`);
     const heard = await agent.call("wait_for_feedback", { review_id: reviewId, timeout_seconds: 20 });
     check(heard.items.some((i) => i.path === "src/bucket.rs" && i.new[0] === "Commented from the left split."), "the agent hears it");
 
@@ -1026,7 +1067,7 @@ try {
       const secs = [...document.querySelectorAll(".buffer.focused [data-file-section]")];
       const added = secs.find((s) => s.querySelector("[data-file-head]").textContent.includes("New file"));
       const deleted = secs.find((s) => s.querySelector('[data-path="src/legacy.rs"]'));
-      const rows = added?.querySelector(".rows");
+      const rows = added?.querySelector(".solo");
       const sec = added?.getBoundingClientRect();
       const r = rows?.getBoundingClientRect();
       return {
