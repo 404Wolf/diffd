@@ -2,15 +2,78 @@
 
 export const bufferEl = (): HTMLElement | null => document.getElementById("buffer");
 
+/**
+ * Every row in the buffer, indexed. Big diffs have 100k+ rows, so the index is
+ * built once and kept until the DOM changes (a MutationObserver marks it
+ * stale), instead of querying on every key press.
+ */
+interface RowIndex {
+  /** Rows the cursor can move through: rendered and not inside a folded gap. */
+  readonly rows: HTMLElement[];
+  readonly position: Map<HTMLElement, number>;
+  /** Every row, folded ones too, by `file:row`. */
+  readonly byKey: Map<string, HTMLElement>;
+  /** Rows that start a run of changes. */
+  readonly hunks: HTMLElement[];
+}
+
+let index: RowIndex | null = null;
+let watching: { buf: HTMLElement; observer: MutationObserver } | null = null;
+
+/** Only structural changes matter; repainting a line's code (the symbol cursor) doesn't. */
+const structural = (records: MutationRecord[]) =>
+  records.some((m) => !(m.target instanceof Element && m.target.closest(".code")));
+
+function rowIndex(): RowIndex | null {
+  const buf = bufferEl();
+  if (!buf) return null;
+  if (watching?.buf !== buf) {
+    watching?.observer.disconnect();
+    const observer = new MutationObserver((records) => {
+      if (structural(records)) index = null;
+    });
+    observer.observe(buf, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
+    watching = { buf, observer };
+    index = null;
+  }
+  // Changes made earlier in this same task haven't reached the observer's callback yet.
+  if (structural(watching.observer.takeRecords())) index = null;
+  if (index) return index;
+
+  const rows: HTMLElement[] = [];
+  const position = new Map<HTMLElement, number>();
+  const byKey = new Map<string, HTMLElement>();
+  const hunks: HTMLElement[] = [];
+  let prev: HTMLElement | undefined;
+  for (const r of buf.querySelectorAll<HTMLElement>(".row")) {
+    byKey.set(`${r.dataset.f}:${r.dataset.r}`, r);
+    if (r.closest(".gap-body[hidden]")) continue;
+    position.set(r, rows.length);
+    rows.push(r);
+    if (r.dataset.chg === "1" && (prev?.dataset.chg !== "1" || prev.dataset.f !== r.dataset.f)) hunks.push(r);
+    prev = r;
+  }
+  index = { rows, position, byKey, hunks };
+  return index;
+}
+
 export function rowEl(file: number, row: number): HTMLElement | null {
-  return bufferEl()?.querySelector<HTMLElement>(`.row[data-f="${file}"][data-r="${row}"]`) ?? null;
+  return rowIndex()?.byKey.get(`${file}:${row}`) ?? null;
 }
 
 /** Rows the cursor can move through: rendered and not inside a folded gap. */
-export function navigableRows(): HTMLElement[] {
-  const buf = bufferEl();
-  if (!buf) return [];
-  return [...buf.querySelectorAll<HTMLElement>(".row")].filter((r) => !r.closest(".gap-body[hidden]"));
+export function navigableRows(): readonly HTMLElement[] {
+  return rowIndex()?.rows ?? [];
+}
+
+/** Where a row is in `navigableRows()`, or -1. */
+export function rowPosition(el: HTMLElement): number {
+  return rowIndex()?.position.get(el) ?? -1;
+}
+
+/** The first row of each run of changed rows. */
+export function hunkStarts(): readonly HTMLElement[] {
+  return rowIndex()?.hunks ?? [];
 }
 
 /** The first row whose bottom is below the top of the viewport (under sticky headers). */
@@ -18,8 +81,18 @@ export function topVisibleRow(): HTMLElement | null {
   const buf = bufferEl();
   if (!buf) return null;
   const top = buf.getBoundingClientRect().top + 34;
-  for (const r of navigableRows()) if (r.getBoundingClientRect().bottom > top) return r;
-  return null;
+  const rows = navigableRows();
+  // Rows are in document order, so their positions only grow: binary search
+  // touches ~17 rows even in huge diffs (and lays out only their chunks).
+  let lo = 0;
+  let hi = rows.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const r = rows[mid];
+    if (r && r.getBoundingClientRect().bottom > top) hi = mid;
+    else lo = mid + 1;
+  }
+  return rows[lo] ?? null;
 }
 
 /**

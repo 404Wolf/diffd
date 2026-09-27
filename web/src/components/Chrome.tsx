@@ -4,7 +4,7 @@ import { match } from "ts-pattern";
 import { spanLabel } from "../lib/history";
 import { helpEntries } from "../state/bindings";
 import type { Commands } from "../state/commands";
-import { bufferEl, follows, navigableRows, rowEl } from "../state/dom";
+import { bufferEl, hunkStarts, rowEl, rowPosition } from "../state/dom";
 import type { Review } from "../state/review";
 import type { PickerItem, View } from "../state/view";
 import { AGENT } from "./ThreadCard";
@@ -101,11 +101,19 @@ export function StatusLine(props: { review: Review; view: View; mode: () => stri
   const hunk = createMemo(() => {
     props.view.cursor();
     if (props.view.mode().kind !== "diff") return "";
-    const rows = navigableRows();
-    const starts = rows.filter((r, k) => r.dataset.chg === "1" && rows[k - 1]?.dataset.chg !== "1");
+    const starts = hunkStarts();
     const c = props.view.cursor();
     const cur = c ? rowEl(c.file, c.row) : null;
-    const at = cur ? starts.filter((h) => h === cur || follows(h, cur)).length : 0;
+    // Hunks at or before the cursor, by binary search over their positions.
+    const pos = cur ? rowPosition(cur) : -1;
+    let lo = 0;
+    let hi = starts.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rowPosition(starts[mid] as HTMLElement) <= pos) lo = mid + 1;
+      else hi = mid;
+    }
+    const at = cur ? lo : 0;
     return `hunk ${at}/${starts.length}`;
   });
   const hint = () =>

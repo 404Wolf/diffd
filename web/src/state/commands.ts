@@ -12,17 +12,20 @@ import type { Symbol as Definition } from "../gen/Symbol";
 import type { Thread } from "../gen/Thread";
 import { type ExpandDirection, expandGap, initialVisible, nearestGap, rowOf } from "../lib/diffModel";
 import { step, steps } from "../lib/history";
+import { fillAll } from "../lib/lazyRows";
 import { buildTree, treeOrder } from "../lib/tree";
 import {
   bufferEl,
   flash,
   follows,
+  hunkStarts,
   keepViewport,
   navigableRows,
   readingPosition,
   restoreReadingPosition,
   reveal,
   rowEl,
+  rowPosition,
 } from "./dom";
 import { fromAgent, type Review } from "./review";
 import { CONTEXT, type Cursor, EXPAND_STEP, type PickerItem, type Place, type View, type Word } from "./view";
@@ -87,11 +90,12 @@ export function createCommands(review: Review, view: View) {
     const rows = navigableRows();
     if (rows.length === 0) return;
     const cur = cursorEl();
-    const at = cur ? rows.indexOf(cur) : -1;
+    const at = cur ? rowPosition(cur) : -1;
     const next = rows[at < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, at + delta))];
     if (next) place(next);
   };
   const edge = (last: boolean) => {
+    fillAll();
     const rows = navigableRows();
     const el = last ? rows.at(-1) : rows[0];
     if (!el) return;
@@ -147,14 +151,8 @@ export function createCommands(review: Review, view: View) {
 
   // -- Moving around the diff -----------------------------------------------
 
-  const hunkStarts = (): HTMLElement[] => {
-    const rows = navigableRows();
-    return rows.filter((r, k) => {
-      const prev = rows[k - 1];
-      return r.dataset.chg === "1" && (prev?.dataset.chg !== "1" || prev.dataset.f !== r.dataset.f);
-    });
-  };
   const hunk = (dir: 1 | -1) => {
+    fillAll();
     const cur = cursorEl();
     const starts = hunkStarts();
     const target =
@@ -189,6 +187,7 @@ export function createCommands(review: Review, view: View) {
   };
 
   const goTo = (file: number, side: Side, line: number, opts: { word?: Word | null; card?: string } = {}) => {
+    fillAll();
     const model = review.models()[file];
     if (!model) return;
     const row = rowOf(model, side, line);
@@ -217,6 +216,7 @@ export function createCommands(review: Review, view: View) {
 
   const order = () => treeOrder(buildTree(review.paths()));
   const openFile = (file: number, rememberIt = true) => {
+    fillAll();
     if (rememberIt) remember();
     const m = view.mode();
     if (m.kind === "file") {
@@ -235,6 +235,7 @@ export function createCommands(review: Review, view: View) {
   };
   /** `]f` / `[f`, in tree order, skipping collapsed and viewed files. */
   const fileJump = (dir: 1 | -1) => {
+    fillAll();
     const list = order();
     const current =
       view.mode().kind === "file"

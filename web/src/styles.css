@@ -173,6 +173,19 @@
     content-visibility: auto;
     contain-intrinsic-size: auto 400px;
   }
+  /* Long runs of rows, so a 100k-line diff only lays out what's near the screen. */
+  .chunk {
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(var(--n) * 18px);
+  }
+  /* Not filled in yet: the code as plain text, a row's height per line. */
+  .chunk.lazy {
+    height: calc(var(--n) * 18px);
+    overflow: hidden;
+    padding-left: 52px;
+    white-space: pre;
+    color: var(--subtle);
+  }
   .row {
     position: relative;
     display: grid;

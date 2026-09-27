@@ -1,8 +1,9 @@
-import { createMemo, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import { createMemo, createRenderEffect, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 import type { FileDiff } from "../gen/FileDiff";
 import type { Thread } from "../gen/Thread";
 import { type Block, blocks, gapContext, regionRows, rowOf } from "../lib/diffModel";
-import { type RowMarks, rowHtml } from "../lib/render";
+import { lazyChunks, placeholderHtml } from "../lib/lazyRows";
+import { escapeHtml, type RowMarks, rowHtml } from "../lib/render";
 import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
@@ -25,6 +26,9 @@ const STATUS_COLOR = {
   modified: "text-warn",
   renamed: "text-accent",
 } as const;
+
+/** Rows per lazily laid-out chunk in long runs of rows. */
+const CHUNK_ROWS = 80;
 
 export function FileSection(props: Props) {
   const file = (): FileDiff => props.review.snapshot().files[props.index] as FileDiff;
@@ -89,12 +93,37 @@ export function FileSection(props: Props) {
     return list;
   });
 
+  /** Rows as HTML; long runs are split into chunks the browser lays out only near the viewport. */
   const rows = (start: number, end: number) => {
+    let html = "";
+    const f = file();
+    // Placeholders fill in later, outside this effect: track the marks here so changes re-render them.
+    marks();
+    const chunked = end - start > CHUNK_ROWS;
+    for (let c = start; c < end; c += CHUNK_ROWS) {
+      const stop = Math.min(end, c + CHUNK_ROWS);
+      // The first chunk is real right away, so the cursor has somewhere to land.
+      if (chunked && c > start) {
+        html += placeholderHtml(c, stop, plainRows(f, c, stop));
+        continue;
+      }
+      if (chunked) html += `<div class="chunk" style="--n:${stop - c}">`;
+      html += realRows(c, stop);
+      if (chunked) html += "</div>";
+    }
+    return html;
+  };
+  const realRows = (start: number, end: number) => {
     let html = "";
     const f = file();
     const m = marks();
     for (let r = start; r < end; r++) html += rowHtml(props.index, r, f, m);
     return html;
+  };
+  /** Put rows into `el`, and have its placeholders filled in as they come near the screen. */
+  const setRows = (el: HTMLElement, html: string) => {
+    el.innerHTML = html;
+    lazyChunks(el, (chunk) => () => realRows(Number(chunk.dataset.a), Number(chunk.dataset.b)));
   };
 
   const noteNumber = (t: Thread) => {
@@ -196,7 +225,11 @@ export function FileSection(props: Props) {
               {(b) => (
                 <Switch>
                   <Match when={b.kind === "rows" && b}>
-                    {(r) => <div innerHTML={rows(r().start, r().end)} />}
+                    {(r) => {
+                      const el = (<div />) as HTMLDivElement;
+                      createRenderEffect(() => setRows(el, rows(r().start, r().end)));
+                      return el;
+                    }}
                   </Match>
                   <Match when={b.kind === "gap" && b}>
                     {(g) => (
@@ -205,6 +238,7 @@ export function FileSection(props: Props) {
                         start={g().start}
                         end={g().end}
                         html={g().end - g().start <= MAX_HIDDEN_ROWS ? () => rows(g().start, g().end) : null}
+                        setRows={setRows}
                         summary={foldSummary(g().start, g().end)}
                         onExpand={(dir) => props.cmd.expand(props.index, g().start, g().end, dir)}
                       />
@@ -256,6 +290,7 @@ function Gap(props: {
   /** The agent folded this region; what changed in it. */
   summary: string | null;
   onExpand: (dir: "down" | "up" | "all") => void;
+  setRows: (el: HTMLElement, html: string) => void;
 }) {
   const n = () => props.end - props.start;
   const top = () => props.start === 0;
@@ -313,7 +348,26 @@ function Gap(props: {
           )}
         </Show>
       </div>
-      <Show when={props.html}>{(html) => <div ref={body} class="gap-body" innerHTML={html()()} />}</Show>
+      <Show when={props.html}>
+        {(html) => {
+          const el = (<div ref={body} class="gap-body" />) as HTMLDivElement;
+          createRenderEffect(() => props.setRows(el, html()()));
+          return el;
+        }}
+      </Show>
     </>
   );
+}
+
+/** Rows as plain text, one line each (old side, then new), for placeholders. */
+function plainRows(f: FileDiff, start: number, end: number): string {
+  let out = "";
+  for (let r = start; r < end; r++) {
+    const row = f.rows[r];
+    if (!row) continue;
+    const old = row[0] === null ? "" : (f.old?.lines[row[0]] ?? "");
+    const neu = row[1] === null ? "" : (f.new?.lines[row[1]] ?? "");
+    out += `${escapeHtml(old)}\t${escapeHtml(neu)}\n`;
+  }
+  return out;
 }

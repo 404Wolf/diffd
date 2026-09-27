@@ -1,7 +1,7 @@
 import { createEffect, createMemo, Index, Show } from "solid-js";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
 import type { Commands } from "../state/commands";
-import { bufferEl, rowEl } from "../state/dom";
+import { rowEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
 import { FileSection } from "./FileSection";
@@ -170,7 +170,11 @@ function Legend(props: { color: string; label: string }) {
  * Rows are plain HTML, so this touches a handful of elements per move.
  */
 function usePaintCursor(props: Props) {
-  let painted: { rows: HTMLElement[]; word: { el: HTMLElement; html: string } | null } = {
+  let painted: {
+    rows: HTMLElement[];
+    caret?: HTMLElement | null;
+    word: { el: HTMLElement; html: string } | null;
+  } = {
     rows: [],
     word: null,
   };
@@ -184,7 +188,7 @@ function usePaintCursor(props: Props) {
     for (let i = 0; i < props.review.snapshot().files.length; i++) props.view.visible(i);
     queueMicrotask(() => {
       for (const el of painted.rows) el.classList.remove("cur", "vsel");
-      for (const el of bufferEl()?.querySelectorAll(".code.caret") ?? []) el.classList.remove("caret");
+      painted.caret?.classList.remove("caret");
       if (painted.word?.el.isConnected) painted.word.el.innerHTML = painted.word.html;
       painted = { rows: [], word: null };
       if (!cursor) return;
@@ -196,6 +200,7 @@ function usePaintCursor(props: Props) {
         row.querySelector<HTMLElement>(`.code[data-side="${cursor.side}"]`) ??
         row.querySelector<HTMLElement>(".code[data-side]");
       code?.classList.add("caret");
+      painted.caret = code;
       if (cursor.word && code) {
         const file = props.review.snapshot().files[cursor.file];
         const r = file?.rows[cursor.row];

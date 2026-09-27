@@ -215,7 +215,8 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
           followHistory(state.history);
           setConv({
             threads: reconcile(state.threads, { key: "id" })(conv.threads),
-            regions: state.regions,
+            // A new array would re-render every file's rows; only replace real changes.
+            regions: sameJson(conv.regions, state.regions) ? conv.regions : state.regions,
             chat: state.chat,
             activity: state.activity,
             presence: state.presence,
@@ -353,3 +354,5 @@ async function fetchRange(reviewId: string, range: CommitRange): Promise<Snapsho
   if (!res.ok) throw new Error((await res.text()) || `Couldn't load those commits (${res.status})`);
   return (await res.json()) as Snapshot;
 }
+
+const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
