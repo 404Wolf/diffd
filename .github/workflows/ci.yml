@@ -69,6 +69,29 @@ jobs:
           name: e2e-screenshots
           path: target/e2e-shots
 
+  install:
+    name: diffd install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: extractions/setup-just@v2
+      - run: npm --prefix web ci
+      - run: just build
+      - run: npm install -g @openai/codex
+      - name: Install, upgrade and uninstall for the runner's user
+        run: scripts/e2e-install.sh
+
   nix:
     name: Nix package
     runs-on: ubuntu-latest
