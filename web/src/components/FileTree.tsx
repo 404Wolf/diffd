@@ -234,16 +234,16 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         aria-current={props.current() === p.file.index}
         data-tree-file={p.file.path}
         data-context={props.review.isContext(p.file.index) ? "" : undefined}
-        title={`${p.file.path}${file().collapsed ? ` · collapsed: ${file().collapsed}` : ""}`}
+        title={`${p.file.path}${file().collapsed ? ` · collapsed: ${file().collapsed}` : ""} · double-click for the rest of its folder`}
         onClick={(e) => {
           if (e.shiftKey) return void props.cmd.openPathInSplit(p.file.path);
-          const dir = parentDir(p.file.path);
-          if (mode() !== "diff") return props.cmd.openFile(p.file.index);
-          // Clicking the file you're on again hides its folder's other files.
-          if (props.current() === p.file.index && neighbours[dir]) return showNeighbours(dir, false);
           props.cmd.openFile(p.file.index);
-          // Opening a file shows what else is in its folder.
-          showNeighbours(dir, true);
+        }}
+        // A double click shows (or hides again) the other files in its folder.
+        onDblClick={() => {
+          if (mode() !== "diff") return;
+          const dir = parentDir(p.file.path);
+          showNeighbours(dir, !neighbours[dir]);
         }}
       >
         <span

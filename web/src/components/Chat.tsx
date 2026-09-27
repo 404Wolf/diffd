@@ -1,4 +1,4 @@
-import { createEffect, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import { agentName } from "../lib/agent";
 import { composing } from "../lib/keymap";
 import { bufferEl } from "../state/dom";
@@ -10,9 +10,46 @@ import { Markdown } from "./Markdown";
 /** The message box grows to this, then scrolls. */
 const MAX_INPUT_PX = 120;
 
+/** The chat's share of the side panel: 30% to start, between these when dragged. */
+const SHARE_KEY = "diffd:chat-share";
+const MIN_SHARE = 0.12;
+const MAX_SHARE = 0.85;
+function loadShare(): number {
+  try {
+    const saved = Number(localStorage.getItem(SHARE_KEY));
+    return saved >= MIN_SHARE && saved <= MAX_SHARE ? saved : 0.3;
+  } catch {
+    return 0.3;
+  }
+}
+
 export function Chat(props: { review: Review; view: View }) {
   let log: HTMLDivElement | undefined;
   let input: HTMLTextAreaElement | undefined;
+  let box: HTMLElement | undefined;
+  /** How much of the side panel the chat takes, remembered across reloads. */
+  const [share, setShare] = createSignal(loadShare());
+  const resizeTo = (next: number) => {
+    setShare(Math.min(MAX_SHARE, Math.max(MIN_SHARE, next)));
+    try {
+      localStorage.setItem(SHARE_KEY, String(share()));
+    } catch {
+      // Not remembered, then.
+    }
+  };
+  const startResize = (e: PointerEvent) => {
+    const panel = box?.parentElement;
+    if (!panel) return;
+    e.preventDefault();
+    const rect = panel.getBoundingClientRect();
+    const move = (m: PointerEvent) => resizeTo((rect.bottom - m.clientY) / rect.height);
+    const up = () => {
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+    };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+  };
   /** As tall as what's typed, up to a few lines; then it scrolls. */
   const grow = () => {
     if (!input) return;
@@ -32,11 +69,34 @@ export function Chat(props: { review: Review; view: View }) {
     grow();
   };
   return (
-    // A fixed share of the side panel, whatever the conversation's length.
+    // A share of the side panel (30% to start; drag its top edge), whatever the conversation's length.
     <section
+      ref={box}
       aria-label={`Chat with ${agentName()}`}
-      class="flex h-[30%] min-h-28 flex-none flex-col border-t border-line bg-panel"
+      class="relative flex min-h-28 flex-none flex-col border-t border-line bg-panel"
+      style={{ height: `${share() * 100}%` }}
     >
+      {/* A focusable window splitter (WAI-ARIA): drag it, or arrows up and down. <hr> can't be dragged. */}
+      {/* biome-ignore lint/a11y/useSemanticElements: see above */}
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize the chat"
+        aria-valuemin={MIN_SHARE * 100}
+        aria-valuemax={MAX_SHARE * 100}
+        aria-valuenow={Math.round(share() * 100)}
+        tabindex="0"
+        class="absolute inset-x-0 -top-1 z-10 h-2 cursor-row-resize hover:bg-accent-soft focus:bg-accent-soft focus:outline-none"
+        onPointerDown={startResize}
+        onKeyDown={(e) => {
+          const step = e.key === "ArrowUp" ? 0.05 : e.key === "ArrowDown" ? -0.05 : 0;
+          if (step === 0) return;
+          e.preventDefault();
+          // Not the diff's cursor too.
+          e.stopPropagation();
+          resizeTo(share() + step);
+        }}
+      />
       <div ref={log} class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto px-3 pt-1.5">
         <Show
           when={props.review.chat().length > 0}
