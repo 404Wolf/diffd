@@ -1,6 +1,7 @@
 # diffd development tasks. `just` lists them.
 
-scratch := "target/demo"
+# Demo repositories live outside this one (a Cargo project inside our workspace would confuse cargo).
+scratch := env_var_or_default("TMPDIR", "/tmp") / "diffd-demo"
 
 default:
     @just --list

@@ -117,7 +117,16 @@ const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 // Connection failures are expected while the offline section has the server stopped.
-page.on("console", (m) => m.type() === "error" && !m.text().includes("ERR_CONNECTION_REFUSED") && errors.push(m.text()));
+page.on(
+  "console",
+  (m) =>
+    m.type() === "error" &&
+    !m.text().includes("ERR_CONNECTION_REFUSED") &&
+    // Failed requests are reported below, with their URL.
+    !m.text().startsWith("Failed to load resource") &&
+    errors.push(m.text()),
+);
+page.on("response", (r) => r.status() >= 400 && errors.push(`${r.status()} ${r.request().method()} ${r.url()}`));
 let agent = new Agent(`${base}/mcp`);
 await agent.init();
 

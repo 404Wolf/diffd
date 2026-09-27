@@ -1,14 +1,15 @@
 # diffd: design
 
-Status: **draft v2, for discussion.** Nothing is built yet. Once we agree on
-this document, v1 gets implemented against it in full.
+Status: **v1 is built.** This document describes the system as it is. §15
+lists what's still open.
 
 ## 1. The product
 
 diffd turns an agent's code changes into a **live code review in your browser**.
 
 1. The agent opens a *magic diff* through MCP.
-2. It annotates the tricky parts in plain language.
+2. It annotates the tricky parts in plain language, marks test code, and folds
+   mechanical changes behind a one-line summary.
 3. It hands you a link.
 4. You read the change in a viewer that's GitHub-quality, difftastic-powered
    and vim-driven. You select code and comment on it.
@@ -25,23 +26,24 @@ diffd turns an agent's code changes into a **live code review in your browser**.
   │───────────────────────────────────────────────────────────────────────────────────▶ │ edits code
   │                                                           │◀── share_diff(repo,     │
   │                                                           │     title, summary,     │
-  │                                                           │     annotations)        │
+  │                                                           │     annotations,        │
+  │                                                           │     regions)            │
   │                                                           │── url ─────────────────▶│
-  │ ◀──────────────────────────────────── "review it here: http://127.0.0.1:3433/r/k3f9"│
+  │ ◀──────────────────────────────────── "review it here: http://localhost:3433/r/k3f9"│
   │ open link ───────────────▶│ summary, file tree,           │                         │
   │                           │ multibuffer, Claude's notes   │                         │
-  │ select L41–47, comment ──▶│── comment ───────────────────▶│── feedback ────────────▶│ (§5.3)
+  │ select L41–47, comment ──▶│── comment ───────────────────▶│── wait_for_feedback ───▶│ (§5.3)
   │ keep scrolling …          │                               │◀── reply(thread, body) ─│
   │                           │◀── reply (live) ──────────────│                         │ edits code
   │ subtle "Claude replied"   │                               │ files changed → rebuild │
-  │ in the activity sidebar   │◀── revision 2 (live) ─────────│                         │
+  │ in the activity drawer    │◀── revision 2 (live) ─────────│                         │
   │ ]n jumps there, ctrl-o back                               │                         │
 ```
 
 Step by step:
 
 1. You ask for something, and Claude edits code.
-2. Claude calls `share_diff`. diffd snapshots the diff and returns a URL, which
+2. Claude calls `share_diff`. diffd builds the diff and returns a URL, which
    Claude posts in the chat.
 3. You open the link and see:
    - the summary on top, like a PR description
@@ -49,77 +51,101 @@ Step by step:
    - the multibuffer
    - Claude's annotations next to the code they explain, which you can step
      through as a tour
+   - test code marked with a line along its side, and folds with Claude's
+     summary of what changed inside
 4. You select a region and comment on it. The comment is sent as soon as you
    save it.
-5. Claude receives the comment, answers inline, and maybe edits code.
-6. Files change on disk. diffd rebuilds only those files and pushes a new
-   revision. The page updates in place without moving your scroll. Lines
-   changed since the previous revision get a marker. Threads whose code changed
-   say so.
-7. Meanwhile you've kept reading. Replies to threads above you show up as quiet
-   entries in the activity sidebar and as dots in the file tree. Nothing pops
-   up or steals focus.
+5. Claude, sitting in `wait_for_feedback`, receives the comment, answers
+   inline, and maybe edits code.
+6. Files change on disk. diffd rebuilds the review and pushes a new revision.
+   The page updates in place without moving your scroll. Lines changed since
+   the previous revision get a marker. Threads whose code changed say so.
+7. Meanwhile you've kept reading. Replies show up as quiet entries in the
+   activity drawer and as dots in the file tree. Nothing pops up or steals
+   focus.
 8. You can also talk to Claude in Claude Code and ask it to show you
    something ("where does the timeout get clamped?"). A small prompt appears on
-   the page, "Claude wants to show you mcp.rs:35", with **Show me** / **Later**.
-   It never moves your scroll on its own.
+   the page, "Claude wants to show you something", with **Show me** /
+   **Later**. It never moves your scroll on its own.
 
-There's no review-level "submit" and no global comment box. **Every comment is
-anchored to a chunk of code**, like a multi-line PR comment, and the
-conversation just keeps going: Claude answers or edits as you comment, and the
-diff keeps up.
+There's no review-level "submit". **Every comment is anchored to a chunk of
+code**, like a multi-line PR comment. Anything not about specific lines goes in
+the chat box. The conversation just keeps going: Claude answers or edits as
+you comment, and the diff keeps up.
 
 ## 3. Scope
 
-**v1:** everything in §2, local, single user:
+**v1, built:** everything in §2, local, single user:
 
 - MCP server
-- live web UI
+- live web UI, usable from several tabs at once
 - SQLite storage
 - live updates as files change
-- annotations, threads and the activity sidebar
-- vim keys
-- symbol lookup
-- works offline for reading
+- annotations, test and fold regions, threads, chat and the activity drawer
+- walking a review commit by commit
+- opening any file in the repository, not just the diff
+- language servers: definition, type definition, hover, diagnostics
+- vim keys, splits, marks and text objects
+- 100k-line diffs
+- reading and commenting offline
 
-**Later (§14):**
-
-- `git diff | diffd` and static HTML export. The page is already
-  self-contained, so this is mostly a CLI command.
-- CI → Gitea
-- herdr plugin
-- LSP
-- Postgres and hosted/multi-user
-- staging hunks from the UI
+What's still open is in §15.
 
 ## 4. Process model and setup
 
 ```sh
-diffd                      # = diffd serve: one local server on 127.0.0.1:3433
-diffd setup claude         # runs: claude mcp add --scope user --transport http diffd http://127.0.0.1:3433/mcp
+diffd                      # = diffd serve: one local server on localhost:3433
+diffd setup claude         # runs: claude mcp add --transport http --scope user diffd http://localhost:3433/mcp
+diffd setup claude --print # just prints that command
+diffd config               # prints the default config, documented
 ```
+
+`serve` takes `--port`, `--db` and `--config` (also `DIFFD_PORT`, `DIFFD_DB`,
+`DIFFD_CONFIG`). The config file is `~/.config/diffd/config.toml`, merged over
+the built-in defaults (`crates/diffd-server/config.default.toml`), so it only
+needs what it changes. It holds the port, the database path and the language
+servers (§7.5).
 
 One long-running server handles everything:
 
 | route | what |
 |---|---|
 | `/mcp` | MCP over Streamable HTTP (`rmcp`) |
-| `/` | recent reviews, newest first: title, repo, branch, when, unread. Dead simple. |
-| `/r/{id}` | the review page, a self-contained HTML document |
+| `/` | recent reviews, newest first: title, repo, `from → to`, revision, when, unread count, delete |
+| `/r/{id}` | the review page: the single-file bundle with the review's state embedded |
+| `/api/reviews` | the recent list, as JSON |
+| `/api/reviews/{id}` | a review's full state (`GET`); `DELETE` removes it |
+| `/api/reviews/{id}/range?from=&to=` | the diff between two points in the review's history (§8.8) |
+| `/api/reviews/{id}/files` | every file in the repository on the review's `to` side (§8.9) |
+| `/api/reviews/{id}/context?path=` | one file outside the diff, highlighted (§8.9) |
 | `/api/reviews/{id}/ws` | the page's WebSocket (below) |
 
 **The page talks to the server over one typed WebSocket.** Every message in
-either direction is a tagged union defined in Rust and generated into TS (§11):
+either direction is a tagged union defined in Rust (`diffd-core/src/protocol.rs`)
+and generated into TS (§11):
 
-- **Page → server:** comment, reply, resolve, drafting on/off, read receipts,
-  viewed files.
-- **Server → page:** new revision (as a delta), thread and message events,
-  delivery state, agent presence, "show you something" requests.
+- **Page → server (`ClientMsg`):** comment, reply, resolve, drafting on/off,
+  chat, read watermark, and language-server questions (`Code`).
+- **Server → page (`ServerMsg`):** full state on connect, new revision, thread,
+  chat, activity, presence, regions, history, diagnostics, code answers, "show
+  you something", acks and errors.
 
-The server turns what the page sends into feedback for the agent (§5.3), and
-turns the agent's MCP calls into messages for the page. Each message carries
-the event log's `seq`, so a page that reconnects resumes exactly where it
-left off.
+On every (re)connect the server sends the full state, so a page that was away
+catches up in one message. If a page falls behind the event broadcast, it
+gets the full state again.
+
+**Comments, replies and chat messages carry ids the page makes up.** The
+server stores each id once and acks it (`ServerMsg::Ack`). Sending the same
+message twice, say after a reconnect, has no extra effect. §8.10 covers how
+the page uses this.
+
+**The socket is compressed** with permessage-deflate (RFC 7692). axum's own
+WebSocket support can't negotiate extensions, so the upgrade is done by hand in
+`adapters/http.rs`, and the socket runs on Signal's tungstenite fork, which
+implements permessage-deflate. The fork is vendored in `vendor/tungstenite`
+and patched in through `[patch.crates-io]`, so builds (Nix included) need no
+network. Offers that ask things of the server are declined, and the socket
+then stays uncompressed.
 
 **Why one HTTP server instead of a stdio MCP process per agent session:**
 
@@ -127,19 +153,20 @@ left off.
 - Review URLs and state survive agent restarts.
 - MCP handlers and web pages share state in-process, with no IPC.
 
-This is also the natural place for the herdr plugin to hook in later. Run it in
-a terminal, or as a user service. A Nix home-manager module is planned for
-later.
+Run it in a terminal or as a user service.
 
 **Security.**
 
-- The server binds to localhost only.
-- It rejects requests whose `Host` isn't localhost (DNS rebinding).
-- It rejects write requests whose `Origin` isn't its own (CSRF).
+- The server binds to `127.0.0.1` only.
+- It rejects requests whose `Host` isn't `localhost`, `127.0.0.1` or `[::1]`
+  (DNS rebinding).
+- It rejects requests to the page and API whose `Origin` isn't its own (CSRF),
+  WebSocket upgrades included. `/mcp` relies on rmcp's own loopback-only
+  `Host` check.
 
 This matters because **comments become LLM input**: a random website must not
 be able to post comments to your agent. Agent-written Markdown is rendered with
-raw HTML disabled and then sanitized.
+raw HTML disabled and then sanitized (DOMPurify).
 
 ## 5. MCP interface
 
@@ -149,37 +176,47 @@ The MCP `initialize` result carries instructions that Claude Code puts in the
 model's context. They teach the workflow:
 
 - **When to share:** after a meaningful change, or when the user asks to review.
-- **Annotations:** how to write good ones (§5.2).
+- **What to mark:** annotate what a reviewer would trip over; collapse
+  generated files, lockfiles and vendored code.
+- **Commits:** share the whole range when work spans commits, and write commit
+  messages a reviewer can follow.
 - **The link:** always give it to the user.
-- **Listening:** how to listen for feedback.
-- **Replies:** answer each thread concisely, inline, where the code is.
-- **Fixes:** say what you changed, then let the live diff show it.
+- **Listening:** call `wait_for_feedback`, and keep calling it while in a
+  review conversation.
+- **Replies:** answer each thread with `reply`, short, in the thread; say what
+  changed when you changed code. Chat messages get `say`.
+- **Showing:** use `show` to point at code, anywhere in the repository.
+
+Every tool result also carries a `next_step` hint where one helps.
 
 ### 5.2 Tools
 
 | tool | purpose |
 |---|---|
-| `share_diff` | open a magic diff, returns `{ review_id, url, revision, stats }` |
-| `wait_for_feedback` | block until the user comments or replies (§5.3) |
-| `reply` | reply in a thread; optionally resolve it |
-| `annotate` | add annotations, or start a new thread (e.g. a question for the user) |
-| `refresh` | rebuild now, with an optional note ("addressed the parser comments") |
-| `say` | a chat message to the user, shown in the page's chat box |
-| `show` | point the user at code: `{ review_id, file, lines, side?, message }`. The page shows a prompt, never an automatic jump. |
-| `get_review` | full current state (threads, statuses, revision), to recover context |
+| `share_diff` | open a review; returns `{ review_id, url, revision, files, added, removed, collapsed, live, next_step }` |
+| `wait_for_feedback` | block until the user comments or chats and pauses (§5.3) |
+| `reply` | reply in a thread; optionally resolve or reopen it |
+| `annotate` | add annotations and regions to an open review |
+| `refresh` | rebuild now (for reviews of fixed revisions, or to be sure an edit is in) |
+| `say` | a message in the page's chat box |
+| `show` | point the user at code: `{ file, lines, side?, message }`. Any file in the repository. The page shows a prompt, never an automatic jump. |
+| `get_review` | current state: files, threads with messages, pending-feedback count |
+
+Every tool except `share_diff` and `reply` takes an optional `review_id`,
+defaulting to the review this MCP session shared last.
 
 ```ts
 share_diff({
   repo_path: string,        // absolute path of the repo/worktree (the agent's cwd)
   from: string,             // any rev: a branch ("main"), tag, commit, "HEAD~3"
-  to?: string,              // any rev; omitted = the working tree (uncommitted + untracked files)
+  to?: string,              // any rev; omitted = the working tree (uncommitted + untracked files), watched live
   merge_base?: boolean,     // default true when `from` is a branch: diff from merge-base(from, to), like a PR
-  paths?: string[],         // limit to these paths
+  paths?: string[],         // limit to these pathspecs
   collapse?: { glob: string, reason: string }[],  // start these collapsed: generated code, lockfiles, vendored files
   title: string,
   summary?: string,         // markdown: what changed and why, shown at the top
   annotations?: Annotation[],
-  watch?: boolean,          // default true when `to` is the working tree: update live as files change
+  regions?: Region[],
 })
 
 Annotation = {
@@ -189,207 +226,258 @@ Annotation = {
   body: string,             // markdown
   kind?: "explain" | "why" | "risk" | "question",
 }                           // array order = tour order
+
+Region = {
+  file: string,
+  lines?: [number, number], // omitted = the whole file (tests only)
+  side?: "new" | "old",
+  kind: "test" | "fold",
+  summary?: string,         // required for folds: what changed in there, one plain sentence
+}
 ```
 
 Any two revisions can be compared: `from: "main"` with `to` omitted is "my
 branch plus what I haven't committed"; `from: "v1.2.0", to: "v1.3.0"` compares
 two tags. A review with a fixed `to` doesn't watch anything.
 
-The description also tells the agent to pass `collapse` for files a reviewer
-shouldn't have to scroll past: generated code, lockfiles, snapshots, vendored
-code. Those files start collapsed with the agent's reason on their header, and
-`]f` / `[f` skip them.
+**The base is pinned at share time.** `from` is resolved once (after the merge
+base, if any) and stored. When the agent commits afterwards, the new commits
+join the review instead of shrinking it.
 
-The `share_diff` description tells the agent **what to annotate**:
+**Regions.** A `test` region draws a line along the side of test code, so the
+reader can tell tests from the change at a glance. A `fold` hides a mechanical
+change (a rename across call sites, moved code, reformatting) behind the
+agent's summary, so the interesting parts come first. Both follow their lines
+across revisions the same way threads do (§6).
 
-- Annotate what a reviewer would trip over: non-obvious logic, the reason behind
-  a design choice, risky spots, anything it's unsure about.
-- Skip the obvious.
-- Use plain language, 1–4 sentences each, with tight line ranges.
-- Order the annotations as a tour that reads well from start to finish.
-
-Every event that reaches the agent carries **what it needs to act without
-re-reading files**:
-
-- file, side and line range
-- the selected code
-- the surrounding hunk
-- the thread so far
-
-Every tool result also carries a pending-feedback count, so an agent busy
-editing still notices you.
+Everything is validated against the diff: a note or region on a file that
+isn't there, or on lines that don't exist, comes back as a readable error
+listing the files, so the agent can fix the call.
 
 ### 5.3 How your comments reach the agent
 
-**Baseline, portable to every MCP client: `wait_for_feedback`.**
+**`wait_for_feedback` long-polls.** It works with every MCP client.
 
-- It long-polls. It returns as soon as there's feedback, or empty after
-  `timeout_seconds` with a hint to call again.
-- It waits for a short quiet period, and for any open comment draft to be
-  saved, before returning. So writing three comments in a row wakes the agent
-  once, not three times.
-- Delivery is tracked per comment, so the page can show **sent → seen by
-  Claude → replied**.
+- It returns as soon as there's feedback, or with no items after
+  `timeout_seconds` (default 240, at most 3600) with a hint to call again.
+- It waits for the user to be idle for 1.5 s, and for any open comment draft to
+  be saved, before returning. So writing three comments in a row wakes the
+  agent once, not three times.
+- Each thread item carries **what the agent needs to act without re-reading
+  files**: path, side, line range, the exact code, a few lines of context with
+  the anchored lines marked, the earlier messages, the new ones, and whether
+  the code changed since. A comment made on part of the history also says
+  which commits (`commented_on`), and whether that code is still in the whole
+  diff.
+- Chat messages come through as their own items.
+- Delivery is tracked per message, so the page shows **Sending… / Queued
+  offline → Sent → Seen by Claude → Claude replied**.
 - While the agent waits, the page shows "Claude is listening". While it's off
-  editing, it shows "Claude is working; it'll see this next time it checks".
-  Comments queue until then.
-
-**Push, where the client supports it.** If Claude Code lets an MCP server push
-messages into a running session, diffd pushes each batch of feedback that way.
-The agent can then keep working without sitting in `wait_for_feedback`. This is
-detected at connect time, with long-polling as the fallback. *(The research on
-what Claude Code supports here is in progress. This section gets finalized with
-exact names.)*
+  editing, "Claude is working". After 10 minutes without a tool call, "Claude
+  hasn't checked in". Comments queue in the meantime.
 
 ## 6. Data model and storage
 
-We use **sqlx + SQLite** (`~/.local/share/diffd/diffd.db`).
+We use **sqlx + SQLite** (`~/.local/share/diffd/diffd.db`, or `$XDG_DATA_HOME`).
 
 - Migrations are embedded with `sqlx::migrate!`.
 - Queries are compile-time checked (`query!`), with the offline data in `.sqlx/`
   checked in so Nix builds need no database.
-- The SQL stays portable: no SQLite-only features in the schema logic. Postgres
-  later means a second migrations directory plus a feature flag.
+- The SQL stays portable: no SQLite-only features in the schema logic.
 
 ```
-reviews    id, repo_path, base, paths, title, summary, watch, status(open|closed), created_at, updated_at
-revisions  review_id, number, created_at, snapshot (zstd-compressed), stats, note
-threads    id, review_id, kind(comment|annotation), annotation_kind, tour_order,
-           anchor (side, start line/col, end line/col, revision, anchored text),
-           status(open|resolved|outdated), created_at
-messages   id, thread_id, author(user|agent), body, created_at, delivered_at, read_at
-events     seq (monotonic), review_id, type, payload(json), created_at
-cursors    review_id, consumer(page|agent), seq
-file_views review_id, path, viewed_at_revision            (GitHub-style "viewed" checkboxes)
+reviews    id, title, summary, repo_path, repo_name, from_rev, to_rev (NULL = working tree),
+           spec (json: pinned base, merge_base, paths, collapse rules, watch, regions),
+           revision, status, created_at, updated_at
+revisions  review_id, number, snapshot (zstd-compressed JSON), created_at
+threads    id, review_id, kind (json: comment | note{kind, order}), anchor (json),
+           resolved, changed_in, outdated, created_at
+messages   id, review_id, thread_id (NULL = chat), author(user|agent), body, created_at, delivered_at
+activity   seq (autoincrement), review_id, at, kind (json)
+read_marks review_id, seq                                  (how far the user has read)
 ```
 
-Every review you open is kept, and the landing page lists them. The only
-cleanup is an explicit "delete", so you can go back to old diffs.
+An **anchor** is a path, side, start and end line, the exact anchored text,
+and, for comments made on part of the history, the commit range they were made
+on.
 
-**The event log is the backbone.**
+Every review is kept, and the home page lists them. The only cleanup is an
+explicit delete.
 
-- Every change appends an event: new thread, message, status change, revision,
-  presence, show requests.
-- WebSocket clients resume from their last `seq` after a reconnect.
-- `wait_for_feedback` reads from the agent's cursor.
-- Nothing gets lost when either side drops.
+**The activity log** records what happened, in order: opened, user commented,
+agent replied, agent noted, new revision, agent said, show request. Its `seq`
+drives unread state: the page sends a read watermark, and the home page counts
+agent activity past it. Undelivered user messages are simply rows with no
+`delivered_at`, which is what `wait_for_feedback` reads.
 
-**Re-anchoring.** When a new revision arrives, each thread's anchor is
-re-located:
+**Viewed files and marks are per browser**, in localStorage (§8.10), not in the
+database.
 
-1. The exact text at the old position, mapped through the line alignment.
-2. Failing that, the nearest exact match of the anchored text in the file.
-3. Failing that, the thread is marked **outdated**, as on GitHub. It stays
-   visible, attached to where it was.
+**Re-anchoring.** When a new revision arrives, each thread and region is
+re-located (`diffd-core/src/anchor.rs`):
+
+1. The exact anchored text, nearest to where it was. Same place: nothing
+   changes. Elsewhere: the anchor moves.
+2. Failing that, the old start line is mapped through the line alignment into
+   the new file, the anchor keeps its length, and the thread is marked
+   **changed in revision N**.
+3. If the file's side is gone, the thread is marked **outdated**, as on GitHub.
+   It stays visible.
 
 ## 7. Building a snapshot
 
 A **snapshot** is one revision of a review: every changed file with full old
-and new contents, alignment, changed-token ranges, syntax tokens and symbols.
-It's built in Rust, in parallel across cores (`rayon`).
+and new contents, the row alignment, novel-token ranges, syntax runs, and the
+definitions found in them. It's built in Rust, in parallel across cores
+(`rayon`).
 
 ### 7.1 Source: git
 
 - **Which files:** `git diff --name-status -z -M <base>`, plus untracked files
-  (`git ls-files -o --exclude-standard`). Agents create new files, and they
-  must show up.
+  (`git ls-files --others --exclude-standard`) when the review ends at the
+  working tree. Agents create new files, and they must show up.
 - **Contents:** old sides come from one `git cat-file --batch` process. New
-  sides are read from the worktree.
+  sides are read from the worktree, or from `cat-file` for a fixed `to`.
 - **Branch bases** use `git merge-base`, like a PR.
+- **Commits:** `git log --first-parent` between the base and `to` (or `HEAD`),
+  at most 300 of the newest.
 - **Special files:**
   - Binary files are listed and not rendered.
-  - Submodules show as a commit change.
-  - `.gitattributes` `-diff` and `linguist-generated` files, and lockfiles, are
-    collapsed by default, as on GitHub.
+  - Files over 3 MB are listed as "too large to diff".
+  - Files matching the agent's `collapse` globs start collapsed, with its
+    reason on the header.
 
 We shell out to `git` itself rather than a reimplementation, so worktrees,
 sparse checkouts, LFS pointers and config all behave exactly as in your shell.
+The Nix package puts `git` on the binary's `PATH`.
 
-### 7.2 Diff engine: difftastic, forked into a library
+### 7.2 Diff engine: difftastic, as a subprocess
 
-difftastic ships as a binary. We **fork it** and add a small `lib.rs` exposing:
+difftastic runs as a separate program
+(`crates/diffd-server/src/adapters/difft.rs`). For each modified file, diffd
+writes both sides to a temp directory under the real file name (so difftastic
+detects the language) and runs:
 
-- `diff(old, new, path_hint)` → language, the full line alignment
-  (`aligned_lines`), and novel ranges per side.
-- The per-language `tree_sitter::Language` and queries, so highlighting and
-  symbols reuse the same grammars (~60 languages).
+```sh
+DFT_UNSTABLE=yes difft --display json --color never a/<name> b/<name>
+```
 
-Why fork instead of calling the `difft` binary:
+`diffd-core/src/difft.rs` parses the JSON: the full line alignment
+(`aligned_lines`) and, per changed line, the byte ranges of novel tokens.
+Offsets are converted from bytes to UTF-16 for the browser.
 
-- **One binary.** No subprocess per file, no temp files.
-- **Stable Rust types**, instead of a JSON format difftastic marks unstable.
-- **One set of grammars** for diffing, highlighting and navigation.
+The binary is found as `$DIFFD_DIFFT`, else `difft` on `PATH`. The Nix package
+sets `DIFFD_DIFFT` to its own difftastic.
 
-The fork keeps its patch small and upstreamable, and is pinned by commit.
+We started out planning to fork difftastic into a library. The subprocess won:
+no fork to maintain, any installed difftastic works, and the JSON format,
+though marked unstable, is small and easy to parse defensively.
 
-Safety valves:
+**The line-diff fallback** (`diffd-core/src/linediff.rs`, patience diff via
+`similar`, with word-level highlights on paired lines) is used when:
 
-- Files past difftastic's limits, or that time out, fall back to a line diff
-  with word-level highlights (`imara-diff`, the diff library behind gitoxide and
-  Helix).
-- Offsets are converted from bytes to UTF-16 for the browser. We checked that
-  difftastic reports byte offsets.
+- difftastic isn't installed (the server logs a warning at startup),
+- it times out (10 s) or its output can't be read,
+- it reports no alignment (it does that for created and deleted files),
+- the file is added, deleted or binary.
 
-### 7.3 Syntax highlighting (GitHub-grade, baked on the backend)
+### 7.3 Syntax highlighting, baked on the backend
 
-All language intelligence is **baked on the backend**, as Gitea does: parsing,
-diffing, highlighting and symbol extraction. The browser never parses code.
-Each line ships as its text plus a compact run list of `(start, end, class)`.
-The run list covers both syntax classes and difftastic's change emphasis,
-merged into non-overlapping segments, so there's no nesting. A tiny, tested
-function in the page turns runs into spans.
+All language intelligence that doesn't need a language server is **baked on
+the backend**, as Gitea does: parsing, highlighting and symbol extraction. The
+browser never parses code. Each line ships as its text plus flat run lists:
+`[start, end, class, …]` for syntax and `[start, end, …]` for novel tokens. A
+small, tested function in the page merges them into non-overlapping spans.
 
-We ship runs rather than ready-made HTML strings because:
+We ship runs rather than ready-made HTML because:
 
-- they're about half the size;
+- they're smaller;
 - the page needs the plain text anyway (for search, anchors and the text sent to
   the agent), so there's one copy of it;
 - escaping happens in exactly one place.
 
-difftastic's own highlighting only has about 6 token kinds, which isn't enough.
-
 - **Engine:** `tree-sitter-highlight`, the same approach as GitHub, Zed, Helix
-  and Neovim. It runs on the fork's grammars, with injections (e.g. JS in HTML,
-  code fences in Markdown).
-- **Queries:** we start from each grammar's `highlights.scm`. For the languages
-  that matter most (Rust, TS/TSX/JS, Python, Go, Nix, Bash, C/C++, Lua, JSON,
-  YAML, TOML, Markdown, CSS/HTML), we bring in richer queries from
-  nvim-treesitter (Apache-2.0) or Helix (MPL-2.0), adapted to standard
-  predicates.
-- **Themes:** capture names map to our own syntax token set (the same
-  Tailwind theme as the rest of the UI), light and dark. Syntax colors stay
-  clear of red and green so they never compete with difftastic's change
-  colors.
-- **Unknown languages** render as plain text in v1. A long-tail fallback
-  (syntect with bat's grammars) is a later add-on.
+  and Neovim, with injections (e.g. code fences in Markdown).
+- **Languages:** Rust, TypeScript, TSX, JavaScript, Python, Go, JSON, Bash,
+  TOML, YAML, C, C++, CSS, HTML, Nix, Java, Ruby, Lua and Markdown, from the
+  grammar crates in `diffd-core/Cargo.toml`. Others render as plain text.
+- **Classes:** capture names map to 17 token classes (`SyntaxClass`, exported
+  to the page by index), styled by Tailwind theme tokens, light and dark.
+  Syntax colors stay clear of red and green so they never compete with the
+  change colors.
+- Files over 2 MB aren't highlighted.
 
 Each line is drawn in three layers:
 
 1. Syntax colors.
 2. A strong red or green on difftastic's novel tokens.
-3. A light tint on the changed line.
+3. A light tint on the changed line's number.
 
-### 7.4 Symbols: GitHub-style search-based navigation
+### 7.4 Symbols: tree-sitter tags
 
 GitHub's search-based code navigation runs tree-sitter **tags queries**
-(`@definition.function`, `@reference.call`, …) and looks symbols up by name,
-ranked by locality. No build step, no language server. We run tags queries on
-the same grammars.
+(`@definition.function`, …) and looks symbols up by name. We do the same on
+both sides of every file in the diff (`diffd-core/src/symbols.rs`). Each
+definition carries its name, kind, position and the line span of the whole
+definition, which the `if`/`af`/`ic`/`ac` text objects use (§8.12).
 
-- **Embedded in the page:** definitions from every file in the diff, both
-  sides. Works offline.
-- **Live, from the server:** a repo-wide index built lazily and kept fresh by
-  the watcher. `gd` on a symbol defined in an unchanged file opens a Zed-style
-  excerpt of that file.
+These ship in the snapshot, so they work offline. They're the fallback for
+`gd` when there's no language server (§7.5). `grr` searches the diff's text
+for the name.
 
-LSP can slot in behind the same API later.
+### 7.5 Language servers
 
-### 7.5 Incremental rebuilds (watch)
+Language servers add go to definition, go to type definition, hover and
+diagnostics (`crates/diffd-server/src/adapters/lsp/`).
 
-The watcher (`notify`, debounced ~300 ms) re-diffs only files whose content
-changed. Results are cached by `(path, old hash, new hash)`. Nothing is written
-or pushed when no content changed. New revisions go to pages as **deltas**:
-only the changed files.
+- **Config:** `[lsp]` in the TOML config: on/off, request timeout, idle
+  timeout, how many files to open per review, and one table per server with
+  `command`, `args`, `languages` (LSP language id → file extensions),
+  `root_markers`, and optional `env`, `initialization_options` and `settings`.
+  The defaults configure rust-analyzer, typescript-language-server, pyright,
+  gopls, nil and yaml-language-server. `diffd config` prints them.
+- **Pool:** one process per (server, project root). The root is the nearest
+  directory above the file with one of the server's root markers, else the
+  repository root. Servers start on first use, stop when idle (15 min by
+  default), and are restarted after a crash, up to three times. A server that
+  isn't installed is remembered as broken, with the reason, and the page falls
+  back quietly.
+- **Only reviews of the working tree** get language servers: servers see files
+  on disk, which is exactly the new side of such a review.
+- **Files:** when a page connects, the review's new-side files (up to 300) are
+  opened in their servers, and re-synced when a revision changes them. Files
+  opened for context (§8.9) are opened too.
+- **Over the page's WebSocket:** `ClientMsg::Code { request_id, query, path,
+  line, col }` asks for a definition, type definition or hover, answered out of
+  order by `ServerMsg::Code`. Diagnostics arrive as `ServerMsg::Diagnostics`
+  per file, and are part of the full state.
+- **On the page:** diagnostics are wavy underlines drawn with the CSS Custom
+  Highlight API (no extra DOM in the rows), plus a gutter mark, and the status
+  line shows the worst one on the cursor's line. `K` or hovering shows docs and
+  errors. `gd` asks the server, but if the diff's own tags already know the
+  name it waits at most 1.5 s before using them. Definitions outside the
+  repository (a library's source) open as read-only context files; only paths a
+  server pointed at can be opened that way.
+
+`crates/diffd-server/tests/lsp.rs` runs real servers for each default language.
+
+### 7.6 Rebuilds (watch)
+
+Reviews of the working tree are watched with `notify`, debounced 300 ms.
+Churn under `.git/objects`, `.git/logs`, `node_modules`, `target` and
+`.direnv` is ignored. A rebuild:
+
+1. re-reads the changed-file list and contents, and re-diffs them in parallel;
+2. compares a fingerprint of all inputs with the last one, and stops if nothing
+   changed;
+3. marks the new-side lines that changed since the previous revision (`since`);
+4. stores the revision, re-anchors threads and regions, re-reads the commit
+   list, re-syncs language servers;
+5. sends the new snapshot to open pages, and logs a "rev N · paths" activity
+   item.
+
+Watches resume after a server restart. `refresh` runs the same rebuild on
+demand.
 
 ## 8. The page
 
@@ -397,99 +485,102 @@ only the changed files.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│ diffd · parser refactor · main ← feat/parser · rev 3 · 12 files +340 −122   ● Claude listening │
+│ diffd · parser refactor · main → working tree · rev 3 · 12 files +340 −122  ● Claude listening │
 ├──────────────────┬───────────────────────────────────────────────────────┬───────────────┤
-│ ⌕ filter files   │ Summary: Split the parser into lexer + parser…  ▾     │ Activity      │
+│ ⌕ filter files   │ Summary: Split the parser into lexer + parser…  ▾     │ Activity│Commits│
 │ ▾ src            │ ▾ src/parser.rs                     M +40 −12  💬2  ☐ │ ● Claude      │
 │   ▾ parser       │   38  fn parse(src) {         │  40  fn parse(src) {  │   replied     │
 │     M lexer.rs  •│   39    let t = lex(src);     │  41    let t = Lexer::│   parser.rs:41│
 │   M parser.rs 💬2│                               │  42    t.peek();      │ ○ rev 3 · 2   │
 │   A tokens.rs    │  ┌ ✦ Claude · why ───────────────────────────────────┐│   files       │
-│ ▸ tests          │  │ The lexer is now lazy so we can peek without…     ││   changed     │
-│                  │  └───────────────────────────────────────────────────┘│ ○ you comm-   │
-│                  │   ┄┄┄┄┄┄┄┄ ↑5 · 84 lines · ↓5 ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ │   ented …     │
-│                  │  ┌ you · L41–42 ───────────── seen by Claude ────────┐│               │
-│                  │  │ why not keep this eager?                          ││               │
-│                  │  │ ✦ Claude: peeking needs lookahead; eager lexing … ││               │
+│ ▸ tests          │  │ The lexer is now lazy so we can peek without…     ││               │
+│                  │  └───────────────────────────────────────────────────┘│               │
+│                  │   ┄┄┄┄┄┄┄┄ ↑5 · 84 lines · ↓5 ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ │               │
+│                  │  ┌ you · L41–42 ───────────── Seen by Claude ────────┐│───────────────│
+│                  │  │ why not keep this eager?                          ││ Marks         │
+│                  │  │ ✦ Claude: peeking needs lookahead; eager lexing … ││ a parser.rs:41│
 │                  │  └───────────────────────────────────────────────────┘│               │
 ├──────────────────┴───────────────────────────────────────────────────────┴───────────────┤
-│ NORMAL  src/parser.rs:41 new  hunk 3/17  note 2/5        ]c hunk · ]a note · gc comment · ? │
+│ NORMAL  src/parser.rs:41 new  hunk 3/17                                   ]c hunk · ? keys│
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Header:** the summary (collapsible Markdown), plus a revision picker once
-  there's more than one revision.
+- **Header:** repo, `from → to`, revision, stats, agent presence and
+  connection state. The summary (collapsible Markdown) sits above the diff.
 - **Multibuffer (Zed):**
   - Every file is stacked in one scroll as excerpts.
   - File headers are sticky, and clicking one collapses that file.
   - **Split view only**, in difftastic's style: aligned old and new columns,
     line numbers tinted on changed lines, and color only on the tokens
     difftastic marks as novel. Unchanged code keeps plain syntax colors, even
-    when it moved or was re-wrapped. Unified view can come later.
-- **File tree (GitHub), in a drawer:**
+    when it moved or was re-wrapped.
+- **File tree (GitHub), in a drawer on the left:**
   - Drag its edge to resize it. Drag it to the edge to shrink it down to a
-    thin handle; click the handle to bring it back. No toggle button.
-  - Compact rows: collapsible folders, with single-child chains compacted and
-    indent guides.
+    thin handle; click the handle to bring it back.
+  - Compact rows: collapsible folders, with single-child chains compacted.
   - Each file shows its status, a five-block `+/−` bar, comment count and an
     unread dot. Collapsed and viewed files are dimmed.
-  - The tree follows your scroll.
-- **Activity sidebar:** the same kind of drawer, on the right.
-  - A quiet, chronological feed: agent replies, new annotations, revisions
-    ("rev 3 · 2 files"), resolved threads.
-  - Unread items are marked. Clicking one, or `]n`, jumps there, and `ctrl-o`
-    brings you back.
-  - When it's shrunk to a handle, a small dot on the handle is the only
+  - Each folder can also list its other files, the ones not in the diff
+    (§8.9).
+- **Right drawer:** the same kind of drawer, with two tabs and a panel.
+  - **Activity:** a quiet, chronological feed: agent replies, new annotations,
+    revisions ("rev 3 · 2 files"), chat, show requests. Unread items are
+    marked. Clicking one, or `]n`, jumps there, and `ctrl-o` brings you back.
+    When the drawer is shrunk to a handle, a small dot on it is the only
     signal.
-- **Chat box**, docked under the diff. A simple place to ask Claude anything
-  that isn't about specific lines. Claude answers there (`say`), and code
-  references in its answers are links into the diff. `space i` focuses it.
-- **Status line (vim):** mode, position, hunk n/m, note n/m, key hints.
+  - **Commits:** the review's commits, when it spans any (§8.8).
+  - **Marks**, underneath: your vim marks (§8.11).
+- **Chat box**, docked under the diff, for anything not about specific lines.
+  Claude answers there (`say`), and `path:line` references in its answers are
+  links into the diff. `space i` focuses it.
+- **Status line (vim):** mode, position, hunk n/m, the cursor line's worst
+  diagnostic, key hints.
 
 ### 8.2 Selecting and commenting
 
 - **Mouse:** select text across lines like in any editor. A small "Comment"
   button appears by the selection. You can also click a line number, and
   shift-click to extend.
-- **The composer is a floating popover** right under the selection, in the
-  page's theme. Writing a comment never scrolls the page, and when the thread
-  lands inline the line at the top of the screen stays exactly where it was.
-  This is a rule for every DOM change in the app: it goes through one
-  "keep the viewport pinned" helper.
-- **Keyboard:** `V` (line) or `v` (char) visual mode, then `gc` to comment. `gcc`
-  comments on the current line.
-- **Anchors** store side, start/end line and optional column, plus the selected
-  text. The agent gets exactly what you selected.
+- **The composer is a floating popover** right under the selection. Writing a
+  comment never scrolls the page, and when the thread lands inline the line at
+  the top of the screen stays where it was. Every DOM change above the
+  viewport goes through one "keep the viewport pinned" helper
+  (`state/dom.ts`).
+- **Keyboard:** `V` or `v` starts a line selection, text objects grow it
+  (§8.12), then `gc` (or `c`) to comment. `gcc` comments on the current line.
+- **Anchors** store side, start and end line, and the selected lines' text.
+  The agent gets exactly what you selected.
 - **Threads** render inline under the last selected line:
   - Markdown, with fenced code highlighted.
-  - Reply with `r`. Resolve/unresolve with the button or `x`.
-  - Delivery state shows as sent / seen by Claude / replied.
+  - Reply with `r` (the nearest thread) or the Reply button. Resolve and reopen
+    with the button.
+  - Delivery state shows as described in §5.3.
+- Opening the composer tells the server you're drafting, which holds feedback
+  back until you're done. A half-written comment survives a reload (§8.10).
 
-### 8.3 Annotations and the tour
+### 8.3 Annotations, tests and folds
 
-- **Style:** agent annotations have their own look (✦, a tinted card, and a
-  label for their kind: explain / why / risk / question). The code range they
-  cover is marked in the gutter.
-- **Tour:** `]a` / `[a` step through them in the agent's order.
-- **Replies:** you can reply to an annotation, and it becomes a thread.
+- **Annotations** have their own look (✦, a tinted card, and a label for their
+  kind: explain / why / risk / question). `]a` / `[a` step through them in the
+  agent's order. You can reply to one, and it becomes a thread.
+- **Test regions** get a line along the far left of their rows. A whole-file
+  test region marks the whole file.
+- **Folds** start folded like context, but the gap row shows the agent's
+  summary instead of a line count. Expanding one works like any other gap.
 
 ### 8.4 Live updates
 
-- **New revisions** patch the page in place. The top visible line stays exactly
-  where it was.
+- **New revisions** patch the page in place. The reading position stays where
+  it was, and files whose rows didn't change keep their folds.
 - **Markers:** lines changed since the previous revision get a gutter marker and
-  a brief highlight.
-- **Viewed:** files you'd marked viewed are un-marked if they change.
-- **Missing files:** if a file you're looking at disappears from the diff, its
-  section stays greyed out until you move on.
-- **Revision picker:** view any past revision.
-- **Interdiff:** a full "rev 2 → rev 3" view (§14) builds on this.
+  a brief highlight, and the status line says a revision arrived.
+- **Threads** that moved follow their code; those whose code changed say so.
+- **New commits** (the agent committed) update the Commits tab.
 
 ### 8.5 Offline
 
-The page is one self-contained HTML document. It embeds the latest revision,
-compressed, with full file contents, and it needs no network. **Everything
-about reading works offline:**
+The page is one self-contained HTML document with the review's full state
+embedded as JSON. **Everything about reading works without the server:**
 
 - scrolling, expanding context, file view, search, symbol lookup within the diff
 - existing threads and annotations
@@ -497,27 +588,27 @@ about reading works offline:**
 
 **Only the live parts need the server:**
 
-- delivering comments (written offline, they're queued in IndexedDB and sent
-  when the server is back)
-- agent replies
-- new revisions
-- repo-wide symbol lookup
+- delivering comments, replies and chat (written offline, they wait in the
+  outbox and are sent on reconnect; §8.10)
+- agent replies and new revisions
+- language servers, files outside the diff and other commits
 
-The connection state is always visible.
+The connection state is always visible, with the number of queued messages.
 
 ### 8.6 Context expansion, file view, Ctrl+F
 
 - **Excerpts** start with 3 context lines. Gap rows offer `↑5 · all N · ↓5`,
-  and `g e` expands whichever collapsed region is nearest the cursor, in the direction that grows toward it.
+  and `g e` expands whichever gap is nearest the cursor, growing toward it.
 - **`g enter`** leaves the diff for **file view**: the plain file at the
-  cursor, at the current revision, with no red and green. Slight marks in the
-  gutter show what changed: green for added lines, yellow for changed lines,
-  and a red notch where lines were removed. `ctrl-o` returns to the diff
-  where you left it.
+  cursor, with no red and green. Thin marks in the gutter show what changed:
+  green for added lines, yellow for changed lines, and a red notch where lines
+  were removed. `ctrl-o` returns to the diff where you left it. `g space`
+  opens the file view in a split instead (§8.11). You can comment in file view.
 - **Ctrl+F is never intercepted, and nothing scrolls on its own.**
-  - Collapsed context is kept in the DOM as `hidden="until-found"`. Browser find
-    searches it, and on a match the gap expands (`beforematch`).
-  - `/` is our own search over everything embedded, with `n` / `N`.
+  - Folded context is kept in the DOM as `hidden="until-found"`. Browser find
+    searches it, and on a match the gap expands (`beforematch`). Gaps over
+    4000 rows aren't pre-rendered, so Ctrl+F can't see into those.
+  - `/` is our own search over every line of both sides, hidden ones too.
 - **No virtualization**, because virtual rows are invisible to Ctrl+F. §10
   covers how that still scales to 100k lines.
 
@@ -530,259 +621,386 @@ of the diff:
 > ✦ **Claude wants to show you something** · mcp.rs:35 · where the timeout gets
 > clamped · **Show me** (`enter`) · **Later** (`esc`)
 
-- **Show me** jumps there, with `ctrl-o` to come back.
-- **Later** files it in the activity sidebar as unread.
+- **Show me** jumps there, with `ctrl-o` to come back. A file outside the diff
+  opens for context (§8.9).
+- **Later** leaves it in the activity drawer as unread.
 - The page never scrolls by itself. What you're reading stays put.
 
-### 8.8 Symbol mode and the jump list
+### 8.8 Commit history
 
-- `w` / `b` put a cursor on the next / previous identifier on the line. That's
-  symbol mode. `enter` or `gd` goes to its definition, and ctrl-click does the
+A review that spans commits lists them, oldest first along first parents, in
+the Commits tab (`app/history.rs`, `web/src/lib/history.ts`). The points in
+the history are the pinned base, each commit, and the working tree when the
+review ends there ("Uncommitted changes").
+
+- **Walk it:** `]r` / `[r` step one commit at a time; `space c` picks a commit;
+  in the Commits tab, click a commit, shift-click another to take in the whole
+  run between them. Going past either end returns to the whole review.
+- **Any range:** `GET /api/reviews/{id}/range?from=<sha>&to=<sha>` (no `to` for
+  the working tree) diffs exactly those two points, with the review's paths and
+  collapse rules. The server checks that both are points in the review, and
+  keeps the last 24 range diffs in memory. Ranges ending at the working tree
+  are dropped on every rebuild.
+- **Threads and regions** anchored in the whole diff are placed into the
+  commit you're looking at by their text.
+- **Comments on a commit** carry that range in their anchor. The server
+  re-locates them in the whole diff by text, trying the same side first, then
+  the other. If the code isn't in the whole diff any more (it only existed
+  mid-history), the thread is marked outdated and the agent is told
+  (`not_in_current_diff`).
+- Expanded lines are remembered only for the whole review, not per commit.
+
+### 8.9 Files outside the diff
+
+Reviews often need code the change didn't touch.
+
+- `GET /api/reviews/{id}/files` lists every file on the review's `to` side
+  (tracked and untracked, minus ignored). The file tree uses it to show a
+  folder's **neighbours**: files next to the changed ones.
+- `GET /api/reviews/{id}/context?path=` returns one file, highlighted, as an
+  unchanged "diff" (`FileStatus::Unchanged`). It opens in file view.
+  Symlinks out of the repository aren't followed, files over 3 MB are listed
+  but not opened, and binary files aren't rendered.
+- **Comments work on any file**, not only the diff. The agent gets the code
+  and context the same way.
+- The agent's **`show` works for any repository file** (`app/context.rs`).
+- Context files of working-tree reviews are opened in language servers, so
+  they get diagnostics and `gd` too.
+
+### 8.10 Tabs, the outbox and what a reload keeps
+
+**The outbox** (`web/src/lib/socket.ts`). Comments, replies and chat messages
+stay in an outbox, mirrored to localStorage, until the server acks their id.
+Anything written offline, or lost with a dropped connection, is sent again on
+reconnect, and the server ignores ids it already has, so resending is always
+safe. Pending messages show inline as "Sending…" or "Queued offline". Other
+messages only matter while connected: the latest resolve per thread and the
+read watermark are kept; drafting and language-server questions are dropped.
+
+**Several tabs** (`web/src/lib/tabs.ts`). Each tab has an id that survives
+reloads (sessionStorage) and holds a Web Lock named after it while it's open.
+Each tab has its own outbox, so tabs never overwrite each other's. When a tab
+closes with messages unsent, the next tab to connect sees that no one holds
+that id's lock and adopts its outbox. If two tabs adopt at once, idempotent ids
+make the double send harmless. A duplicated tab gets a new id.
+
+**Shared across tabs:** viewed files and marks live in localStorage and follow
+`storage` events, so marking a file viewed in one tab marks it in all.
+
+**Per tab, across reloads** (`web/src/state/persist.ts`): which lines are
+expanded, which files are collapsed, the reading position, the cursor, and a
+comment being written. This lives in sessionStorage, with the latest copy in
+localStorage to start new tabs from. It's keyed by file path and checked
+against each file's current shape before use, so a new revision never restores
+nonsense.
+
+### 8.11 Symbols, jumps, splits and marks
+
+- **Symbol mode:** `w` / `b` put a cursor on the next / previous identifier on
+  the line. `enter` or `gd` goes to its definition, and ctrl-click does the
   same with the mouse. Holding ctrl or cmd underlines everything that has a
-  definition.
-- Every jump (definition, reference, hunk, note, file, activity, a link in
-  chat, file view) goes onto a vim-style **jump list**. `ctrl-o` walks back and
-  `ctrl-i` walks forward, across the diff and file view alike.
+  definition. `gt` goes to the type's definition and `K` shows hover docs
+  (language servers, §7.5).
+- **Jump list:** every jump (definition, hunk, note, file, activity, a link in
+  chat, file view, show) goes onto a vim-style jump list. `ctrl-o` walks back
+  and `ctrl-i` forward.
+- **Splits:** `ctrl-\` splits the focused pane to the right, starting where it
+  is; `ctrl-esc` closes it; `ctrl-h` / `ctrl-l` move focus. `g space` opens the
+  plain file at the cursor in the next split, making one if there's only one
+  pane. Each pane has its own cursor, mode
+  and jump list; folds, threads and everything else are shared.
+- **Marks:** `m{a-z}` sets a mark at the cursor; `'{a-z}` or `` `{a-z} `` jumps
+  back. Marks are stored by path, side, line and the line's text, show as a
+  letter in the gutter, and are listed in the right drawer's Marks panel.
+
+### 8.12 Text objects
+
+In visual mode, `i` / `a` plus a key grow the selection line-wise
+(`web/src/lib/textObjects.ts`):
+
+| keys | object |
+|---|---|
+| `ip` `ap` | paragraph: the run of non-blank lines, `a` with the blank lines after |
+| `if` `af` | function, from the tree-sitter definitions (§7.4) |
+| `ic` `ac` | class, struct, impl and the like, the same way |
+| `i{` `a{` (`i}`, `iB`) | brace pair |
+| `i(` `a(` (`i)`, `ib`) | paren pair |
+| `i[` `a[` (`i]`) | bracket pair |
+| `it` `at` | markup tag |
+| `ih` `ah` | the hunk under the cursor |
+
+`i` takes the inside, `a` includes the delimiting lines. Pairs and tags pick
+the innermost one around the cursor.
 
 ## 9. Keymap
 
-The leader key is `space`. Bindings come from Zed's
-`assets/keymaps/vim.json` unless the "From" column says otherwise.
+The leader key is `space`. Most bindings follow Zed's vim keymap. The whole
+table is plain data in `web/src/state/bindings.ts`, which also generates the
+`?` help screen.
 
-| Keys | Action | From |
-|---|---|---|
-| `j` `k` `gg` `G` `ctrl-d` `ctrl-u`, counts | move | vim |
-| `w` / `b` | symbol mode: next / previous identifier; `enter` goes to its definition | vim |
-| `tab` | switch old / new side | diffd (vim uses `ctrl-w h/l`, but browsers reserve `ctrl-w` to close the tab) |
-| `]c` / `[c` | next / previous hunk, across files | Zed `editor::GoToHunk` |
-| `]f` / `[f` | next / previous file, skipping collapsed and viewed files | diffd |
-| `]a` / `[a` | next / previous annotation (tour) | diffd |
-| `]t` / `[t` | next / previous thread | diffd |
-| `]n` / `[n` | next / previous unread activity | diffd |
-| `g e` (or `shift-enter`) | expand the nearest collapsed region by 5 lines: a region below the cursor grows downward from the code above it, a region above grows upward toward the cursor | diffd (Zed `editor::ExpandExcerpts`) |
-| `za` · `zR` · `zM` | toggle fold/file · expand all · collapse to hunks | Zed |
-| `g enter` | file view: the plain file at the cursor, with change marks | diffd |
-| `gd` / `ctrl-]` · `grr` | definition · references | Zed |
-| `gs` / `gS` | file outline / all symbols | Zed |
-| `ctrl-o` / `ctrl-i` | jump back / forward | Zed `pane::GoBack/GoForward` |
-| `/` `n` `N` | search | vim |
-| `v` / `V` | visual char / line | vim |
-| `gc` (visual) · `gcc` | comment on selection · on line | diffd (vim-commentary) |
-| `r` · `x` | reply · resolve (thread under the cursor) | diffd |
-| `space e` · `space n` | files drawer · activity drawer | LazyVim-style |
-| `space i` | focus the chat box | diffd |
-| `space f` / `ctrl-p` | fuzzy file picker | LazyVim / VS Code |
-| `space v` | mark viewed, jump to next unviewed file | diffd (GitHub) |
-| `?` | show key help | |
+| Keys | Action |
+|---|---|
+| `j` `k` `↓` `↑` (with counts) · `gg` `G` · `ctrl-d` `ctrl-u` | move |
+| `tab` | switch old / new side (vim uses `ctrl-w h/l`, but browsers reserve `ctrl-w`) |
+| `ctrl-o` / `ctrl-i` | jump back / forward |
+| `w` / `b` | symbol mode: next / previous identifier on the line |
+| `gd` / `ctrl-]` / `enter` (symbol mode) / ctrl-click | go to definition |
+| `gt` | go to the type's definition (language server) |
+| `K` | docs and errors here (or hover) |
+| `grr` | find references |
+| `gs` / `gS` | symbols in this file / in the diff |
+| `]c` / `[c` | next / previous hunk, across files |
+| `]f` / `[f` | next / previous file, skipping collapsed ones |
+| `]a` / `[a` | Claude's notes, in order |
+| `]t` / `[t` | next / previous thread |
+| `]n` | next unread activity |
+| `]r` / `[r` | next / previous commit, one at a time |
+| `space c` | pick a commit to look at |
+| `space v` | mark viewed, go to the next file |
+| `g e` / `shift-enter` | expand the nearest folded lines |
+| `za` · `zR` · `zM` | collapse / expand this file · show everything · back to hunks |
+| `g enter` | file view: the plain file here |
+| `g space` | the plain file here, in a split |
+| `gcc` | comment on this line |
+| `V` / `v` | select lines |
+| `gc` / `c` (visual) | comment on the selection |
+| `i…` / `a…` (visual) | text objects (§8.12) |
+| `r` | reply to the nearest thread |
+| `space i` | focus the chat box |
+| `m{a-z}` · `'{a-z}` / `` `{a-z} `` | set a mark · jump to it |
+| `ctrl-\` · `ctrl-esc` | split to the right · close this split |
+| `ctrl-h` / `ctrl-l` | focus the split to the left / right |
+| `space e` · `space n` | files drawer · activity drawer |
+| `space f` / `ctrl-p` | go to file (fuzzy) |
+| `/` | search every line, hidden ones too |
+| `?` | key help |
+| `esc` | close whatever is open, leave visual or symbol mode |
 
-The keymap is plain data. A small engine runs it, handling counts, modes and
-prefix timeouts. The engine is unit-tested, and the data leaves room for user
-overrides later.
+A small engine (`web/src/lib/keymap.ts`) runs the table, handling counts, modes
+(normal, visual, symbol, file) and multi-key sequences. It's unit-tested.
 
 ## 10. Performance: 100k-line diffs
 
-Targets, for a 100k changed lines across ~1k files on a normal laptop in
-Chromium:
-
-| | target |
-|---|---|
-| snapshot build | a few seconds, parallel; rebuilds after an edit are incremental |
-| first screen visible and keys working | < 300 ms after load |
-| everything rendered and Ctrl+F-searchable | < 2 s, in the background |
-| cursor movement, scrolling | 60 fps; key handling is O(1) in diff size |
-| page weight | ~10–20 MB, compressed |
+The target is a diff of 100k changed lines across many files, in Chromium on a
+normal laptop: the first screen and keys working right away, cursor movement
+and scrolling smooth, everything searchable with Ctrl+F soon after.
 
 How we get there:
 
-- **Static rows.** Each row is created once and never re-rendered. It's one
-  element per side, and line numbers are CSS `attr()` pseudo-elements (fewer
-  nodes, and they don't match Ctrl+F).
-- **Overlay layers.** The cursor, selections and search matches live in overlay
-  layers, not in per-row state. Moving the cursor touches one element.
-- **Progressive mount.** The first screen renders immediately. The rest is
-  mounted in idle-time chunks, working outward from the viewport.
-- **Lazy highlighting.** Rows start as plain text, which is already findable.
-  Syntax and change spans are applied as sections approach the viewport, and
-  since the text is identical, find is unaffected.
-- **`content-visibility: auto`** on each excerpt, with intrinsic sizes, skips
-  layout and paint off-screen. Scroll height stays stable.
-- **Budget for hidden context.** Collapsed context is pre-rendered (and so
-  Ctrl+F-searchable) up to a global budget. Past that, a gap row says Ctrl+F
-  can't see inside, and `/` still can.
-- **Huge and generated files are collapsed by default**, as on GitHub, and
-  rendered when opened.
-- **Compact payload.**
-  - The snapshot uses a columnar encoding, gzip-compressed, and is decoded with
-    the browser's native `DecompressionStream`.
-  - Each file is parsed only when it's first rendered.
-  - Revisions arrive as deltas.
-- **Enforced, not hoped for.** CI generates a 100k-line fixture, and Playwright
-  measures time to first screen, time to full render, and keypress latency.
+- **Rows are HTML strings.** The diff body is built by `web/src/lib/render.ts`
+  as HTML and handed to the browser's parser, the fastest way to create a lot
+  of DOM. Rows never change once built; everything around them is Solid.
+- **Lazy chunks** (`web/src/lib/lazyRows.ts`). Long runs of rows are split
+  into chunks of 80. Each chunk starts as a placeholder holding its code as
+  plain text, one line per row, at the right height: cheap to build, and still
+  found by Ctrl+F. Chunks are filled in with real rows near the viewport (an
+  IntersectionObserver, 1500 px ahead) and the rest in idle-time slices.
+  Filling a chunk above the viewport keeps the page still. Anything that needs
+  every row (moving across the whole diff, some searches) fills everything
+  first.
+- **`content-visibility: auto`** on each file's rows and on each chunk, with
+  intrinsic sizes, skips layout and paint off-screen. Scroll height stays
+  stable.
+- **Indexed row lookups** (`web/src/state/dom.ts`). Every pane's rows are
+  indexed once (position, `file:row` key, hunk starts) and the index is kept
+  until a MutationObserver sees a structural change, so key presses don't
+  query 100k rows.
+- **Overlays, not per-row state.** The cursor, selections and diagnostics
+  (CSS Custom Highlight API) don't re-render rows. Moving the cursor touches
+  one element.
+- **Budget for hidden context.** Folded gaps over 4000 rows aren't
+  pre-rendered; `/` still searches them.
+- **Compact wire.** The WebSocket is compressed (§4). Snapshots are stored
+  zstd-compressed.
+
+There's no automated 100k-line benchmark yet (§15).
 
 ## 11. Frontend stack
 
-**SolidJS, recommended over React.**
+**SolidJS.**
 
 - **The workload fits Solid.** The hot path is 100k+ static rows plus tiny,
   frequent updates: the cursor at key-repeat speed, replies arriving, unread
   dots, presence. Solid updates exactly the DOM nodes involved, with no virtual
-  DOM diff and no memo discipline. React would need memoization and external
-  stores everywhere, and would still reconcile.
-- **Large lists.** Solid compiles JSX to cloned DOM templates. Creation speed
-  and memory for large lists are close to hand-written DOM. React is noticeably
-  heavier at this size.
+  DOM diff. The rows themselves drop to HTML strings (§10), which Solid lets us
+  do without leaving the framework.
 - **We don't need React's ecosystem.** This is a custom code viewer, not a form
-  app, and every library we need is framework-agnostic.
-- **It still looks familiar:** JSX and TypeScript. The main gotcha is that
-  destructuring props breaks reactivity, and lint rules catch that.
-
-React remains viable if you prefer it. The row renderer would then drop to
-imperative DOM, which Solid gives us without leaving the framework.
+  app.
+- **It still looks familiar:** JSX and TypeScript.
 
 **Type safety, end to end.**
 
-- **One source of truth.** Every shared type is defined once, in Rust: snapshot,
-  API requests and responses, WebSocket events, MCP tool inputs. `ts-rs`
-  generates the TS types, and CI fails if the generated files are stale. MCP
-  tool schemas come from the same Rust types (`schemars`, via `rmcp`).
-- **Events are tagged unions** (`#[serde(tag = "type")]` becomes a TS
-  discriminated union). Every `switch` over them ends in an `assertNever`, so
-  adding an event type is a compile error until every consumer handles it.
-- **IDs are newtypes** (`ReviewId`, `ThreadId`, `Revision`) in Rust, and branded
-  types in TS. You can't pass a thread id where a review id goes.
+- **One source of truth.** Every type the page shares with the server is
+  defined once, in Rust (`diffd-core/src/model.rs`, `protocol.rs`): snapshot,
+  state, WebSocket messages, boot data. `ts-rs` generates `web/src/gen/`
+  (`just types`), including the syntax class table. MCP tool schemas come from
+  Rust types too (`schemars`, via `rmcp`).
+- **Messages are tagged unions** (`#[serde(tag = "type")]` becomes a TS
+  discriminated union), handled with ts-pattern's exhaustive `match`, so
+  adding a message type is a compile error until every consumer handles it.
+- **IDs are newtypes** (`ReviewId`, `ThreadId`, `MessageId`) in Rust. In TS
+  they're plain string aliases.
 - **Strict at the boundaries:**
   - TS runs with `strict`, `noUncheckedIndexedAccess` and
     `exactOptionalPropertyTypes`, and Biome forbids `any` and non-null
     assertions.
-  - Rust API inputs use `deny_unknown_fields`.
+  - Page messages and MCP inputs use `deny_unknown_fields`.
   - sqlx checks every query against the schema at compile time.
-- **The client is typed too:** one generated route table, so the page can only
-  call endpoints that exist, with the right payloads.
 
 **Code style.** Exhaustive matching goes through **ts-pattern**
-(`match(x).with(...).exhaustive()`), never `switch`. Data crossing a boundary is
-typed by the generated Rust types, so there's nothing to cast.
+(`match(x).with(...).exhaustive()`). Data crossing a boundary is typed by the
+generated Rust types, so there's nothing to cast.
 
-**Styling and components.** Tailwind v4, with every color, size and radius
-defined once as theme tokens (`@theme`), light and dark. The mockup's CSS
-variables are that token set. Behavior-heavy pieces come from headless,
-accessible Solid primitives rather than hand-rolled ones: Kobalte for popovers,
-dialogs, menus and tooltips, and corvu for the resizable drawers. We style
-them ourselves.
-
-Around it:
+**Styling.** Tailwind v4, with colors and sizes defined once as theme tokens,
+light and dark. The diff rows are styled with plain classes in `styles.css`,
+since they're HTML strings.
 
 | purpose | tool |
 |---|---|
-| styling | Tailwind v4 (theme tokens), Kobalte + corvu (headless components) |
+| UI | SolidJS, Tailwind v4, Kobalte (dialogs) |
 | pattern matching | ts-pattern |
 | build | Vite, TypeScript (strict), `vite-plugin-singlefile` (one HTML document) |
 | lint and format | Biome |
-| unit tests | Vitest |
+| unit tests | Vitest (jsdom) |
 | end-to-end tests | Playwright |
 | Markdown | markdown-it (raw HTML off) + DOMPurify |
-| fuzzy file picker | fzf (the JS port) |
-| icons | Octicons (GitHub's own) |
-| syntax colors | our own token set, tuned for both themes |
+
+The drawers, pickers, fuzzy matching and icons are small hand-written pieces.
 
 ## 12. Repo layout and quality bar
 
 The server is laid out **hexagonally (ports and adapters)**:
 
-- **Pure logic** lives in `diffd-core` and never touches IO:
-  - turning old/new contents into a snapshot
-  - anchoring and re-anchoring threads
-  - batching feedback
-  - the event model
-- **Everything that talks to the world is an adapter** behind a small trait:
-  - driving adapters: HTTP pages, the WebSocket stream, MCP, the file watcher
-  - driven adapters: SQLite, git, the clock
-- **Use cases** (share, comment, reply, refresh, wait) are written once against
-  those traits. Tests run them with in-memory fakes, with no database, repo or
-  browser needed.
+- **Pure logic** lives in `diffd-core` and never touches IO: the model and
+  protocol, turning old/new contents plus engine output into a snapshot,
+  highlighting, tags, the line diff, anchoring, and feedback batching.
+- **Ports** (`diffd-server/src/ports.rs`) are small traits: `RepoSource` (git),
+  `DiffEngine` (difftastic), `CodeIntel` (language servers), `Clock`.
+- **Use cases** (`diffd-server/src/app/`) are written once against them:
+  share, conversation (comment, reply, resolve, notes, regions, chat, show),
+  feedback, rebuild, history, context, code.
+- **Adapters** (`diffd-server/src/adapters/`): git CLI, difftastic subprocess,
+  sqlx store, notify watcher, LSP pool, axum HTTP + WebSocket, rmcp MCP.
 
 ```
 diffd/
-├── Cargo.toml                   workspace: shared deps, lints, release profile
+├── Cargo.toml                   workspace: shared deps, lints, release profile, tungstenite patch
 ├── crates/
-│   ├── diffd-core/              pure: model (→ TS via ts-rs), snapshot building (difftastic fork,
-│   │                            tree-sitter highlight + tags), anchoring, feedback batching, events
-│   ├── diffd-server/            app: use cases over ports (traits)
-│   │   ├── src/app/             share, comment, reply, refresh, wait_for_feedback
-│   │   ├── src/adapters/        sqlx store, git source, notify watcher, axum http + ws, rmcp mcp
-│   │   └── migrations/
-│   └── diffd/                   the binary: CLI (serve, setup), config, wiring; embeds the web build
+│   ├── diffd-core/              pure: model + protocol (→ TS via ts-rs), snapshot building,
+│   │                            tree-sitter highlighting + tags, line diff, anchoring, feedback gate
+│   ├── diffd-server/            app: use cases over ports, adapters, config
+│   │   ├── src/app/             share, conversation, feedback, rebuild, history, context, code
+│   │   ├── src/adapters/        git, difft, store, watch, lsp/, http, mcp
+│   │   ├── config.default.toml  the documented default config
+│   │   ├── migrations/
+│   │   └── tests/               integration tests
+│   └── diffd/                   the binary: CLI (serve, setup, config), wiring; embeds the web build
+├── vendor/tungstenite/          Signal's tungstenite fork (permessage-deflate)
 ├── .sqlx/                       sqlx offline query data
 ├── web/                         SolidJS + TypeScript + Vite
-│   └── src/{gen,model,keymap,state,components,styles}
-├── nix/package.nix              vite build → rust build (bundle baked in) → one binary, git on PATH
-├── flake.nix                    packages, devShell, checks
-├── justfile                     just dev · just test · just demo
+│   ├── src/{gen,lib,state,components}
+│   └── e2e/full.mjs             the end-to-end run
+├── scripts/                     demo repo, demo share, a small MCP client
+├── nix/package.nix              web build → rust build (page baked in) → one binary, git + difftastic on hand
+├── flake.nix                    packages, app, devShell
+├── justfile                     setup · web · build · dev · dev-web · check · lint · test · types · sqlx · demo · e2e
 └── docs/DESIGN.md
 ```
 
 **The web build is baked into the binary.** Vite produces one HTML document,
-which `diffd` embeds at compile time and fills with a review's data when
-serving it. You install one file.
+which `crates/diffd/build.rs` embeds at compile time (from `web/dist`, or
+`$DIFFD_WEB_DIST`). The server fills in the review's state when serving it.
+Without a web build, a placeholder page says how to build one. You install one
+file.
+
+**Packaging.** `nix build` (or `nix run github:404wolf/diffd`) builds the page
+with `buildNpmPackage` and `importNpmLock` (no separate dependency hash to
+maintain), then the Rust binary with the page baked in, wrapped with `git` on
+`PATH` and `DIFFD_DIFFT` pointing at difftastic. The devShell has the Rust and
+Node toolchains, sqlx-cli, difftastic, just and python.
 
 **Quality bar:**
 
-- **Rust:** `clippy -D warnings`, `rustfmt`, `forbid(unsafe_code)`; unit and
-  snapshot tests (`insta`) for every core module; sqlx compile-checked queries.
-- **TypeScript:** strict mode; Biome; Vitest on all pure logic (excerpts,
-  keymap, anchors, tree).
-- **Everything at once:** `nix flake check` runs all of it.
+- **Rust:** `clippy -D warnings`, `rustfmt`, `forbid(unsafe_code)`; unit tests
+  in the core modules; sqlx compile-checked queries.
+- **TypeScript:** strict mode; Biome; typecheck.
+- **CI** (GitHub Actions) runs `just lint` and `just test`, the end-to-end run
+  with difftastic and real language servers installed, and `nix build`.
 
 ## 13. Testing
 
-- **Rust:** fixtures turn real git repos into snapshot tests (git source,
-  engine, highlighting, tags, re-anchoring).
-- **MCP:** integration tests run the real server with an `rmcp` client: share →
-  comment → wait → reply → edit → revision.
-- **End to end:** Playwright plays both sides of §2. A script acts as the agent
-  over MCP while the browser acts as you, checking the page updates, unread
-  markers, scroll stability and offline mode.
-- **Performance:** the 100k-line benchmark from §10.
-- **How you'll test it:**
-  - I run the server in my sandbox and drive the full loop with Playwright,
-    sending you screenshots.
-  - I can publish a sample review page (offline mode) as a private link, so you
-    can click through the UI and keys.
-  - The live loop you run locally: `nix run github:404wolf/diffd`, then
-    `diffd setup claude`.
+- **Rust unit tests** in `diffd-core` and the server: difftastic JSON parsing,
+  line diff, highlighting, tags, text offsets, anchoring, the feedback gate,
+  config merging, the git adapter, LSP conversions.
+- **Rust integration tests** (`crates/diffd-server/tests/`) run the app
+  against throwaway git repos:
+  - `review_loop.rs`: share → comment → wait → reply → edit → revision.
+  - `http_mcp.rs`: the real server with an `rmcp` client as the agent and a
+    WebSocket as the page.
+  - `history.rs`: walking commits, diffing any two, re-locating comments made
+    on a commit, new commits after a rebuild.
+  - `context.rs`: listing and opening files outside the diff, not following
+    symlinks out of the repository, comments and `show` on those files.
+  - `lsp.rs`: real language servers (rust-analyzer, typescript-language-server,
+    pyright, gopls, nil, yaml-language-server) for definition, type definition,
+    hover and diagnostics, and several at once. A test is skipped when its
+    server isn't installed.
+- **Vitest unit tests** (`web/src/lib/lib.test.ts`) on the page's pure logic:
+  line rendering, excerpts and gaps, the keymap engine, the file tree (with
+  neighbours), the jump list, Markdown links, regions, history spans and text
+  objects.
+- **End to end** (`web/e2e/full.mjs`, `just e2e`): Playwright plays the user
+  while a small MCP client plays the agent, against a real server and the demo
+  repository (`scripts/demo-repo.py`). It walks the whole product: navigation,
+  symbols and the jump list, file view, folds and tests, commenting by keys
+  and mouse, the agent's replies, chat, show, live revisions, late notes and
+  regions, pickers and search, drawers and viewed files, splits, files outside
+  the diff, marks, text objects, offline comments (it stops and restarts the
+  server), several tabs, walking commits, language servers, and the home page.
+  Screenshots are kept when it fails.
+- **Trying it by hand:** `just dev`, then `just demo` shares a multi-language
+  demo change and prints the link. For the agent side, `diffd setup claude`.
 
-## 14. Later
+## 14. Dropped plans
 
-- `git diff | diffd` and `diffd -o review.html` (static export), then CI → Gitea
-  links.
-- A full **interdiff** view: "what changed since rev N".
+For the record, things the earlier draft planned that we didn't do:
+
+- **Forking difftastic into a library.** It's a subprocess (§7.2).
+- **Event-log resume by `seq`.** Pages get the full state on connect instead,
+  and idempotent ids make resending safe (§4, §8.10).
+- **Revisions as deltas.** A new revision sends the whole snapshot; the socket
+  is compressed.
+- **A repo-wide tree-sitter symbol index.** Language servers cover symbols
+  outside the diff.
+- **Automatic collapse of lockfiles and `linguist-generated` files.** The
+  agent's `collapse` rules do this.
+- **A columnar, gzip-in-page snapshot encoding.** The state is embedded as
+  JSON.
+- **corvu, fzf and Octicons** in the frontend; the few pieces they'd cover are
+  hand-written.
+- **Pushing feedback into Claude Code** instead of long-polling; there's no
+  such channel to rely on, and `wait_for_feedback` works everywhere.
+
+## 15. Still open
+
+- **Pipe input and static export:** `git diff | diffd` and `diffd -o
+  review.html`. The page is already self-contained, so this is mostly a CLI
+  command plus a way to build a snapshot from a patch.
+- **CI → Gitea links:** open a review from a CI run or a Gitea PR.
 - **herdr plugin.** herdr plugins declare actions, event hooks and panes in
   `herdr-plugin.toml`, and drive herdr through its CLI. Start a review from a
   worktree; the plugin finds that workspace's agent pane and bridges it to
   diffd.
-- **LSP** behind the symbol API.
-- **Postgres**, then hosted and multi-user.
-- Stage and restore hunks (Zed's `du` / `dp`).
-- syntect fallback highlighting for the long tail of languages.
-
-## 15. Open questions
-
-1. **Multibuffer vs single file, and what Ctrl+F searches.** Browser find only
-   searches what's rendered. Options:
-   - **(a)** Multibuffer by default, with Ctrl+F searching all files (as on
-     GitHub PR pages) and a `space o` "focus this file" toggle for a scoped
-     search.
-   - **(b)** Single file by default, with the multibuffer as a toggle.
-
-   Recommendation: (a).
-2. **Solid or React?** Recommendation: Solid (§11).
-3. **Where the difftastic fork lives.** Options:
-   - A GitHub fork (`404wolf/difftastic`, branch `diffd`) used as a pinned git
-     dependency.
-   - Vendored into this repo. That adds ~60 MB of generated parsers, mostly
-     LaTeX and Kotlin.
-
-   Recommendation: the fork. Will you create it, or add it to this session so I
-   can?
-4. **Defaults.** 3 context lines, split view, port 3433, `space` as the leader.
-   Change any?
+- **Postgres**, then hosted and multi-user. The SQL is kept portable for this.
+- **Past revisions and interdiff:** every revision is stored, but the page
+  only shows the latest. A revision picker and "what changed since rev N"
+  would build on that.
+- **A 100k-line benchmark** in CI, measuring time to first screen, time to
+  full render and keypress latency.
+- **Staging and restoring hunks** from the page (Zed's `du` / `dp`).
+- **Highlighting the long tail of languages** (e.g. syntect with bat's
+  grammars).
+- **Unified view**, alongside split view.
+- **Language servers for fixed-revision reviews**, which would need the old
+  and new sides materialized on disk.
+- **User keymap overrides.** The keymap is data, so this is mostly loading it.

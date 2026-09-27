@@ -12,8 +12,17 @@ use tokio::runtime::Handle;
 
 use crate::app::App;
 
-/// Directories whose churn never affects a review.
+/// Directories (inside the repository) whose churn never affects a review.
 const IGNORED: &[&str] = &["/.git/objects/", "/.git/logs/", "/node_modules/", "/target/", "/.direnv/"];
+
+/// Whether a change at `path` can matter to a review of the repository at `root`.
+/// Only the part inside the repository is checked: a repository that itself
+/// lives under a `target/` or `node_modules/` folder still gets its updates.
+fn relevant(root: &std::path::Path, path: &std::path::Path) -> bool {
+    let inside = path.strip_prefix(root).unwrap_or(path);
+    let p = format!("/{}", inside.to_string_lossy());
+    !IGNORED.iter().any(|dir| p.contains(dir))
+}
 
 /// Owns one debounced filesystem watcher per watched review.
 #[derive(Default)]
@@ -36,13 +45,11 @@ impl Watcher {
         let id = meta.id.clone();
         let root = PathBuf::from(&meta.repo_path);
         let review = id.clone();
+        // Events come with canonical paths.
+        let watched = root.canonicalize().unwrap_or_else(|_| root.clone());
         let handler = move |res: DebounceEventResult| {
             let Ok(events) = res else { return };
-            let relevant = events.iter().any(|e| {
-                let p = e.path.to_string_lossy();
-                !IGNORED.iter().any(|dir| p.contains(dir))
-            });
-            if !relevant {
+            if !events.iter().any(|e| relevant(&watched, &e.path)) {
                 return;
             }
             let (app, review) = (app.clone(), review.clone());
@@ -63,5 +70,21 @@ impl Watcher {
             return tracing::warn!(error = %e, path = %root.display(), "can't watch the repository");
         }
         self.watchers.lock().expect("watch lock").insert(id, debouncer);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn ignores_build_output_inside_the_repository_only() {
+        let root = Path::new("/home/me/target/demo");
+        assert!(relevant(root, Path::new("/home/me/target/demo/src/lib.rs")), "the repo is under a target/ folder");
+        assert!(!relevant(root, Path::new("/home/me/target/demo/target/debug/x")));
+        assert!(!relevant(root, Path::new("/home/me/target/demo/web/node_modules/a.js")));
+        assert!(!relevant(root, Path::new("/home/me/target/demo/.git/objects/ab/cd")));
+        assert!(relevant(root, Path::new("/home/me/target/demo/.git/refs/heads/main")), "commits count");
     }
 }
