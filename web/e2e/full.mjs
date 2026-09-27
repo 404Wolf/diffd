@@ -427,7 +427,7 @@ try {
     check(Math.abs(topAfter - topBefore) < 4, `and the page is where you were reading (${topBefore} → ${topAfter})`);
     const draft = page.getByRole("dialog", { name: "Write a comment" }).locator("textarea");
     check((await draft.inputValue()) === "Half-written thought", "the half-written comment is still there");
-    check((await shownRows()) === routesBefore, `lines you expanded stay expanded (${routesBefore} rows of routes.rs)`);
+    check((await shownRows()) === routesBefore, `lines you expanded stay expanded (${routesBefore} → ${await shownRows()} rows of routes.rs)`);
     await keys(page, "Escape");
     await keys(page, "Escape");
     const copies = await page.getByText("Written while the server was down.").count();

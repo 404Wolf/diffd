@@ -179,7 +179,7 @@ export function createView(review: Review) {
         review.snapshot().files.forEach((_, i) => {
           const folds = foldsFor(i, true);
           const sig = visibleSignals[i];
-          if (folds.length && sig) sig[1](applyFolds(sig[0](), folds, new Set(pinnedRows(i))));
+          if (folds.length && sig) setVisible(i, applyFolds(sig[0](), folds, new Set(pinnedRows(i))));
         });
         markFoldsApplied();
       },
