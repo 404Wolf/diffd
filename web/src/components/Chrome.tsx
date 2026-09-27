@@ -362,8 +362,9 @@ export function Help(props: { view: View }) {
               </Dialog.CloseButton>
             </div>
             <p class="mb-2 text-xs text-muted">
-              Vim-style, mostly from Zed's vim keymap. Leader is <kbd>space</kbd>. Browser <kbd>ctrl</kbd>{" "}
-              <kbd>f</kbd> is never intercepted and finds text in folded lines too.
+              Vim-style, mostly from Zed's vim keymap. Leader is <kbd>space</kbd>. <kbd>ctrl</kbd>{" "}
+              <kbd>f</kbd> finds in the file you're on, folded lines too. Shift+click a file or a{" "}
+              <kbd>path:line</kbd> link to open it in a split.
             </p>
             <div class="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-x-6">
               <For each={groups()}>
