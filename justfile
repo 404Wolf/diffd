@@ -1,5 +1,8 @@
 # diffd development tasks. `just` lists them.
 
+# Queries are checked against .sqlx/ (`just sqlx` refreshes it), so no database is needed to build.
+export SQLX_OFFLINE := "true"
+
 # Demo repositories live outside this one (a Cargo project inside our workspace would confuse cargo).
 scratch := env_var_or_default("TMPDIR", "/tmp") / "diffd-demo"
 
@@ -16,7 +19,7 @@ web:
 
 # Build the release binary with the page baked in.
 build: web
-    SQLX_OFFLINE=true cargo build --release -p diffd
+    cargo build --release -p diffd
     @echo "built target/release/diffd"
 
 # Run the server from source (rebuilds the page first).
@@ -32,12 +35,12 @@ check: lint test
 
 lint:
     cargo fmt --all --check
-    SQLX_OFFLINE=true cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
     npm --prefix web run lint
     npm --prefix web run typecheck
 
 test:
-    SQLX_OFFLINE=true cargo test --workspace
+    cargo test --workspace
     npm --prefix web test
 
 # Regenerate the TypeScript protocol types from the Rust model, and the
@@ -52,7 +55,7 @@ sqlx:
     mkdir -p target
     cargo sqlx database create
     cargo sqlx migrate run --source crates/diffd-server/migrations
-    cargo sqlx prepare --workspace
+    SQLX_OFFLINE=false cargo sqlx prepare --workspace
 
 # Make a demo repository with a multi-language change and share it with a
 # running server (`just dev`); prints the link.
