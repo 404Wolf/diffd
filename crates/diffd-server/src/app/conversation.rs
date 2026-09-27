@@ -193,7 +193,10 @@ impl App {
             messages: vec![message],
             created_at: self.now(),
         };
-        self.store.insert_thread(id, &thread).await?;
+        if !self.store.insert_thread(id, &thread).await? {
+            // The same comment from another tab, a moment earlier.
+            return self.store.thread(&thread.id).await?.map(|(_, t)| t).ok_or_else(|| AppError::NotFound("thread".into()));
+        }
         self.store.touch_review(id, self.now()).await?;
         let kind =
             ActivityKind::UserCommented { thread_id: thread.id.clone(), path: thread.anchor.path.clone(), line: thread.anchor.start };
@@ -226,7 +229,9 @@ impl App {
             Some(m) => self.message_with_id(m, author, body)?,
             None => self.message(author, body)?,
         };
-        self.store.insert_message(&id, Some(thread_id), &msg).await?;
+        if !self.store.insert_message(&id, Some(thread_id), &msg).await? {
+            return Ok(thread);
+        }
         thread.messages.push(msg);
         if let Some(resolved) = resolve {
             thread.resolved = resolved;
@@ -291,7 +296,9 @@ impl App {
             Some(m) => self.message_with_id(m, Author::User, body)?,
             None => self.message(Author::User, body)?,
         };
-        self.store.insert_message(id, None, &msg).await?;
+        if !self.store.insert_message(id, None, &msg).await? {
+            return Ok(());
+        }
         let chat = ChatMessage { id: msg.id, author: msg.author, body: msg.body, created_at: msg.created_at, delivered_at: None };
         App::broadcast(&live, ServerMsg::Chat { message: chat });
         self.user_activity(&live);

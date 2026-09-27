@@ -215,3 +215,30 @@ async fn a_bad_share_or_annotate_saves_nothing() {
     assert!(app.annotate(&id, vec![good], vec![bad_region]).await.is_err());
     assert_eq!(app.state(&id).await.unwrap().threads.len(), before, "the good note wasn't saved either");
 }
+
+#[tokio::test]
+async fn the_same_comment_from_two_tabs_at_once_is_saved_once() {
+    use diffd_core::model::{MessageId, ThreadId};
+    let repo = common::Repo::new();
+    repo.write("src/lib.rs", BEFORE);
+    repo.commit("init");
+    repo.write("src/lib.rs", AFTER);
+    let app = common::app().await;
+    let id = diffd_core::model::ReviewId(app.share(share_request(&repo)).await.unwrap().review_id);
+    let before = app.state(&id).await.unwrap().threads.len();
+
+    let anchor = Anchor { path: "src/lib.rs".into(), side: Side::New, start: 4, end: 4, text: String::new(), range: None };
+    let ids = || Some((ThreadId("t-page-dup01".into()), MessageId("m-page-dup01".into())));
+    let (a, b) = tokio::join!(app.comment(&id, ids(), anchor.clone(), "twice?"), app.comment(&id, ids(), anchor.clone(), "twice?"));
+    assert_eq!(a.unwrap().id, b.unwrap().id);
+    let thread = ThreadId("t-page-dup01".into());
+    let reply = || app.reply(&thread, Some(MessageId("m-page-dup02".into())), Author::User, "again", None);
+    let (a, b) = tokio::join!(reply(), reply());
+    a.unwrap();
+    b.unwrap();
+
+    let threads = app.state(&id).await.unwrap().threads;
+    assert_eq!(threads.len(), before + 1);
+    let t = threads.iter().find(|t| t.id.0 == "t-page-dup01").unwrap();
+    assert_eq!(t.messages.len(), 2, "the comment and one reply");
+}

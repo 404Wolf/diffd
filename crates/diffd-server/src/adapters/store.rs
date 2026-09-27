@@ -182,10 +182,13 @@ impl Store {
         row.map(|r| Ok(serde_json::from_slice(&zstd::decode_all(r.snapshot.as_slice())?)?)).transpose()
     }
 
-    pub async fn insert_thread(&self, review: &ReviewId, t: &Thread) -> anyhow::Result<()> {
+    /// Save a new thread with its messages, all or nothing. `Ok(false)`: a
+    /// thread with this id is already saved (the page sent it twice).
+    pub async fn insert_thread(&self, review: &ReviewId, t: &Thread) -> anyhow::Result<bool> {
         let (kind, anchor, created) = (json(&t.kind), json(&t.anchor), t.created_at as i64);
         let changed = t.changed_in.map(i64::from);
-        sqlx::query!(
+        let mut tx = self.pool.begin().await?;
+        let result = sqlx::query!(
             "INSERT INTO threads (id, review_id, kind, anchor, resolved, changed_in, outdated, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             t.id.0,
@@ -197,15 +200,20 @@ impl Store {
             t.outdated,
             created
         )
-        .execute(&self.pool)
-        .await?;
-        for m in &t.messages {
-            self.insert_message(review, Some(&t.id), m).await?;
+        .execute(&mut *tx)
+        .await;
+        if !inserted(result)? {
+            return Ok(false);
         }
-        Ok(())
+        for m in &t.messages {
+            if !insert_message(&mut *tx, review, Some(&t.id), m).await? {
+                return Ok(false);
+            }
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 
-    /// Save a thread's mutable state (not its messages).
     pub async fn update_thread(&self, t: &Thread) -> anyhow::Result<()> {
         let anchor = json(&t.anchor);
         let changed = t.changed_in.map(i64::from);
@@ -276,22 +284,9 @@ impl Store {
             .collect())
     }
 
-    pub async fn insert_message(&self, review: &ReviewId, thread: Option<&ThreadId>, m: &Message) -> anyhow::Result<()> {
-        let thread = thread.map(|t| t.0.as_str());
-        let (author, created, delivered) = (author_str(m.author), m.created_at as i64, m.delivered_at.map(|d| d as i64));
-        sqlx::query!(
-            "INSERT INTO messages (id, review_id, thread_id, author, body, created_at, delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            m.id.0,
-            review.0,
-            thread,
-            author,
-            m.body,
-            created,
-            delivered
-        )
-        .execute(&self.pool)
-        .await?;
-        Ok(())
+    /// `Ok(false)`: a message with this id is already saved (sent twice).
+    pub async fn insert_message(&self, review: &ReviewId, thread: Option<&ThreadId>, m: &Message) -> anyhow::Result<bool> {
+        insert_message(&self.pool, review, thread, m).await
     }
 
     pub async fn message_exists(&self, id: &MessageId) -> anyhow::Result<bool> {
@@ -405,5 +400,38 @@ impl Store {
             }
         }
         Ok(n)
+    }
+}
+
+async fn insert_message(
+    db: impl sqlx::SqliteExecutor<'_>,
+    review: &ReviewId,
+    thread: Option<&ThreadId>,
+    m: &Message,
+) -> anyhow::Result<bool> {
+    let thread = thread.map(|t| t.0.as_str());
+    let (author, created, delivered) = (author_str(m.author), m.created_at as i64, m.delivered_at.map(|d| d as i64));
+    let result = sqlx::query!(
+        "INSERT INTO messages (id, review_id, thread_id, author, body, created_at, delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        m.id.0,
+        review.0,
+        thread,
+        author,
+        m.body,
+        created,
+        delivered
+    )
+    .execute(db)
+    .await;
+    inserted(result)
+}
+
+/// Whether an insert added its row: `false` when the id was taken, which for
+/// ids the page picks means the same message arrived twice.
+fn inserted(result: Result<sqlx::sqlite::SqliteQueryResult, sqlx::Error>) -> anyhow::Result<bool> {
+    match result {
+        Ok(_) => Ok(true),
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => Ok(false),
+        Err(e) => Err(e.into()),
     }
 }

@@ -308,7 +308,11 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket, shutdown: Cance
                                 }
                                 send(&mut tx, &ServerMsg::Error { message: e.to_string() }).await?;
                             }
-                            Err(e) => send(&mut tx, &ServerMsg::Error { message: e.to_string() }).await?,
+                            // Details of our own failures go to the log, not the page.
+                            Err(AppError::Internal(e)) => {
+                                tracing::error!(error = %format!("{e:#}"), "a page's request failed");
+                                send(&mut tx, &ServerMsg::Error { message: "diffd hit an internal error; its log has the details".into() }).await?;
+                            }
                         }
                     }
                     Err(e) => send(&mut tx, &ServerMsg::Error { message: format!("bad message: {e}") }).await?,

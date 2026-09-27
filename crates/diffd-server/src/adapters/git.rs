@@ -163,7 +163,10 @@ impl RepoSource for GitCli {
 /// A relative path that stays inside the repository: no `..`, no absolute paths, no `.git`.
 fn safe_path(path: &str) -> bool {
     let p = Path::new(path);
-    !path.is_empty() && p.is_relative() && p.components().all(|c| matches!(c, std::path::Component::Normal(n) if n != ".git"))
+    // `.git` in any case: on case-insensitive filesystems `.GIT` is the same folder.
+    !path.is_empty()
+        && p.is_relative()
+        && p.components().all(|c| matches!(c, std::path::Component::Normal(n) if !n.eq_ignore_ascii_case(".git")))
 }
 
 fn parse_commit(record: &str) -> Option<Commit> {
