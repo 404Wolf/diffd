@@ -4,3 +4,4 @@
 *.db
 *.db-*
 __pycache__/
+.claude/worktrees/
