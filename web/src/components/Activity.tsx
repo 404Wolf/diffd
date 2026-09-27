@@ -60,7 +60,8 @@ export function Activity(props: { review: Review; cmd: Commands }) {
       <ol class="flex flex-col gap-px px-1.5 pt-1 pb-2">
         <For each={items()}>
           {(item) => {
-            const d = describe(item);
+            // A function, so the text follows the agent's name once it's known.
+            const d = () => describe(item);
             return (
               <li>
                 <button
@@ -76,10 +77,10 @@ export function Activity(props: { review: Review; cmd: Commands }) {
                     }}
                   />
                   <span classList={{ "font-medium text-fg": isUnread(item), "text-muted": !isUnread(item) }}>
-                    {d.what}
+                    {d().what}
                   </span>
                   <span class="col-start-2 flex justify-between gap-1.5 font-mono text-[10.5px] text-subtle">
-                    <span class="truncate">{d.where}</span>
+                    <span class="truncate">{d().where}</span>
                     <span class="flex-none">{ago(item.at)}</span>
                   </span>
                 </button>

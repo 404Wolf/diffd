@@ -180,6 +180,8 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   // -- The agent's arrangement ---------------------------------------------------------
   // Files can be read group by group, and files with some labels (tests, say) hidden.
   const [layout, setLayout] = createSignal<Layout>(initial.layout);
+  // Named before anything renders, then kept up to date.
+  setAgentName(initial.layout.agent);
   createEffect(() => setAgentName(layout().agent));
   const arrangeKey = `diffd:hidden-labels:${initial.review.id}`;
   const [hiddenLabels, setHiddenLabels] = createSignal<readonly string[]>(loadJson<string[]>(arrangeKey, []));

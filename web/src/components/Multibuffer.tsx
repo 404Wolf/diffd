@@ -214,7 +214,7 @@ function ChapterHeader(props: { file: number; review: Review }) {
   return (
     <div class="px-2.5 pt-3 pb-0.5">
       <header
-        class="flex items-baseline gap-2 border-t border-line pt-2 text-[12.5px]"
+        class="flex items-baseline gap-2 border-t border-line pt-2 font-sans text-[12.5px] whitespace-normal"
         data-group={group()?.title}
       >
         <span class="shrink-0 font-mono text-[11px] text-subtle">
@@ -503,7 +503,7 @@ function Threads(props: {
 
 function Summary(props: { review: Review; cmd: Commands }) {
   return (
-    <div class="rounded-md border border-accent-line bg-bg px-2.5 py-1.5 text-[12.5px]">
+    <div class="rounded-md border border-accent-line bg-bg px-2.5 py-1.5 font-sans text-[12.5px] whitespace-normal">
       <Show when={props.review.meta().summary}>
         {(summary) => (
           <div class="flex gap-2">
