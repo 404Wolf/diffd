@@ -326,6 +326,9 @@ export function WindowedList(props: Props) {
   // -- What the rest of the page asks of this buffer ------------------------------------
 
   const api: Windowed = {
+    get topInset() {
+      return props.topInset;
+    },
     nav: props.nav,
     reveal(index, how) {
       const buf = props.buf();

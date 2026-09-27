@@ -105,8 +105,6 @@ export function sessionWriter(reviewId: string, session: Session) {
   };
 }
 
-export type SessionWriter = ReturnType<typeof sessionWriter>;
-
 export function toRuns(visible: Uint8Array): [number, number][] {
   const runs: [number, number][] = [];
   let start = -1;

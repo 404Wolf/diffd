@@ -96,7 +96,12 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   },
   { keys: "[ q", run: ({ cmd }) => cmd.quickfixStep(-1) },
   { keys: "space q", run: ({ view }) => view.setQuickfix(null), help: ["Symbols", "Close the list"] },
-  { keys: "o", modes: ["visual"], run: ({ cmd }) => cmd.otherEnd() },
+  {
+    keys: "o",
+    modes: ["visual"],
+    run: ({ cmd }) => cmd.otherEnd(),
+    help: ["Talk", "Go to the other end of the selection"],
+  },
   { keys: "ctrl-d", run: ({ cmd }) => cmd.move(cmd.halfPage()), help: ["Move", "Half a page down / up"] },
   { keys: "ctrl-u", run: ({ cmd }) => cmd.move(-cmd.halfPage()) },
   {
@@ -106,13 +111,13 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     help: ["Move", "Switch old / new side"],
   },
   { keys: "ctrl-o", run: ({ cmd }) => cmd.jumpBack(), help: ["Move", "Jump back / forward"] },
+  { keys: "ctrl-i", run: ({ cmd }) => cmd.jumpForward() },
   {
     keys: "' '",
     run: ({ cmd }) => cmd.jumpBack(),
     help: ["Move", "Back to where you jumped from ('' or ``)"],
   },
   { keys: "` `", run: ({ cmd }) => cmd.jumpBack() },
-  { keys: "ctrl-i", run: ({ cmd }) => cmd.jumpForward() },
   // Symbols
   { keys: "w", run: ({ cmd }) => cmd.stepWord(1), help: ["Symbols", "Next / previous symbol on the line"] },
   { keys: "b", run: ({ cmd }) => cmd.stepWord(-1) },

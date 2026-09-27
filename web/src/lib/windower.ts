@@ -6,6 +6,9 @@
  * Kept free of the DOM so it's easy to test.
  */
 
+/** A line of code's height: `--row` in styles.css. */
+export const ROW_PX = 17;
+
 /** Heights of a list of items, as a Fenwick (binary indexed) tree over them. */
 export class Heights {
   private readonly tree: Float64Array;

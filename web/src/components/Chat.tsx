@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { agentName } from "../lib/agent";
 import { composing } from "../lib/keymap";
+import { loadJson, saveJson } from "../lib/storage";
 import { bufferEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
@@ -15,12 +16,8 @@ const SHARE_KEY = "diffd:chat-share";
 const MIN_SHARE = 0.12;
 const MAX_SHARE = 0.85;
 function loadShare(): number {
-  try {
-    const saved = Number(localStorage.getItem(SHARE_KEY));
-    return saved >= MIN_SHARE && saved <= MAX_SHARE ? saved : 0.3;
-  } catch {
-    return 0.3;
-  }
+  const saved = loadJson<number>(SHARE_KEY, 0.3);
+  return saved >= MIN_SHARE && saved <= MAX_SHARE ? saved : 0.3;
 }
 
 export function Chat(props: { review: Review; view: View }) {
@@ -31,11 +28,7 @@ export function Chat(props: { review: Review; view: View }) {
   const [share, setShare] = createSignal(loadShare());
   const resizeTo = (next: number) => {
     setShare(Math.min(MAX_SHARE, Math.max(MIN_SHARE, next)));
-    try {
-      localStorage.setItem(SHARE_KEY, String(share()));
-    } catch {
-      // Not remembered, then.
-    }
+    saveJson(SHARE_KEY, share());
   };
   const startResize = (e: PointerEvent) => {
     const panel = box?.parentElement;

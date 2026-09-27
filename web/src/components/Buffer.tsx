@@ -13,7 +13,7 @@ import { match } from "ts-pattern";
 import { columnAtPoint, wordAt } from "../lib/code";
 import { rowOf } from "../lib/diffModel";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
-import { wrappedLines } from "../lib/windower";
+import { ROW_PX, wrappedLines } from "../lib/windower";
 import type { Commands } from "../state/commands";
 import { bufferEl, rowEl, rowsRenderedEvent } from "../state/dom";
 import { createFileLayout, type Item, type LayoutState } from "../state/layout";
@@ -21,7 +21,7 @@ import type { Review } from "../state/review";
 import type { Pane, View } from "../state/view";
 import { ContextMenu, type MenuAt } from "./ContextMenu";
 import { useMouseHover } from "./Hover";
-import { CODE_PAD_PX, Multibuffer, ROW_PX } from "./Multibuffer";
+import { CODE_PAD_PX, Multibuffer } from "./Multibuffer";
 import { ThreadCard } from "./ThreadCard";
 import { WindowedList } from "./WindowedList";
 

@@ -11,7 +11,7 @@ import type { FileDiff, Omitted, Thread } from "../api";
 import { gapContext, regionRows } from "../lib/diffModel";
 import { rowHtml, soloSide } from "../lib/render";
 import { STATUS } from "../lib/status";
-import { wrappedLines } from "../lib/windower";
+import { ROW_PX, wrappedLines } from "../lib/windower";
 import type { Commands } from "../state/commands";
 import type { Item, LayoutState, RowItem } from "../state/layout";
 import type { Review } from "../state/review";
@@ -22,8 +22,6 @@ import { type ListView, WindowedList } from "./WindowedList";
 
 /** The file header's height: the sticky one covers this much of the top of the viewport. */
 const HEAD_PX = 26;
-/** `--row` in styles.css. */
-export const ROW_PX = 17;
 /** The code cell's horizontal padding, and the width of the two line number columns. */
 export const CODE_PAD_PX = 18;
 const NUMS_PX = 88;

@@ -273,24 +273,32 @@ export function ReviewPage(props: { state: ReviewState }) {
   const onFocus = () => setFocusInput(document.activeElement?.matches("input, textarea") ?? false);
 
   onMount(() => {
-    root?.addEventListener("click", followLink);
+    // Every listener goes when the page does.
+    const listening = new AbortController();
+    const { signal } = listening;
+    onCleanup(() => listening.abort());
+    root?.addEventListener("click", followLink, { signal });
     review.start();
+    onCleanup(() => review.stop());
     // Layout can change without scrolling (threads arriving): take the reading position fresh on the way out.
     const leaving = () => {
       saveSession();
       v.persist.flush();
     };
-    window.addEventListener("pagehide", leaving);
-    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && leaving());
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", () => v.setSymKey(false));
-    document.addEventListener("focusin", onFocus);
-    document.addEventListener("focusout", () => queueMicrotask(onFocus));
+    window.addEventListener("pagehide", leaving, { signal });
+    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && leaving(), {
+      signal,
+    });
+    window.addEventListener("keydown", onKeyDown, { signal });
+    window.addEventListener("keyup", onKeyUp, { signal });
+    window.addEventListener("blur", () => v.setSymKey(false), { signal });
+    document.addEventListener("focusin", onFocus, { signal });
+    document.addEventListener("focusout", () => queueMicrotask(onFocus), { signal });
     // Scroll events don't bubble, but they can be captured: one listener for every split.
     container?.addEventListener("scroll", () => requestAnimationFrame(trackScroll), {
       passive: true,
       capture: true,
+      signal,
     });
     void restoreSession().then((restored) => {
       settled = true;
@@ -299,12 +307,6 @@ export function ReviewPage(props: { state: ReviewState }) {
       bufferEl()?.focus({ preventScroll: true });
     });
     document.title = `${review.meta().title} · diffd`;
-  });
-  onCleanup(() => {
-    review.stop();
-    window.removeEventListener("keydown", onKeyDown);
-    window.removeEventListener("keyup", onKeyUp);
-    document.removeEventListener("focusin", onFocus);
   });
 
   return (

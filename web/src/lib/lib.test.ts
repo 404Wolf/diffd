@@ -485,6 +485,13 @@ describe("jump list remapping", () => {
     expect(j.position).toEqual({ at: 1, length: 4 }); // still at what was 3, now 30
     expect(j.forward()).toBe(40);
   });
+  it("records jumping from the same place twice once", () => {
+    const j = new JumpList<number>();
+    j.push(1);
+    j.push(1);
+    expect(j.back(2)).toBe(1);
+    expect(j.back(2)).toBeNull();
+  });
 });
 
 describe("identifiers in any script", () => {

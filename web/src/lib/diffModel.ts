@@ -32,6 +32,16 @@ export function fileModel(file: FileDiff): FileModel {
   return { file, changed, oldRow, newRow, hunks };
 }
 
+/** A row's 0-based line on one side, or null where that side has none. */
+export function lineAt(file: FileDiff, row: number, side: Side): number | null {
+  return file.rows[row]?.[side === "old" ? 0 : 1] ?? null;
+}
+
+/** One side's text of a file (null for the old side of an added file, say). */
+export function sideText(file: FileDiff, side: Side): FileDiff["old"] {
+  return side === "old" ? file.old : file.new;
+}
+
 /** Row index of a 1-based line on one side, or -1. */
 export function rowOf(model: FileModel, side: Side, line: number): number {
   const map = side === "old" ? model.oldRow : model.newRow;

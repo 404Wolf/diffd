@@ -39,6 +39,7 @@ import { carrySpan, rangeOf, relocate, type Span, stepAhead } from "../lib/histo
 import { type FileGroup, labelsOf, resolveGroups } from "../lib/kinds";
 import { Lru } from "../lib/lru";
 import { type Connection, connect, type Socket } from "../lib/socket";
+import { loadJson, saveJson } from "../lib/storage";
 
 interface Conversation {
   /** Language servers' diagnostics, by path. */
@@ -562,7 +563,6 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   return {
     meta,
     snapshot,
-    whole,
     history,
     diffCount,
     isContext: (file: number) => file >= diffCount(),
@@ -574,7 +574,6 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     loadingSpan,
     showSpan,
     regions,
-    layout,
     groups,
     /** The group that starts at this path, when reading by group. */
     groupAt: (path: string): FileGroup | undefined => groupStarts().get(path),
@@ -582,7 +581,6 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     groupOf: (path: string): number => groups().findIndex((g) => g.paths.includes(path)),
     grouped,
     setGrouped,
-    labelsFor,
     labelCounts,
     hiddenLabels,
     /** Show or hide the files with a label. */
@@ -642,7 +640,7 @@ function queuedMessage(id: MessageId, body: string): Message {
 }
 
 /** A random id for something written here, so the server can tell a resend from a new message. */
-export function newId(): string {
+function newId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   return `p${Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("")}`;
 }
@@ -694,21 +692,4 @@ export function applyDelta(prev: Snapshot, delta: SnapshotDelta): Snapshot | nul
     for (const s of oldSymbols.get(old) ?? []) symbols.push(s.file === i ? s : { ...s, file: i });
   }
   return { revision: delta.revision, files, symbols };
-}
-
-function loadJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveJson(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Unavailable storage just means the choice doesn't persist.
-  }
 }

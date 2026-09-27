@@ -70,7 +70,7 @@ export function carrySpan(before: History, after: History, span: Span): Span {
 }
 
 /** The commits a span covers, oldest first; `uncommitted` when it reaches the working tree. */
-export function spanCommits(h: History, span: Span): { commits: Commit[]; uncommitted: boolean } {
+function spanCommits(h: History, span: Span): { commits: Commit[]; uncommitted: boolean } {
   if (span === null) return { commits: h.commits, uncommitted: h.worktree };
   const commits = h.commits.slice(span.from, Math.min(span.to, h.commits.length));
   return { commits, uncommitted: h.worktree && span.to === points(h).length - 1 };

@@ -72,7 +72,7 @@ export function findMatches(
   return out;
 }
 
-export function compare(a: Place | Match, b: Place | Match): number {
+function compare(a: Place | Match, b: Place | Match): number {
   const col = (p: Place | Match) => ("col" in p ? p.col : p.start);
   return a.file - b.file || a.row - b.row || sideOrder(a.side) - sideOrder(b.side) || col(a) - col(b);
 }

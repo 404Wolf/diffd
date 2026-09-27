@@ -26,6 +26,8 @@ export interface ReadingPosition {
 export interface Windowed {
   /** The list it shows, to move through. */
   readonly nav: ListNav;
+  /** What a sticky header covers at the top of the screen. */
+  readonly topInset: number;
   /** Scroll so item `index` is in view, rendering it right away. */
   /** `top` / `bottom`: the item just below the sticky header / just above the bottom edge (vim's zt, zb). */
   reveal(index: number, how: "nearest" | "center" | "start" | "top" | "bottom"): void;
@@ -107,20 +109,6 @@ function rowIndex(buf: HTMLElement | null = bufferEl()): RowIndex | null {
  */
 export function rowEl(file: number, row: number, buf: HTMLElement | null = bufferEl()): HTMLElement | null {
   return rowIndex(buf)?.byKey.get(`${file}:${row}`) ?? null;
-}
-
-/**
- * Run an update that changes the layout. Each pane's window keeps the item at
- * the top of its screen where it was by itself (`WindowedList.tsx`); this
- * marks the changes that would otherwise move the reader.
- */
-export function keepViewport(update: () => void): void {
-  update();
-}
-
-/** Scroll a rendered element into view if needed (`nearest`) or into the middle (`center`). */
-export function reveal(el: Element, how: "nearest" | "center" = "nearest"): void {
-  el.scrollIntoView({ block: how });
 }
 
 export function flash(el: Element): void {

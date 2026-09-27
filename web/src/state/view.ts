@@ -9,6 +9,7 @@ import type { Anchor, Diagnostic, ShowRequest, Side, Snapshot, ThreadId } from "
 import { applyFolds, carryRow, initialVisible, regionRows, rowOf } from "../lib/diffModel";
 import { JumpList } from "../lib/jumps";
 import type { Match } from "../lib/search";
+import { loadJson, saveJson } from "../lib/storage";
 import { setFocusedPane } from "./dom";
 import { fromRuns, loadSession, sessionWriter, toRuns } from "./persist";
 import type { Review } from "./review";
@@ -150,37 +151,20 @@ interface Flags {
   viewed: Record<string, boolean>;
 }
 
-function load<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function save(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Unavailable storage just means preferences don't persist.
-  }
-}
-
 export function createView(review: Review) {
   const id = review.meta().id;
   // Per review: one the agent made a tour of starts on the tour; others as you last left the drawer.
   const treeModeKey = `diffd:tree-mode:${id}`;
   const [treeMode, setTreeMode] = createSignal<TreeMode>(
-    load<TreeMode | null>(treeModeKey, null) ??
-      (review.groups().length > 0 ? "groups" : load<TreeMode>("diffd:tree-mode", "diff")),
+    loadJson<TreeMode | null>(treeModeKey, null) ??
+      (review.groups().length > 0 ? "groups" : loadJson<TreeMode>("diffd:tree-mode", "diff")),
   );
   createEffect(
     on(
       treeMode,
       (mode) => {
-        save(treeModeKey, mode);
-        if (mode !== "groups") save("diffd:tree-mode", mode);
+        saveJson(treeModeKey, mode);
+        if (mode !== "groups") saveJson("diffd:tree-mode", mode);
       },
       { defer: true },
     ),
@@ -312,9 +296,9 @@ export function createView(review: Review) {
       ),
       ...persist.session.collapsed,
     },
-    viewed: load(`diffd:viewed:${id}`, {}),
+    viewed: loadJson(`diffd:viewed:${id}`, {}),
   });
-  createEffect(() => save(`diffd:viewed:${id}`, { ...flags.viewed }));
+  createEffect(() => saveJson(`diffd:viewed:${id}`, { ...flags.viewed }));
   // Other tabs of this review: viewed files and marks are shared, so take their changes.
   const fromOtherTabs = (e: StorageEvent) => {
     if (e.newValue === null) return;
@@ -460,14 +444,14 @@ export function createView(review: Review) {
   };
 
   const [drawers, setDrawers] = createStore(
-    load<{ left: Drawer; right: Drawer }>("diffd:drawers", {
+    loadJson<{ left: Drawer; right: Drawer }>("diffd:drawers", {
       left: { size: 248, collapsed: false },
       right: { size: 250, collapsed: window.innerWidth < 1200 },
     }),
   );
-  createEffect(() => save("diffd:drawers", { left: { ...drawers.left }, right: { ...drawers.right } }));
-  const [rightTab, setRightTab] = createSignal<RightTab>(load<RightTab>("diffd:right-tab", "activity"));
-  createEffect(() => save("diffd:right-tab", rightTab()));
+  createEffect(() => saveJson("diffd:drawers", { left: { ...drawers.left }, right: { ...drawers.right } }));
+  const [rightTab, setRightTab] = createSignal<RightTab>(loadJson<RightTab>("diffd:right-tab", "activity"));
+  createEffect(() => saveJson("diffd:right-tab", rightTab()));
   const [folders, setFolders] = createStore<Record<TreeMode, Folders>>({
     diff: { all: null, open: {} },
     project: { all: null, open: {} },
@@ -485,8 +469,8 @@ export function createView(review: Review) {
   /** Open or close every folder of the current tree. */
   const setAllFolders = (open: boolean) => setFolders(treeMode(), { all: open, open: {} });
 
-  const [marks, setMarks] = createStore<Record<string, Mark>>(load(`diffd:marks:${id}`, {}));
-  createEffect(() => save(`diffd:marks:${id}`, { ...marks }));
+  const [marks, setMarks] = createStore<Record<string, Mark>>(loadJson(`diffd:marks:${id}`, {}));
+  createEffect(() => saveJson(`diffd:marks:${id}`, { ...marks }));
 
   return {
     persist,
@@ -572,7 +556,13 @@ function createPane(id: number, from: { cursor?: Cursor | null; mode?: Mode } = 
   const [cursor, setCursor] = createSignal<Cursor | null>(from.cursor ?? null);
   const [visual, setVisual] = createSignal<{ file: number; row: number } | null>(null);
   const [mode, setMode] = createSignal<Mode>(from.mode ?? { kind: "diff" });
-  const jumps = new JumpList<Place>();
+  const jumps = new JumpList<Place>(
+    100,
+    (a, b) =>
+      JSON.stringify(a.mode) === JSON.stringify(b.mode) &&
+      a.cursor?.file === b.cursor?.file &&
+      a.cursor?.row === b.cursor?.row,
+  );
   const [jumpPos, setJumpPos] = createSignal(jumps.position);
   return {
     id,

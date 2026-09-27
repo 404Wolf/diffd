@@ -7,11 +7,16 @@ export class JumpList<T> {
   private list: T[] = [];
   private at = 0;
 
-  constructor(private readonly limit = 100) {}
+  /** `same`: whether two places are one, so jumping from the same place twice is one entry. */
+  constructor(
+    private readonly limit = 100,
+    private readonly same: (a: T, b: T) => boolean = Object.is,
+  ) {}
 
   push(here: T): void {
     this.list = this.list.slice(0, this.at);
-    this.list.push(here);
+    const last = this.list.at(-1);
+    if (last === undefined || !this.same(last, here)) this.list.push(here);
     if (this.list.length > this.limit) this.list.shift();
     this.at = this.list.length;
   }

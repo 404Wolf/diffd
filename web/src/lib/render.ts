@@ -11,7 +11,7 @@ import { IDENT } from "./code";
 export type Range = readonly [start: number, end: number];
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
-export const escapeHtml = (s: string): string => s.replace(/[&<>"]/g, (c) => ESCAPES[c] ?? c);
+const escapeHtml = (s: string): string => s.replace(/[&<>"]/g, (c) => ESCAPES[c] ?? c);
 
 export interface LineOptions {
   /** Class for novel tokens (`nv-add` / `nv-del`), or null to ignore novelty. */
