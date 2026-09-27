@@ -13,7 +13,8 @@ const range = (t: Thread) =>
   t.anchor.start === t.anchor.end ? `L${t.anchor.start}` : `L${t.anchor.start}–${t.anchor.end}`;
 
 /** Where a user message is on its way to the agent. */
-function delivery(msg: Message, thread: Thread): string {
+function delivery(msg: Message, thread: Thread, review: Review): string {
+  if (review.isPending(msg.id)) return review.connection() === "live" ? "Sending…" : "Queued offline";
   const later = thread.messages.slice(thread.messages.indexOf(msg) + 1);
   if (later.some((m) => m.author === "agent")) return `${AGENT} replied`;
   return msg.deliveredAt === null ? "Sent" : `Seen by ${AGENT}`;
@@ -77,7 +78,11 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
       </div>
       <For each={t().messages}>
         {(m) => (
-          <div class="grid grid-cols-[20px_minmax(0,1fr)] gap-x-2 border-line px-2.5 py-1.5 [&+&]:border-t">
+          <div
+            class="grid grid-cols-[20px_minmax(0,1fr)] gap-x-2 border-line px-2.5 py-1.5 [&+&]:border-t"
+            classList={{ "opacity-75": props.review.isPending(m.id) }}
+            data-pending={props.review.isPending(m.id) ? "" : undefined}
+          >
             <Avatar agent={m.author === "agent"} />
             <div class="flex flex-wrap items-baseline gap-x-2 text-xs">
               <b class="font-semibold">{m.author === "agent" ? AGENT : "You"}</b>
@@ -85,9 +90,13 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
               <Show when={m.author === "user"}>
                 <span
                   class="text-[10.5px] font-medium"
-                  classList={{ "text-accent": m.deliveredAt !== null, "text-subtle": m.deliveredAt === null }}
+                  classList={{
+                    "text-accent": m.deliveredAt !== null,
+                    "text-subtle": m.deliveredAt === null && !props.review.isPending(m.id),
+                    "text-warn": props.review.isPending(m.id),
+                  }}
                 >
-                  · {delivery(m, t())}
+                  · {delivery(m, t(), props.review)}
                 </span>
               </Show>
             </div>

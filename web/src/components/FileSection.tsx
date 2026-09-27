@@ -37,7 +37,7 @@ export function FileSection(props: Props) {
     const byRow = new Map<number, Thread[]>();
     const m = model();
     if (!m) return byRow;
-    for (const t of props.review.conv.threads) {
+    for (const t of props.review.threads()) {
       if (t.anchor.path !== file().path) continue;
       const row = rowOf(m, t.anchor.side, t.anchor.end);
       if (row < 0) continue;

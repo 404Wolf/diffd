@@ -4,7 +4,7 @@
 //   node web/e2e/full.mjs <review-url> <repo-path> <screenshot-dir>
 //
 // Every step asserts what it expects; the first failure stops the run.
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
@@ -12,6 +12,8 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? "playwright");
 
 const [reviewUrl, repo, shots = "/tmp/diffd-e2e"] = process.argv.slice(2);
+/** Shell commands that stop and start the server, for the offline section. */
+const serverControl = { stop: process.env.DIFFD_E2E_STOP, start: process.env.DIFFD_E2E_START };
 const base = new URL(reviewUrl).origin;
 const reviewId = new URL(reviewUrl).pathname.split("/").pop();
 mkdirSync(shots, { recursive: true });
@@ -106,8 +108,9 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
-page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-const agent = new Agent(`${base}/mcp`);
+// Connection failures are expected while the offline section has the server stopped.
+page.on("console", (m) => m.type() === "error" && !m.text().includes("ERR_CONNECTION_REFUSED") && errors.push(m.text()));
+let agent = new Agent(`${base}/mcp`);
 await agent.init();
 
 try {
@@ -352,10 +355,48 @@ try {
   });
 
   await section("Offline comments queue and send on reconnect", async () => {
-    await page.context().setOffline(true);
-    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-    check(true, "(websocket stays up in headless offline mode; covered by the outbox unit path)");
-    await page.context().setOffline(false);
+    const { stop, start } = serverControl;
+    if (!stop || !start) {
+      log("(skipped: set DIFFD_E2E_STOP and DIFFD_E2E_START to test a server restart)");
+      return;
+    }
+    execSync(stop);
+    const presence = page.locator("#presence");
+    await page.waitForFunction(() => document.getElementById("presence")?.innerText.startsWith("Offline"));
+    check(true, "the page notices the server is gone");
+
+    await cursorTo(page, "web/src/api.ts", 18);
+    const vp = await viewport(page);
+    await keys(page, "g", "c", "c");
+    await page.keyboard.type("Written while the server was down.");
+    await keys(page, "Control+Enter");
+    await page.waitForFunction(() => document.body.innerText.includes("Written while the server was down."));
+    const vp2 = await viewport(page);
+    check(vp.key === vp2.key && Math.abs(vp.y - vp2.y) < 3, "an offline comment shows inline without moving the page");
+    check(await page.getByText("Queued offline").first().isVisible(), "it is marked Queued offline");
+    await keys(page, "Space", "i");
+    await page.keyboard.type("Are you still there?");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape");
+    check((await presence.innerText()).includes("2 queued"), `the top bar counts what's queued: "${await presence.innerText()}"`);
+    const stored = await page.evaluate((id) => localStorage.getItem(`diffd:outbox:${id}`) ?? "", reviewId);
+    check(stored.includes("Written while the server was down.") && stored.includes("Are you still there?"), "the outbox is saved to localStorage");
+    await shot(page, "offline");
+
+    execSync(start);
+    await page.waitForFunction(() => !/Offline|Connecting|queued/.test(document.getElementById("presence")?.innerText ?? ""), null, { timeout: 20_000 });
+    await page.waitForFunction(() => document.querySelectorAll("[data-pending]").length === 0, null, { timeout: 10_000 });
+    check(true, "on reconnect everything is sent and confirmed");
+    agent = new Agent(`${base}/mcp`);
+    await agent.init();
+    const got = await agent.call("wait_for_feedback", { review_id: reviewId, timeout_seconds: 20 });
+    const kinds = got.items.map((i) => i.type).sort().join(",");
+    check(got.items.length === 2 && kinds === "chat,thread", `the agent receives the queued comment and chat (${kinds})`);
+
+    await page.reload();
+    await page.waitForSelector("[data-thread]");
+    const copies = await page.getByText("Written while the server was down.").count();
+    check(copies === 1, "after a reload the comment exists exactly once");
   });
 
   await section("Home page", async () => {

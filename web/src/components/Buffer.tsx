@@ -180,7 +180,7 @@ function usePaintCursor(props: Props) {
     // Re-paint after anything that re-renders rows.
     props.view.mode();
     props.review.snapshot();
-    props.review.conv.threads.length;
+    props.review.threads().length;
     for (let i = 0; i < props.review.snapshot().files.length; i++) props.view.visible(i);
     queueMicrotask(() => {
       for (const el of painted.rows) el.classList.remove("cur", "vsel");

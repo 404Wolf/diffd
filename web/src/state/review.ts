@@ -10,6 +10,8 @@ import type { ActivityItem } from "../gen/ActivityItem";
 import type { Anchor } from "../gen/Anchor";
 import type { ChatMessage } from "../gen/ChatMessage";
 import type { ClientMsg } from "../gen/ClientMsg";
+import type { Message } from "../gen/Message";
+import type { MessageId } from "../gen/MessageId";
 import type { Presence } from "../gen/Presence";
 import type { Region } from "../gen/Region";
 import type { ReviewMeta } from "../gen/ReviewMeta";
@@ -52,6 +54,59 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   });
   const [connection, setConnection] = createSignal<Connection>("connecting");
   const [error, setError] = createSignal<string | null>(null);
+  const [outbox, setOutbox] = createSignal<ClientMsg[]>([]);
+
+  /** Ids of messages written here that the server hasn't confirmed yet. */
+  const pendingIds = createMemo(
+    () =>
+      new Set(
+        outbox().flatMap((m) =>
+          m.type === "comment" || m.type === "reply" || m.type === "chat" ? [m.messageId] : [],
+        ),
+      ),
+  );
+  /** The server's threads with anything still in the outbox folded in, so nothing written disappears. */
+  const threads = createMemo<Thread[]>(() => {
+    const queued = outbox();
+    if (queued.length === 0) return conv.threads;
+    const known = new Set(conv.threads.flatMap((t) => t.messages.map((m) => m.id)));
+    const extra = new Map<string, Message[]>();
+    const fresh: Thread[] = [];
+    for (const msg of queued) {
+      if (msg.type === "comment" && !known.has(msg.messageId)) {
+        fresh.push({
+          id: msg.threadId,
+          kind: { type: "comment" },
+          anchor: msg.anchor,
+          resolved: false,
+          changedIn: null,
+          outdated: false,
+          messages: [queuedMessage(msg.messageId, msg.body)],
+          createdAt: Date.now(),
+        });
+      } else if (msg.type === "reply" && !known.has(msg.messageId)) {
+        const list = extra.get(msg.threadId) ?? [];
+        list.push(queuedMessage(msg.messageId, msg.body));
+        extra.set(msg.threadId, list);
+      }
+    }
+    const merged = conv.threads.map((t) => {
+      const more = extra.get(t.id);
+      return more ? { ...t, messages: [...t.messages, ...more] } : t;
+    });
+    for (const t of fresh) {
+      const more = extra.get(t.id);
+      merged.push(more ? { ...t, messages: [...t.messages, ...more] } : t);
+    }
+    return merged;
+  });
+  const chat = createMemo<ChatMessage[]>(() => {
+    const known = new Set(conv.chat.map((c) => c.id));
+    const queued = outbox().flatMap((m) =>
+      m.type === "chat" && !known.has(m.messageId) ? [queuedMessage(m.messageId, m.body)] : [],
+    );
+    return queued.length === 0 ? conv.chat : [...conv.chat, ...queued];
+  });
 
   const models = createMemo<FileModel[]>(() => snapshot().files.map(fileModel));
   const paths = createMemo(() => snapshot().files.map((f) => f.path));
@@ -118,11 +173,13 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       .with({ type: "presence" }, ({ presence }) => setConv("presence", presence))
       .with({ type: "show" }, ({ request }) => events.onShow?.(request))
       .with({ type: "error" }, ({ message }) => setError(message))
+      // The socket consumes acks itself; they never reach here.
+      .with({ type: "ack" }, () => {})
       .exhaustive();
 
   let socket: Socket | null = null;
   const start = () => {
-    socket = connect(initial.review.id, apply, setConnection);
+    socket = connect(initial.review.id, { onMessage: apply, onStatus: setConnection, onOutbox: setOutbox });
   };
   const send = (msg: ClientMsg) => {
     if (socket) socket.send(msg);
@@ -143,11 +200,17 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     unread,
     start,
     stop: () => socket?.close(),
-    comment: (anchor: Anchor, body: string) => send({ type: "comment", anchor, body }),
-    reply: (threadId: ThreadId, body: string) => send({ type: "reply", threadId, body }),
+    threads,
+    chat,
+    /** Whether a message is still waiting for the server to confirm it. */
+    isPending: (id: MessageId) => pendingIds().has(id),
+    pendingCount: () => pendingIds().size,
+    comment: (anchor: Anchor, body: string) =>
+      send({ type: "comment", threadId: newId(), messageId: newId(), anchor, body }),
+    reply: (threadId: ThreadId, body: string) => send({ type: "reply", threadId, messageId: newId(), body }),
     resolve: (threadId: ThreadId, resolved: boolean) => send({ type: "resolve", threadId, resolved }),
     drafting: (drafting: boolean) => send({ type: "drafting", drafting }),
-    chat: (body: string) => send({ type: "chat", body }),
+    say: (body: string) => send({ type: "chat", messageId: newId(), body }),
     markRead: (seq: number) => {
       if (seq <= conv.readSeq) return;
       setConv("readSeq", seq);
@@ -170,4 +233,14 @@ export function fromAgent(a: ActivityItem): boolean {
     )
     .with({ type: "opened" }, { type: "userCommented" }, () => false)
     .exhaustive();
+}
+
+function queuedMessage(id: MessageId, body: string): Message {
+  return { id, author: "user", body, createdAt: Date.now(), deliveredAt: null };
+}
+
+/** A random id for something written here, so the server can tell a resend from a new message. */
+export function newId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return `p${Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("")}`;
 }

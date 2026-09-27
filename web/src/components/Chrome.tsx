@@ -15,15 +15,19 @@ export function TopBar(props: { review: Review }) {
       .snapshot()
       .files.reduce((t, f) => ({ add: t.add + f.added, del: t.del + f.removed }), { add: 0, del: 0 }),
   );
+  const queued = () => {
+    const n = props.review.pendingCount();
+    return n === 0 ? "" : ` · ${n} queued`;
+  };
   const presence = () =>
     match([props.review.connection(), props.review.conv.presence] as const)
       .with(["offline", "listening"], ["offline", "working"], ["offline", "away"], () => ({
         dot: "bg-subtle",
-        text: "Offline · read-only",
+        text: `Offline${queued() || " · reconnecting"}`,
       }))
       .with(["connecting", "listening"], ["connecting", "working"], ["connecting", "away"], () => ({
         dot: "bg-subtle",
-        text: "Connecting…",
+        text: `Connecting…${queued()}`,
       }))
       .with(["live", "listening"], () => ({ dot: "bg-live", text: `${AGENT} is listening` }))
       .with(["live", "working"], () => ({ dot: "bg-warn animate-pulse", text: `${AGENT} is working` }))
@@ -50,7 +54,10 @@ export function TopBar(props: { review: Review }) {
         <span class="text-del">−{totals().del}</span>
       </span>
       <span class="flex-1" />
-      <span class="inline-flex h-6 items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 text-xs font-medium whitespace-nowrap">
+      <span
+        id="presence"
+        class="inline-flex h-6 items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 text-xs font-medium whitespace-nowrap"
+      >
         <span class={`size-[7px] rounded-full ${presence().dot}`} />
         {presence().text}
       </span>

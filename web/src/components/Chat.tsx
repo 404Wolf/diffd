@@ -9,21 +9,21 @@ export function Chat(props: { review: Review; view: View }) {
   let log: HTMLDivElement | undefined;
   let input: HTMLInputElement | undefined;
   createEffect(() => {
-    props.review.conv.chat.length;
+    props.review.chat().length;
     queueMicrotask(() => log?.scrollTo({ top: log.scrollHeight }));
   });
   const send = (e: SubmitEvent) => {
     e.preventDefault();
     const text = input?.value.trim();
     if (!text || !input) return;
-    props.review.chat(text);
+    props.review.say(text);
     input.value = "";
   };
   return (
     <section aria-label={`Chat with ${AGENT}`} class="flex-none border-t border-line bg-panel">
-      <Show when={props.review.conv.chat.length > 0}>
+      <Show when={props.review.chat().length > 0}>
         <div ref={log} class="flex max-h-[190px] flex-col gap-1.5 overflow-auto px-3 pt-1.5">
-          <For each={props.review.conv.chat}>
+          <For each={props.review.chat()}>
             {(m) => (
               <div class="grid grid-cols-[20px_minmax(0,1fr)] gap-2 text-[12.5px]">
                 <div
@@ -35,7 +35,14 @@ export function Chat(props: { review: Review; view: View }) {
                 >
                   {m.author === "agent" ? "✦" : "Y"}
                 </div>
-                <Markdown text={m.body} paths={props.review.paths()} class="max-w-[90ch] pt-px" />
+                <div class="min-w-0" classList={{ "opacity-75": props.review.isPending(m.id) }}>
+                  <Markdown text={m.body} paths={props.review.paths()} class="max-w-[90ch] pt-px" />
+                  <Show when={props.review.isPending(m.id)}>
+                    <span data-pending class="text-[10.5px] font-medium text-warn">
+                      {props.review.connection() === "live" ? "Sending…" : "Queued offline"}
+                    </span>
+                  </Show>
+                </div>
               </div>
             )}
           </For>

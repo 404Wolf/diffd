@@ -264,7 +264,7 @@ export function createCommands(review: Review, view: View) {
       dir > 0
         ? cards.find((c) => !cur || follows(cur, c))
         : [...cards].reverse().find((c) => cur && follows(c, cur));
-    const t = review.conv.threads.find((x) => x.id === card?.dataset.thread);
+    const t = review.threads().find((x) => x.id === card?.dataset.thread);
     if (!t) return view.say("No more threads that way");
     goToThread(t);
   };
@@ -273,7 +273,7 @@ export function createCommands(review: Review, view: View) {
     review.markRead(item.seq);
     match(item.kind)
       .with({ type: "userCommented" }, { type: "agentReplied" }, { type: "agentNoted" }, ({ threadId }) => {
-        const t = review.conv.threads.find((x) => x.id === threadId);
+        const t = review.threads().find((x) => x.id === threadId);
         if (t) goToThread(t);
       })
       .with({ type: "revision" }, ({ paths }) => {
@@ -513,7 +513,7 @@ export function createCommands(review: Review, view: View) {
     const cards = [...(bufferEl()?.querySelectorAll<HTMLElement>("[data-thread]") ?? [])];
     const cur = cursorEl();
     const card = cards.find((c) => !cur || follows(cur, c)) ?? cards.at(-1);
-    return review.conv.threads.find((t) => t.id === card?.dataset.thread);
+    return review.threads().find((t) => t.id === card?.dataset.thread);
   };
   const closeComposer = () => {
     if (!view.composer()) return;

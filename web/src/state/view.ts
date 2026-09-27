@@ -100,7 +100,7 @@ export function createView(review: Review) {
   // Rows shown per file. Files whose rows didn't change across a revision keep their folds.
   const visibleSignals: [Accessor<Uint8Array>, Setter<Uint8Array>][] = [];
   const pinnedRows = (file: number): number[] =>
-    review.conv.threads.flatMap((t) => {
+    review.threads().flatMap((t) => {
       if (t.anchor.path !== review.snapshot().files[file]?.path) return [];
       const model = review.models()[file];
       if (!model) return [];

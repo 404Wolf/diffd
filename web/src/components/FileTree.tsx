@@ -23,14 +23,14 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     for (const a of props.review.unread()) {
       if ("threadId" in a.kind) {
         const id = a.kind.threadId;
-        const t = props.review.conv.threads.find((x) => x.id === id);
+        const t = props.review.threads().find((x) => x.id === id);
         if (t) set.add(t.anchor.path);
       }
     }
     return set;
   });
   const threadCount = (path: string) =>
-    props.review.conv.threads.filter((t) => t.anchor.path === path && t.kind.type === "comment").length;
+    props.review.threads().filter((t) => t.anchor.path === path && t.kind.type === "comment").length;
 
   const Node = (p: { node: TreeNode }) => (
     <Switch>
