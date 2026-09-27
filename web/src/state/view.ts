@@ -67,6 +67,18 @@ export interface Place {
   readonly top: { readonly file: number; readonly row: number; readonly offset: number } | null;
 }
 
+/** A vim mark: a line you can come back to with `'` or `` ` ``. */
+export interface Mark {
+  readonly path: string;
+  readonly side: Side;
+  /** 1-based. */
+  readonly line: number;
+  /** The line's code when the mark was set, for the marks list. */
+  readonly text: string;
+}
+
+export type RightTab = "activity" | "commits";
+
 export interface Drawer {
   size: number;
   collapsed: boolean;
@@ -228,8 +240,17 @@ export function createView(review: Review) {
     }),
   );
   createEffect(() => save("diffd:drawers", { left: { ...drawers.left }, right: { ...drawers.right } }));
+  const [rightTab, setRightTab] = createSignal<RightTab>(load<RightTab>("diffd:right-tab", "activity"));
+  createEffect(() => save("diffd:right-tab", rightTab()));
+
+  const [marks, setMarks] = createStore<Record<string, Mark>>(load(`diffd:marks:${id}`, {}));
+  createEffect(() => save(`diffd:marks:${id}`, { ...marks }));
 
   return {
+    marks,
+    setMarks,
+    rightTab,
+    setRightTab,
     visible,
     setVisible,
     flags,

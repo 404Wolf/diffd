@@ -4,6 +4,7 @@
  */
 
 import { batch } from "solid-js";
+import { produce } from "solid-js/store";
 import { match } from "ts-pattern";
 import type { ActivityItem } from "../gen/ActivityItem";
 import type { ShowRequest } from "../gen/ShowRequest";
@@ -209,6 +210,31 @@ export function createCommands(review: Review, view: View) {
       }
     }
   };
+  // -- Marks -----------------------------------------------------------------------
+
+  const setMark = (name: string) => {
+    const c = view.cursor();
+    const f = c ? files()[c.file] : undefined;
+    const row = c && f ? f.rows[c.row] : undefined;
+    const line = row && c ? (c.side === "old" ? row[0] : row[1]) : null;
+    if (!c || !f || line === null || line === undefined) return view.say("No line here to mark");
+    view.setMarks(name, { path: f.path, side: c.side, line: line + 1, text: lineText(c).trim() });
+    view.say(`Mark ${name} set`);
+  };
+  const jumpToMark = (name: string) => {
+    const m = view.marks[name];
+    if (!m) return view.say(`No mark ${name}`);
+    const file = review.paths().indexOf(m.path);
+    if (file < 0) return view.say(`Mark ${name} is in ${m.path}, which isn't in this view`);
+    goTo(file, m.side, m.line);
+  };
+  const deleteMark = (name: string) =>
+    view.setMarks(
+      produce((marks) => {
+        delete marks[name];
+      }),
+    );
+
   const goToThread = (t: Thread) => {
     const file = review.paths().indexOf(t.anchor.path);
     if (file >= 0) goTo(file, t.anchor.side, t.anchor.end, { card: `thread-${t.id}` });
@@ -640,6 +666,9 @@ export function createCommands(review: Review, view: View) {
     references,
     outline,
     filePicker,
+    setMark,
+    jumpToMark,
+    deleteMark,
     stepCommit,
     commitPicker,
     search,

@@ -76,7 +76,16 @@ export function FileSection(props: Props) {
       if (t.anchor.path === file().path && t.anchor.side === "new")
         for (let l = t.anchor.start; l <= t.anchor.end; l++) noted.add(l);
     }
-    return { noted, since: new Set(file().since), refs: props.review.definedNames(), tests: testRows() };
+    const named = new Map<string, string>();
+    for (const [name, m] of Object.entries(props.view.marks))
+      if (m.path === file().path) named.set(`${m.side}:${m.line}`, name);
+    return {
+      noted,
+      since: new Set(file().since),
+      refs: props.review.definedNames(),
+      tests: testRows(),
+      named,
+    };
   });
 
   // Keep block identities stable across recomputation, so only changed blocks re-render.

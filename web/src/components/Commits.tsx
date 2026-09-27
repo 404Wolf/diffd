@@ -31,14 +31,8 @@ export function Commits(props: { review: Review }) {
 
   return (
     <Show when={h().commits.length > 0}>
-      <nav aria-label="Commits" class="border-b border-line">
-        <div class="flex items-center gap-1.5 px-2.5 pt-2 pb-1 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
-          Commits <span class="font-medium tracking-normal text-subtle">{h().commits.length}</span>
-          <span class="ml-auto font-normal tracking-normal normal-case text-subtle">
-            <kbd>[r</kbd> <kbd>]r</kbd>
-          </span>
-        </div>
-        <ul class="max-h-[38vh] overflow-auto px-1.5 pb-1.5">
+      <nav aria-label="Commits">
+        <ul class="px-1.5 pt-1 pb-2">
           <Item
             selected={current() === null}
             loading={false}

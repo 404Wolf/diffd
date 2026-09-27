@@ -105,6 +105,8 @@ export interface RowMarks {
   readonly refs: ReadonlySet<string>;
   /** Rows the agent marked as tests. */
   readonly tests: ReadonlySet<number>;
+  /** The user's vim marks, by `side:line` (1-based). */
+  readonly named?: ReadonlyMap<string, string>;
 }
 
 function cell(
@@ -126,7 +128,9 @@ function cell(
     novelClass: side === "old" ? "nv-del" : "nv-add",
     refs: marks.refs,
   });
-  return `<div class="${cls}" data-n="${n}" data-side="${side}"></div><div class="code" data-side="${side}">${body}</div>`;
+  const mark = marks.named?.get(`${side}:${n}`);
+  const markHtml = mark ? `<i class="mk">${mark}</i>` : "";
+  return `<div class="${cls}" data-n="${n}" data-side="${side}">${markHtml}</div><div class="code" data-side="${side}">${body}</div>`;
 }
 
 /** One aligned row of the split view. */

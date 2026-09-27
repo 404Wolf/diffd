@@ -8,14 +8,13 @@ import { createCommands } from "../state/commands";
 import { bufferEl, keepViewport, navigableRows } from "../state/dom";
 import { createReview } from "../state/review";
 import { createView, type View } from "../state/view";
-import { Activity } from "./Activity";
 import { Buffer } from "./Buffer";
 import { Chat } from "./Chat";
 import { Help, Nudge, Picker, StatusLine, TopBar } from "./Chrome";
 import { CommentPopover, SelectionBubble } from "./CommentPopover";
-import { Commits } from "./Commits";
 import { Drawer } from "./Drawer";
 import { FileTree } from "./FileTree";
+import { RightPanel } from "./RightPanel";
 
 /** Wait this long for the rest of a key sequence (`g` → `g d`). */
 const SEQUENCE_TIMEOUT_MS = 1000;
@@ -138,7 +137,6 @@ export function ReviewPage(props: { state: ReviewState }) {
       <TopBar review={review} />
       <div ref={container} class="relative flex min-h-0 flex-1">
         <Drawer side="left" label="Files" state={v.drawers.left} onChange={(s) => v.setDrawers("left", s)}>
-          <Commits review={review} />
           <FileTree review={review} view={v} cmd={cmd} current={currentFile} />
         </Drawer>
         <div class="flex min-w-0 flex-1 flex-col">
@@ -147,12 +145,12 @@ export function ReviewPage(props: { state: ReviewState }) {
         </div>
         <Drawer
           side="right"
-          label="Activity"
+          label="Activity and commits"
           state={v.drawers.right}
           onChange={(s) => v.setDrawers("right", s)}
           badge={review.unread().length > 0}
         >
-          <Activity review={review} cmd={cmd} />
+          <RightPanel review={review} view={v} cmd={cmd} />
         </Drawer>
         <Nudge view={v} cmd={cmd} />
         <SelectionBubble cmd={cmd} view={v} container={() => container} />

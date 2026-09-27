@@ -252,7 +252,7 @@ try {
     }
     await page.waitForFunction(() => document.body.innerText.includes("Claude replied"));
     check(true, "replies appear inline, marked Claude replied");
-    const unread = await page.locator("aside[aria-label='Activity'] span.rounded-full").first().innerText();
+    const unread = await page.locator("[role=tab] span.rounded-full").first().innerText();
     check(Number(unread) >= 3, `the activity feed counts ${unread} unread`);
     await shot(page, "replies");
     await keys(page, "]", "n");
@@ -354,6 +354,21 @@ try {
     check(true, "resolving a thread marks it resolved");
   });
 
+  await section("Marks", async () => {
+    await cursorTo(page, "cmd/probe/main.go", 11);
+    await keys(page, "m", "a");
+    check((await page.locator("section[aria-label='Marks']").innerText()).includes("main.go:11"), "m a lists the mark");
+    check((await page.locator(".mk").count()) >= 1, "and shows its letter in the gutter");
+    await keys(page, "g", "g");
+    await keys(page, "'", "a");
+    check((await status(page)).includes("main.go:11"), "'a jumps back to it");
+    await keys(page, "g", "g");
+    await keys(page, "`", "a");
+    check((await status(page)).includes("main.go:11"), "`a too");
+    await keys(page, "'", "z");
+    check((await status(page)).includes("No mark z"), "an unset mark says so");
+  });
+
   await section("Offline comments queue and send on reconnect", async () => {
     const { stop, start } = serverControl;
     if (!stop || !start) {
@@ -397,9 +412,11 @@ try {
     await page.waitForSelector("[data-thread]");
     const copies = await page.getByText("Written while the server was down.").count();
     check(copies === 1, "after a reload the comment exists exactly once");
+    check((await page.locator("section[aria-label='Marks']").innerText()).includes("main.go:11"), "marks survive a reload");
   });
 
   await section("Walking the commits one at a time", async () => {
+    await page.getByRole("tab", { name: /Commits/ }).click();
     const commits = page.locator("nav[aria-label='Commits'] li button");
     check((await commits.count()) === 5, "the commits panel lists all changes, three commits and uncommitted changes");
     const paths = () => page.$$eval("[data-file-section] [data-path]", (els) => els.map((e) => e.dataset.path));

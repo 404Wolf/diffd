@@ -11,6 +11,8 @@ export interface Ctx {
   readonly view: View;
 }
 
+const MARK_NAMES = [..."abcdefghijklmnopqrstuvwxyz"];
+
 const diffModes = ["normal", "visual", "symbol"] as const;
 
 export const BINDINGS: readonly Binding<Ctx>[] = [
@@ -122,6 +124,20 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     run: () => document.getElementById("chat-input")?.focus(),
     help: ["Talk", "Ask Claude anything"],
   },
+  // Marks: m{a-z} sets one at the cursor, ' or ` jumps back to it.
+  ...MARK_NAMES.flatMap((name, i): Binding<Ctx>[] => [
+    {
+      keys: `m ${name}`,
+      run: ({ cmd }) => cmd.setMark(name),
+      ...(i === 0 ? { help: ["Marks", "Set mark a–z at the cursor (ma)"] as const } : {}),
+    },
+    {
+      keys: `' ${name}`,
+      run: ({ cmd }) => cmd.jumpToMark(name),
+      ...(i === 0 ? { help: ["Marks", "Jump to a mark ('a or `a)"] as const } : {}),
+    },
+    { keys: `\` ${name}`, run: ({ cmd }) => cmd.jumpToMark(name) },
+  ]),
   // Panels
   { keys: "space e", run: ({ cmd }) => cmd.toggleDrawer("left"), help: ["Panels", "Files drawer"] },
   { keys: "space n", run: ({ cmd }) => cmd.toggleDrawer("right"), help: ["Panels", "Activity drawer"] },
@@ -141,7 +157,8 @@ export function helpEntries(): { group: string; label: string; keys: string[] }[
     else if (
       last &&
       b.keys !== "esc" &&
-      !["down", "up", "ctrl-p", "ctrl-]", "shift-enter", "v", "c", "enter"].includes(b.keys)
+      !["down", "up", "ctrl-p", "ctrl-]", "shift-enter", "v", "c", "enter"].includes(b.keys) &&
+      !/^[m'`] /.test(b.keys)
     )
       last.keys.push(b.keys);
   }

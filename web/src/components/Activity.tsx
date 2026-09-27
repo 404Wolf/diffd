@@ -46,22 +46,18 @@ export function Activity(props: { review: Review; cmd: Commands }) {
   const isUnread = (a: ActivityItem) => a.seq > props.review.conv.readSeq && fromAgent(a);
   return (
     <section aria-label="Activity">
-      <div class="sticky top-0 z-[2] flex items-center gap-2 bg-panel px-2.5 pt-2 pb-1.5 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
-        Activity
-        <Show when={props.review.unread().length > 0}>
-          <span class="min-w-4 rounded-full bg-accent px-1.5 text-center text-[10px] leading-4 tracking-normal text-accent-fg">
-            {props.review.unread().length}
-          </span>
+      <Show when={props.review.unread().length > 0}>
+        <div class="flex justify-end px-2.5 pt-1">
           <button
             type="button"
-            class="ml-auto cursor-pointer text-[10.5px] font-normal tracking-normal normal-case text-muted hover:text-fg"
+            class="cursor-pointer text-[10.5px] text-muted hover:text-fg"
             onClick={() => props.review.markRead(props.review.conv.activity.at(-1)?.seq ?? 0)}
           >
             Mark all read
           </button>
-        </Show>
-      </div>
-      <ol class="flex flex-col gap-px px-1.5 pb-2.5">
+        </div>
+      </Show>
+      <ol class="flex flex-col gap-px px-1.5 pt-1 pb-2">
         <For each={items()}>
           {(item) => {
             const d = describe(item);
