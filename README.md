@@ -31,8 +31,8 @@ the agent hears each comment once you pause.
   hover docs (`K`) and red/yellow squiggles, for Rust, TypeScript, Python,
   Go, Nix, YAML or anything you configure.
 - **Keyboard first**, mostly Zed's vim bindings: hunks, files, symbols, a
-  jump list, marks, text objects, splits. Browser Ctrl+F works and finds
-  folded lines too.
+  jump list, marks, text objects, splits. Ctrl+F finds in the file you're on (or
+  every file), folded lines too.
 - **Built for big diffs** (100k lines) and flaky connections. Comments
   written offline are sent on reconnect, from any tab.
 
@@ -96,7 +96,10 @@ would do.
 | Keys | |
 | --- | --- |
 | `j` `k`, `]c` `[c`, `]f` `[f` | lines, hunks, files |
-| `gcc`, `V` … `gc` | comment on a line, on selected lines |
+| `]g` `[g`, `space t g` | chapters of the agent's tour, tour or plain diff |
+| `zz` `zt` `zb`, `H` `M` `L`, `ctrl-e` `ctrl-y`, `12G` | vim's screen motions |
+| `ctrl-f`, `/`, `n` `N`, `space /` | find in this file (or all), next / previous, every line as a list |
+| `gc`, `V` … `gc` | comment on a line, on selected lines |
 | `r`, `space i` | reply to a thread, ask the agent anything |
 | `gd`, `gt`, `K`, `grr` | definition, type definition, docs, references |
 | `w` `b` | step through symbols on the line |
@@ -105,10 +108,11 @@ would do.
 | `g enter`, `g space` | the plain file here, or in a split |
 | `ctrl-\`, `ctrl-esc`, `ctrl-h` `ctrl-l` | split, close a split, move between splits |
 | `]r` `[r`, `space c` | walk the commits |
-| `ma`, `'a` | set a mark, jump to it |
+| `ma`, `'a`, `mA`, `''` | set a mark (a–z, A–Z), jump to it, back to where you jumped from |
 | `vip`, `vaf`, `vi{`, `vat` | select a paragraph, function, block, tag |
 | `]a`, `]n`, `]t` | the agent's notes, unread activity, threads |
-| `space f`, `/`, `?` | go to file, search every line, all keys |
+| `space f`, `?` | go to file, all keys |
+| shift+click | open a file or `path:line` link in a split |
 
 ## Configure
 
