@@ -1,628 +1,572 @@
 <title>diffd Review Mockup</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
+/* One token set, named the way the Tailwind theme will name them. */
 :root {
-  --page: #e8ecf0; --bg: #ffffff; --bg-subtle: #f6f8fa; --bg-inset: #f1f4f7; --bg-hover: #eaeef2;
-  --border: #d1d9e0; --border-muted: #e4e9ee;
-  --fg: #1f2328; --fg-muted: #59636e; --fg-subtle: #858f99;
-  --accent: #0f766e; --accent-fg: #ffffff; --accent-soft: #ddf2ee;
-  --cursor: rgba(15, 118, 110, 0.08); --visual: rgba(15, 118, 110, 0.17);
-  --add-line: #e7fbeb; --add-num: #d0f7d9; --add-em: #abefbc; --add-fg: #1a7f37;
-  --del-line: #fff0ee; --del-num: #ffdbd7; --del-em: #ffc3bd; --del-fg: #cf222e;
-  --mod-fg: #9a6700; --empty: #f5f7f9;
-  --agent: #8a5a00; --agent-bg: #fffaeb; --agent-border: #eed79a; --agent-dot: #d4a72c; --agent-ink: #2b1d00;
-  --live: #1a7f37; --since: #d4a72c;
-  --syn-keyword: #cf222e; --syn-string: #0a3069; --syn-comment: #6e7781; --syn-constant: #0550ae;
-  --syn-function: #6639ba; --syn-type: #953800; --syn-attr: #0550ae; --syn-tag: #116329;
-  --shadow-window: 0 1px 2px rgba(31, 35, 40, 0.06), 0 12px 32px rgba(31, 35, 40, 0.1);
-  --shadow-pop: 0 8px 24px rgba(31, 35, 40, 0.18);
+  --page: #e4e4e7; --bg: #ffffff; --panel: #fafafa; --inset: #f4f4f5; --hover: #efeff1;
+  --line: #e4e4e7; --line-strong: #d4d4d8;
+  --fg: #18181b; --muted: #52525b; --subtle: #a1a1aa;
+  --accent: #4f46e5; --accent-fg: #ffffff; --accent-soft: #eef2ff; --accent-line: #c7d2fe;
+  --cursor: rgba(79, 70, 229, 0.07); --visual: rgba(79, 70, 229, 0.14);
+  --add: #15803d; --add-bg: #dcfce7; --add-gutter: #f0fdf4; --add-mark: #4ade80;
+  --del: #b91c1c; --del-bg: #fee2e2; --del-gutter: #fef2f2; --del-mark: #f87171;
+  --mod-mark: #facc15; --warn: #b45309; --live: #16a34a;
+  --syn-keyword: #7e22ce; --syn-string: #0369a1; --syn-comment: #a1a1aa; --syn-constant: #0e7490;
+  --syn-function: #1d4ed8; --syn-type: #a16207; --syn-attr: #64748b; --syn-tag: #0f766e;
+  --shadow: 0 1px 2px rgba(24, 24, 27, 0.06), 0 10px 28px rgba(24, 24, 27, 0.13);
   --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-code: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --page: #05080c; --bg: #0d1117; --bg-subtle: #151b23; --bg-inset: #10151c; --bg-hover: #1c232c;
-    --border: #2d3440; --border-muted: #212832;
-    --fg: #e6edf3; --fg-muted: #9198a1; --fg-subtle: #6b737d;
-    --accent: #2cc5b0; --accent-fg: #03201b; --accent-soft: rgba(44, 197, 176, 0.14);
-    --cursor: rgba(44, 197, 176, 0.08); --visual: rgba(44, 197, 176, 0.18);
-    --add-line: rgba(46, 160, 67, 0.13); --add-num: rgba(46, 160, 67, 0.22); --add-em: rgba(46, 160, 67, 0.42); --add-fg: #3fb950;
-    --del-line: rgba(248, 81, 73, 0.11); --del-num: rgba(248, 81, 73, 0.2); --del-em: rgba(248, 81, 73, 0.4); --del-fg: #f85149;
-    --mod-fg: #d29922; --empty: #11161d;
-    --agent: #e3b341; --agent-bg: rgba(187, 128, 9, 0.1); --agent-border: rgba(187, 128, 9, 0.38); --agent-dot: #d29922; --agent-ink: #1f1300;
-    --live: #3fb950; --since: #d29922;
-    --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #8b949e; --syn-constant: #79c0ff;
-    --syn-function: #d2a8ff; --syn-type: #ffa657; --syn-attr: #79c0ff; --syn-tag: #7ee787;
-    --shadow-window: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 16px 40px rgba(0, 0, 0, 0.5);
-    --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.55);
+    --page: #000000; --bg: #0c0c0e; --panel: #111114; --inset: #161619; --hover: #1d1d21;
+    --line: #26262b; --line-strong: #34343a;
+    --fg: #f4f4f5; --muted: #a1a1aa; --subtle: #63636b;
+    --accent: #818cf8; --accent-fg: #0c0c1a; --accent-soft: rgba(129, 140, 248, 0.13); --accent-line: rgba(129, 140, 248, 0.35);
+    --cursor: rgba(129, 140, 248, 0.08); --visual: rgba(129, 140, 248, 0.16);
+    --add: #4ade80; --add-bg: rgba(74, 222, 128, 0.15); --add-gutter: rgba(74, 222, 128, 0.05); --add-mark: #16a34a;
+    --del: #f87171; --del-bg: rgba(248, 113, 113, 0.16); --del-gutter: rgba(248, 113, 113, 0.05); --del-mark: #dc2626;
+    --mod-mark: #ca8a04; --warn: #fbbf24; --live: #4ade80;
+    --syn-keyword: #c084fc; --syn-string: #7dd3fc; --syn-comment: #6b6b74; --syn-constant: #67e8f9;
+    --syn-function: #93c5fd; --syn-type: #fcd34d; --syn-attr: #94a3b8; --syn-tag: #5eead4;
+    --shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 12px 32px rgba(0, 0, 0, 0.6);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #05080c; --bg: #0d1117; --bg-subtle: #151b23; --bg-inset: #10151c; --bg-hover: #1c232c;
-  --border: #2d3440; --border-muted: #212832;
-  --fg: #e6edf3; --fg-muted: #9198a1; --fg-subtle: #6b737d;
-  --accent: #2cc5b0; --accent-fg: #03201b; --accent-soft: rgba(44, 197, 176, 0.14);
-  --cursor: rgba(44, 197, 176, 0.08); --visual: rgba(44, 197, 176, 0.18);
-  --add-line: rgba(46, 160, 67, 0.13); --add-num: rgba(46, 160, 67, 0.22); --add-em: rgba(46, 160, 67, 0.42); --add-fg: #3fb950;
-  --del-line: rgba(248, 81, 73, 0.11); --del-num: rgba(248, 81, 73, 0.2); --del-em: rgba(248, 81, 73, 0.4); --del-fg: #f85149;
-  --mod-fg: #d29922; --empty: #11161d;
-  --agent: #e3b341; --agent-bg: rgba(187, 128, 9, 0.1); --agent-border: rgba(187, 128, 9, 0.38); --agent-dot: #d29922; --agent-ink: #1f1300;
-  --live: #3fb950; --since: #d29922;
-  --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #8b949e; --syn-constant: #79c0ff;
-  --syn-function: #d2a8ff; --syn-type: #ffa657; --syn-attr: #79c0ff; --syn-tag: #7ee787;
-  --shadow-window: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 16px 40px rgba(0, 0, 0, 0.5);
-  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.55);
+  --page: #000000; --bg: #0c0c0e; --panel: #111114; --inset: #161619; --hover: #1d1d21;
+  --line: #26262b; --line-strong: #34343a;
+  --fg: #f4f4f5; --muted: #a1a1aa; --subtle: #63636b;
+  --accent: #818cf8; --accent-fg: #0c0c1a; --accent-soft: rgba(129, 140, 248, 0.13); --accent-line: rgba(129, 140, 248, 0.35);
+  --cursor: rgba(129, 140, 248, 0.08); --visual: rgba(129, 140, 248, 0.16);
+  --add: #4ade80; --add-bg: rgba(74, 222, 128, 0.15); --add-gutter: rgba(74, 222, 128, 0.05); --add-mark: #16a34a;
+  --del: #f87171; --del-bg: rgba(248, 113, 113, 0.16); --del-gutter: rgba(248, 113, 113, 0.05); --del-mark: #dc2626;
+  --mod-mark: #ca8a04; --warn: #fbbf24; --live: #4ade80;
+  --syn-keyword: #c084fc; --syn-string: #7dd3fc; --syn-comment: #6b6b74; --syn-constant: #67e8f9;
+  --syn-function: #93c5fd; --syn-type: #fcd34d; --syn-attr: #94a3b8; --syn-tag: #5eead4;
+  --shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
-body {
-  background: var(--page); color: var(--fg); font: 14px/1.5 var(--font-ui);
-  padding-inline: 16px; padding-block: 12px;
-  display: flex; flex-direction: column; gap: 10px;
-}
-button { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-kbd {
-  font: 500 11px/1 var(--font-code); padding: 2px 5px; border: 1px solid var(--border);
-  border-bottom-width: 2px; border-radius: 4px; background: var(--bg); color: var(--fg-muted); white-space: nowrap;
-}
+body { background: var(--page); color: var(--fg); font: 13px/1.45 var(--font-ui); padding-inline: 16px; padding-block: 10px; display: flex; flex-direction: column; gap: 8px; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+kbd { font: 500 10.5px/1 var(--font-code); padding: 2px 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); color: var(--muted); white-space: nowrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--hover); color: var(--fg); }
 
-/* Demo caption above the app window */
-.demo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 13px; color: var(--fg-muted); }
+.demo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 12.5px; color: var(--muted); }
 .demo strong { color: var(--fg); font-weight: 600; }
 .demo .spacer { flex: 1; }
-.btn {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
-  border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg);
-  cursor: pointer; font-size: 12.5px; font-weight: 500; white-space: nowrap;
-}
-.btn:hover { background: var(--bg-hover); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-.btn.primary:hover { filter: brightness(1.06); }
 
-/* App window */
-.app {
-  flex: 1; min-height: 580px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: var(--shadow-window); overflow: hidden;
-}
-.top {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 9px 12px;
-  border-bottom: 1px solid var(--border); background: var(--bg-subtle); min-width: 0;
-}
-.brand { display: flex; align-items: center; gap: 7px; font: 700 13px var(--font-code); letter-spacing: -0.01em; }
-.brand i { width: 9px; height: 9px; border-radius: 2px; background: var(--accent); transform: rotate(45deg); }
-.title-wrap { display: flex; flex-direction: column; min-width: 0; flex: 1 1 320px; }
-.title { font-weight: 600; font-size: 14.5px; text-wrap: balance; }
-.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: 12.5px; color: var(--fg-muted); }
-.branch { font: 12px var(--font-code); padding: 0 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); }
-.num-add { color: var(--add-fg); font-variant-numeric: tabular-nums; font-weight: 600; }
-.num-del { color: var(--del-fg); font-variant-numeric: tabular-nums; font-weight: 600; }
-.presence {
-  display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--bg); font-size: 12.5px; font-weight: 500; white-space: nowrap;
-}
-.presence .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 22%, transparent); }
-.presence[data-state="working"] .dot { background: var(--agent-dot); box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-dot) 25%, transparent); animation: pulse 1.2s ease-in-out infinite; }
+.app { flex: 1; min-height: 580px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; }
+
+/* Top bar */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: center; gap: 6px; font: 600 12.5px var(--font-code); }
+.brand i { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); transform: rotate(45deg); }
+.title { font-weight: 600; font-size: 13.5px; min-width: 0; }
+.revs { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.rev { font: 11.5px var(--font-code); padding: 1px 6px; border-radius: 4px; background: var(--inset); border: 1px solid var(--line); color: var(--fg); }
+.stats { display: flex; gap: 8px; font: 11.5px var(--font-code); font-variant-numeric: tabular-nums; color: var(--muted); }
+.a { color: var(--add); } .d { color: var(--del); }
+.grow { flex: 1; }
+.presence { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.presence .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 20%, transparent); }
+.presence[data-state="working"] .dot { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--bg); }
-.seg button { border: 0; background: transparent; height: 26px; padding: 0 9px; font-size: 12px; cursor: pointer; color: var(--fg-muted); }
-.seg button + button { border-left: 1px solid var(--border); }
-.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-/* Three panes */
-.main {
-  --tree: 264px; --act: 292px; position: relative; min-height: 0;
-  display: grid; grid-template-columns: var(--tree) minmax(0, 1fr) var(--act);
-}
-.main[data-tree="off"] { --tree: 0px; }
-.main[data-act="off"] { --act: 0px; }
-.main[data-tree="off"] .tree, .main[data-act="off"] .activity { display: none; }
-.tree { grid-column: 1; grid-row: 1; }
-.buffer { grid-column: 2; grid-row: 1; }
-.activity { grid-column: 3; grid-row: 1; }
+/* Columns: tree drawer · (multibuffer over chat) · activity drawer */
+.main { position: relative; min-height: 0; display: grid; grid-template-columns: var(--lw, 240px) minmax(0, 1fr) var(--rw, 240px); }
+.drawer { position: relative; min-width: 0; min-height: 0; display: flex; background: var(--panel); }
+.drawer.left { grid-column: 1; border-right: 1px solid var(--line); }
+.drawer.right { grid-column: 3; border-left: 1px solid var(--line); flex-direction: row-reverse; }
+.drawer-body { flex: 1; min-width: 0; overflow: auto; }
+.drawer.closed .drawer-body { display: none; }
+.handle { flex: none; width: 7px; cursor: col-resize; position: relative; touch-action: none; z-index: 4; }
+.drawer.left .handle { margin-right: -4px; }
+.drawer.right .handle { margin-left: -4px; }
+.handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background 0.12s; }
+.handle:hover::after, .handle.dragging::after { background: var(--accent); }
+.drawer.closed .handle { width: 11px; margin: 0; cursor: pointer; }
+.drawer.closed .handle::after { display: none; }
+.drawer.closed .handle::before { content: ""; position: absolute; top: 50%; left: 4px; width: 3px; height: 32px; margin-top: -16px; border-radius: 3px; background: var(--line-strong); }
+.drawer.closed .handle:hover::before { background: var(--accent); }
+.drawer.closed .handle .badge { position: absolute; top: 8px; left: 1px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.center { grid-column: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.buffer { flex: 1; min-height: 0; overflow: auto; background: var(--inset); overscroll-behavior: contain; padding-bottom: 24px; }
 
-/* File tree */
-.tree { border-right: 1px solid var(--border); background: var(--bg-subtle); overflow: auto; min-height: 0; }
-.tree-filter {
-  display: block; margin: 10px; width: calc(100% - 20px); height: 30px; padding: 0 10px;
-  border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui);
-}
-.tree ul { list-style: none; margin: 0; padding: 0 0 12px; }
-.t-row {
-  display: flex; align-items: center; gap: 6px; height: 28px; padding-right: 10px;
-  font-size: 13px; cursor: pointer; user-select: none; white-space: nowrap;
-}
-.t-row:hover { background: var(--bg-hover); }
-.t-dir { color: var(--fg-muted); font-weight: 500; }
-.t-dir .chev { width: 12px; font-size: 10px; color: var(--fg-subtle); transition: transform 0.12s; }
+/* Tree */
+.pane-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 8px 8px 6px 10px; background: var(--panel); font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.pane-head .n { font-weight: 500; letter-spacing: 0; color: var(--subtle); }
+.filter { display: block; width: calc(100% - 16px); margin: 0 8px 6px; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); font-size: 12px; }
+.tree ul { list-style: none; margin: 0; padding: 0; }
+.tree ul ul { margin-left: 10px; padding-left: 3px; border-left: 1px solid var(--line); }
+.tree > ul { padding: 0 6px 10px; }
+.t-row { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 6px 0 3px; border-radius: 4px; font-size: 12.5px; cursor: pointer; user-select: none; white-space: nowrap; }
+.t-row:hover { background: var(--hover); }
+.t-dir { color: var(--muted); }
+.t-dir .chev { width: 12px; flex: none; font-size: 8px; color: var(--subtle); text-align: center; transition: transform 0.1s; }
 .t-dir[aria-expanded="false"] .chev { transform: rotate(-90deg); }
 .t-file .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.t-file[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); }
-.t-file.viewed .name { color: var(--fg-subtle); }
-.st { font: 700 10.5px/16px var(--font-code); width: 16px; text-align: center; border-radius: 4px; flex: none; }
-.st[data-s="M"] { color: var(--mod-fg); } .st[data-s="A"] { color: var(--add-fg); } .st[data-s="D"] { color: var(--del-fg); }
-.t-counts { display: flex; gap: 5px; font: 11.5px var(--font-code); font-variant-numeric: tabular-nums; }
-.t-counts .a { color: var(--add-fg); } .t-counts .d { color: var(--del-fg); }
-.t-badge { font-size: 11px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
-.dot-unread { width: 7px; height: 7px; border-radius: 50%; background: var(--agent-dot); flex: none; }
+.t-file[aria-current="true"] { background: var(--accent-soft); }
+.t-file.dim .name { color: var(--subtle); }
+.st { flex: none; width: 12px; text-align: center; font: 600 10px var(--font-code); }
+.st[data-s="M"] { color: var(--warn); } .st[data-s="A"] { color: var(--add); } .st[data-s="D"] { color: var(--del); }
+.t-meta { display: flex; align-items: center; gap: 6px; color: var(--subtle); font: 10.5px var(--font-code); }
+.t-meta .c { display: inline-flex; align-items: center; gap: 2px; }
+.t-meta .c.unread { color: var(--accent); font-weight: 600; }
+.bar { display: inline-flex; gap: 1px; }
+.bar i { width: 5px; height: 5px; border-radius: 1px; background: var(--line-strong); }
+.bar i.a { background: var(--add); } .bar i.d { background: var(--del); }
+.dotu { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
 /* Multibuffer */
-.buffer { overflow: auto; min-height: 0; background: var(--bg-inset); overscroll-behavior: contain; padding-bottom: 32px; }
-.summary {
-  margin: 14px 14px 4px; padding: 12px 16px; border: 1px solid var(--agent-border);
-  background: var(--agent-bg); border-radius: 8px; font-size: 13.5px;
-}
-.summary h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 12.5px; color: var(--agent); }
-.summary p { margin: 0; max-width: 78ch; }
-.md code { font: 12px var(--font-code); background: color-mix(in srgb, var(--fg) 7%, transparent); padding: 1px 4px; border-radius: 4px; }
-.file { margin: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); overflow: clip; }
-.file-head {
-  position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; min-height: 38px;
-  padding: 5px 10px; background: var(--bg-subtle); border-bottom: 1px solid var(--border); font-size: 12.5px;
-}
+.summary { margin: 10px 10px 2px; padding: 8px 12px; border: 1px solid var(--accent-line); border-radius: 6px; background: var(--bg); font-size: 12.5px; }
+.summary b { color: var(--accent); font-weight: 600; }
+.summary p { margin: 2px 0 0; max-width: 90ch; }
+.md code { font: 11.5px var(--font-code); background: var(--inset); padding: 0 4px; border-radius: 3px; }
+.file { margin: 8px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); overflow: clip; }
+.file-head { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 12px; }
 .file.collapsed .file-head { border-bottom: 0; }
-.fold { border: 0; background: transparent; cursor: pointer; color: var(--fg-muted); width: 20px; height: 20px; border-radius: 4px; font-size: 11px; }
-.fold:hover { background: var(--bg-hover); }
+.fold { width: 18px; height: 18px; border: 0; border-radius: 4px; background: transparent; color: var(--subtle); cursor: pointer; font-size: 9px; }
+.fold:hover { background: var(--hover); color: var(--fg); }
 .file.collapsed .fold { transform: rotate(-90deg); }
-.path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12.5px var(--font-code); }
-.path .dir { color: var(--fg-muted); font-weight: 400; }
-.lang { color: var(--fg-subtle); font-size: 11.5px; }
-.viewed-box { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-size: 12px; cursor: pointer; }
-.file-note { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; font-size: 12.5px; color: var(--fg-muted); background: var(--bg-subtle); }
+.path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12px var(--font-code); }
+.path .dir { color: var(--muted); font-weight: 400; }
+.chip { font-size: 11px; color: var(--muted); padding: 1px 6px; border-radius: 4px; background: var(--inset); white-space: nowrap; }
+.chip.agent { color: var(--accent); background: var(--accent-soft); }
+.viewed-box { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); cursor: pointer; }
+.file-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 12px; font-size: 12px; color: var(--muted); background: var(--panel); }
 
-/* Rows: one grid per line, numbers drawn by CSS so Ctrl+F never matches them */
-.rows { font: 12.5px/20px var(--font-code); font-variant-ligatures: none; tab-size: 4; }
-.split { --cols: 52px minmax(0, 1fr) 52px minmax(0, 1fr); }
-.unified { --cols: 46px 46px minmax(0, 1fr); }
-.row { display: grid; grid-template-columns: var(--cols); position: relative; }
-.num {
-  position: relative; padding-right: 10px; text-align: right; color: var(--fg-subtle); font-size: 12px;
-  user-select: none; -webkit-user-select: none; cursor: pointer;
-}
+/* Rows: difftastic side by side. Only novel tokens are colored. */
+.rows { font: 12px/18px var(--font-code); font-variant-ligatures: none; tab-size: 4; --cols: 42px minmax(0, 1fr) 42px minmax(0, 1fr); }
+.row { position: relative; display: grid; grid-template-columns: var(--cols); min-height: 18px; scroll-margin-top: 40px; scroll-margin-bottom: 20px; }
+.num { position: relative; padding-right: 8px; text-align: right; color: var(--subtle); font-size: 11px; user-select: none; -webkit-user-select: none; cursor: pointer; }
 .num::before { content: attr(data-n); }
-.split .num.side-new { border-left: 1px solid var(--border-muted); }
-.code { position: relative; min-width: 0; padding: 0 14px 0 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.code::before { position: absolute; left: 8px; top: 0; user-select: none; -webkit-user-select: none; }
-.code.add { background: var(--add-line); } .code.add::before { content: "+"; color: var(--add-fg); }
-.code.del { background: var(--del-line); } .code.del::before { content: "\2212"; color: var(--del-fg); }
-.num.add { background: var(--add-num); color: var(--add-fg); }
-.num.del { background: var(--del-num); color: var(--del-fg); }
-.num.empty, .code.empty { background: var(--empty); cursor: default; }
-.em-add { background: var(--add-em); border-radius: 3px; }
-.em-del { background: var(--del-em); border-radius: 3px; }
-.x-k { color: var(--syn-keyword); } .x-s { color: var(--syn-string); } .x-c { color: var(--syn-comment); }
+.num.side-new { border-left: 1px solid var(--line); }
+.num.del { color: var(--del); background: var(--del-gutter); font-weight: 600; }
+.num.add { color: var(--add); background: var(--add-gutter); font-weight: 600; }
+.code { min-width: 0; padding: 0 10px 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.code.empty, .num.empty { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--line) 55%, transparent) 5px 6px); cursor: default; }
+.x-k { color: var(--syn-keyword); } .x-s { color: var(--syn-string); } .x-c { color: var(--syn-comment); font-style: italic; }
 .x-n { color: var(--syn-constant); } .x-f { color: var(--syn-function); } .x-t { color: var(--syn-type); }
 .x-a { color: var(--syn-attr); } .x-g { color: var(--syn-tag); }
+.nv-add, .nv-del { font-weight: 600; border-radius: 2px; font-style: normal; }
+.nv-add { color: var(--add) !important; background: var(--add-bg); }
+.nv-del { color: var(--del) !important; background: var(--del-bg); }
+.wc { outline: 1.5px solid var(--accent); outline-offset: 0; border-radius: 2px; background: var(--accent-soft); }
+body.sym .ref { text-decoration: underline dotted var(--accent); text-underline-offset: 3px; cursor: pointer; }
 .row.cur::after, .row.vsel::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
 .row.cur::after { background: var(--cursor); }
 .row.vsel::after { background: var(--visual); }
 .row.cur .code.caret { box-shadow: inset 2px 0 0 var(--accent); }
-.num.noted::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--agent-dot); }
-.num.since { box-shadow: inset -3px 0 0 var(--since); }
-.row.flash .code:not(.empty), .row.target .code:not(.empty) { animation: flash 1.8s ease-out; }
-@keyframes flash { from { background-color: color-mix(in srgb, var(--since) 40%, transparent); } }
-
-/* Collapsed context between excerpts */
-.gap {
-  display: flex; align-items: center; gap: 4px; min-height: 28px; padding: 2px 10px;
-  background: var(--bg-subtle); border-block: 1px solid var(--border-muted); font-size: 12px; color: var(--fg-muted);
-}
-.gap button { border: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 500; padding: 2px 7px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.num.noted::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); }
+.num.since { box-shadow: inset -2px 0 0 var(--warn); }
+.row.flash .code:not(.empty) { animation: flash 1.8s ease-out; }
+@keyframes flash { from { background-color: color-mix(in srgb, var(--accent) 22%, transparent); } }
+.gap { display: flex; align-items: center; gap: 2px; height: 22px; padding: 0 6px; background: var(--panel); border-block: 1px solid var(--line); font-size: 11.5px; color: var(--muted); }
+.gap button { border: 0; background: transparent; color: var(--accent); font-size: 11.5px; font-weight: 500; padding: 1px 6px; border-radius: 4px; cursor: pointer; }
 .gap button:hover { background: var(--accent-soft); }
-.gap .ctx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px var(--font-code); color: var(--fg-subtle); }
+.gap .ctx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 6px; font: 11px var(--font-code); color: var(--subtle); }
+.gap-body[hidden] { display: none !important; }
+@supports (content-visibility: hidden) { .gap-body[hidden="until-found"] { display: block !important; content-visibility: hidden; } }
 
-/* Inline blocks: notes, threads, composer */
-.inline { display: grid; grid-template-columns: var(--cols); padding-block: 8px; background: var(--bg-inset); border-block: 1px solid var(--border-muted); }
-.split .inline > .card { grid-column: 4 / 5; margin-right: 12px; }
-.split .inline[data-side="old"] > .card { grid-column: 2 / 3; }
-.unified .inline > .card { grid-column: 3 / 4; margin-right: 12px; }
-.card { font: 13.5px/1.5 var(--font-ui); border: 1px solid var(--border); border-radius: 8px; background: var(--bg); overflow: hidden; max-width: 780px; }
-.card.note { background: var(--agent-bg); border-color: var(--agent-border); }
+/* File view (g enter): the plain file with slight change marks */
+.fv .row { grid-template-columns: 6px 46px minmax(0, 1fr); }
+.mark { position: relative; }
+.mark.add { background: var(--add-mark); }
+.mark.mod { background: var(--mod-mark); }
+.mark.del::after { content: ""; position: absolute; left: 0; top: -4px; border: 4px solid transparent; border-left: 5px solid var(--del-mark); }
+.fv-banner { display: flex; align-items: center; gap: 8px; margin: 10px 10px 0; padding: 6px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line-strong); font-size: 12px; color: var(--muted); }
+.fv-banner b { color: var(--fg); font-weight: 600; }
+.legend { display: inline-flex; align-items: center; gap: 4px; }
+.legend i { width: 4px; height: 12px; border-radius: 1px; }
+
+/* Threads and notes, inline under the code they belong to */
+.inline { display: grid; grid-template-columns: var(--cols); padding-block: 6px; background: var(--inset); border-block: 1px solid var(--line); }
+.inline > .card { grid-column: 4 / 5; margin-right: 10px; }
+.inline[data-side="old"] > .card { grid-column: 2 / 3; }
+.card { max-width: 720px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); font: 12.5px/1.5 var(--font-ui); overflow: hidden; scroll-margin-top: 44px; }
+.card.note { border-color: var(--accent-line); }
 .card.focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.card.resolved { opacity: 0.72; }
-.card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 7px 12px 0; font-size: 12px; color: var(--fg-muted); }
-.card-top .anchor { font: 11.5px var(--font-code); }
-.kind { font: 700 10px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--agent-border); color: var(--agent); background: var(--bg); }
-.kind[data-kind="risk"] { color: var(--del-fg); border-color: color-mix(in srgb, var(--del-fg) 40%, transparent); }
-.tour { margin-left: auto; font-variant-numeric: tabular-nums; }
-.msg { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 2px 10px; padding: 9px 12px; }
-.msg + .msg { border-top: 1px solid var(--border-muted); }
-.card.note .msg + .msg { border-top-color: var(--agent-border); }
-.avatar { grid-row: span 2; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 11px var(--font-ui); }
-.avatar.you { background: var(--accent-soft); color: var(--accent); }
-.avatar.agent { background: var(--agent-bg); color: var(--agent); border: 1px solid var(--agent-border); }
-.msg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 12.5px; }
+.card.resolved { opacity: 0.7; }
+.card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 5px 10px 0; font-size: 11.5px; color: var(--muted); }
+.card-top .where { font: 11px var(--font-code); }
+.kind { font: 600 10px/1 var(--font-ui); letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); }
+.kind[data-kind="risk"] { color: var(--del); }
+.card-top .n { margin-left: auto; font-variant-numeric: tabular-nums; }
+.msg { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0 8px; padding: 6px 10px; }
+.msg + .msg { border-top: 1px solid var(--line); }
+.av { grid-row: span 2; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 600 10px var(--font-ui); background: var(--inset); color: var(--muted); }
+.av.agent { background: var(--accent-soft); color: var(--accent); }
+.msg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 12px; }
 .msg-head b { font-weight: 600; }
-.when { color: var(--fg-subtle); font-size: 12px; }
+.when { color: var(--subtle); font-size: 11px; }
 .msg-body { margin: 0; max-width: 72ch; }
-.delivery { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--fg-muted); }
-.delivery[data-state="seen"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.delivery[data-state="replied"] { color: var(--agent); border-color: var(--agent-border); }
-.changed-since { padding: 5px 12px; font-size: 12px; color: var(--agent); background: var(--agent-bg); border-bottom: 1px solid var(--agent-border); }
-.card-foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--border-muted); background: var(--bg-subtle); }
-.card.note .card-foot { background: transparent; border-top-color: var(--agent-border); }
-.link-btn { border: 0; background: transparent; color: var(--fg-muted); font-size: 12.5px; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
-.link-btn:hover { background: var(--bg-hover); color: var(--fg); }
-.composer { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-.composer .quote { margin: 0; max-height: 84px; overflow: auto; padding: 6px 8px; border-radius: 6px; background: var(--bg-inset); font: 12px/1.5 var(--font-code); color: var(--fg-muted); white-space: pre-wrap; }
-.composer textarea {
-  width: 100%; min-height: 76px; resize: vertical; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--bg); color: var(--fg); font: 13.5px/1.5 var(--font-ui);
-}
-.composer .row-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-muted); }
-.composer .row-btns .spacer { flex: 1; }
+.delivery { font-size: 10.5px; font-weight: 500; color: var(--subtle); }
+.delivery[data-state="seen"], .delivery[data-state="replied"] { color: var(--accent); }
+.changed-since { padding: 4px 10px; font-size: 11.5px; color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); border-bottom: 1px solid var(--line); }
+.card-foot { display: flex; gap: 2px; padding: 3px 6px; border-top: 1px solid var(--line); }
+.link { border: 0; background: transparent; color: var(--muted); font-size: 11.5px; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+.link:hover { background: var(--hover); color: var(--fg); }
 
-/* Activity sidebar */
-.activity { border-left: 1px solid var(--border); background: var(--bg-subtle); overflow: auto; min-height: 0; }
-.act-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 6px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--fg-muted); }
-.count { font: 700 11px/18px var(--font-ui); min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--agent-dot); color: var(--agent-ink); text-align: center; letter-spacing: 0; }
-.act-list { list-style: none; margin: 0; padding: 0 8px 12px; display: flex; flex-direction: column; gap: 2px; }
-.act { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 1px 8px; padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-.act:hover { background: var(--bg-hover); }
-.act .mark { margin-top: 6px; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--fg-subtle); }
-.act.unread .mark { background: var(--agent-dot); border-color: var(--agent-dot); }
-.act .what { color: var(--fg-muted); }
+/* Floating comment popover, anchored where you selected */
+.pop { position: absolute; z-index: 20; width: min(400px, calc(100% - 20px)); padding: 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); box-shadow: var(--shadow); font-size: 12px; }
+.pop .pop-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--muted); }
+.pop .pop-head .where { font: 11px var(--font-code); color: var(--fg); }
+.pop pre { margin: 0 0 6px; max-height: 58px; overflow: hidden; padding: 4px 6px; border-radius: 4px; background: var(--inset); font: 11px/1.45 var(--font-code); color: var(--muted); white-space: pre-wrap; }
+.pop textarea { display: block; width: 100%; min-height: 64px; resize: vertical; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); font-size: 12.5px; line-height: 1.45; }
+.pop textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pop .pop-foot { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--subtle); font-size: 11px; }
+.pop .pop-foot .spacer { flex: 1; }
+.bubble { position: absolute; z-index: 20; }
+.bubble button { box-shadow: var(--shadow); }
+
+/* Chat with the agent, docked under the diff */
+.chat { flex: none; border-top: 1px solid var(--line); background: var(--panel); }
+.chat-log { max-height: 190px; overflow: auto; padding: 6px 12px 0; display: flex; flex-direction: column; gap: 6px; }
+.chat-log[hidden] { display: none !important; }
+.cm { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; font-size: 12.5px; }
+.cm p { margin: 1px 0 0; max-width: 90ch; }
+.cm a { color: var(--accent); font: 11.5px var(--font-code); cursor: pointer; text-decoration: none; border-bottom: 1px solid var(--accent-line); }
+.chat-input { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
+.chat-input input { flex: 1; min-width: 0; height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); font-size: 12.5px; }
+.chat-input input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.chat-input .hint { font-size: 11px; color: var(--subtle); white-space: nowrap; }
+
+/* Activity */
+.act-list { list-style: none; margin: 0; padding: 0 6px 10px; display: flex; flex-direction: column; gap: 1px; }
+.act { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 0 7px; padding: 5px 6px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+.act:hover { background: var(--hover); }
+.act .mk { margin-top: 5px; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--subtle); }
+.act.unread .mk { background: var(--accent); border-color: var(--accent); }
+.act .what { color: var(--muted); }
 .act.unread .what { color: var(--fg); font-weight: 500; }
-.act .where { grid-column: 2; display: flex; justify-content: space-between; gap: 8px; font: 11.5px var(--font-code); color: var(--fg-subtle); }
+.act .wh { grid-column: 2; display: flex; justify-content: space-between; gap: 6px; font: 10.5px var(--font-code); color: var(--subtle); }
 .act.enter { animation: enter 0.35s ease-out; }
-@keyframes enter { from { opacity: 0; transform: translateY(-4px); } }
-.edge-tab { position: absolute; right: 12px; top: 10px; z-index: 6; box-shadow: var(--shadow-pop); }
-.edge-tab .dot-unread { width: 8px; height: 8px; }
+@keyframes enter { from { opacity: 0; transform: translateY(-3px); } }
+.count { min-width: 16px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--accent-fg); font: 600 10px/16px var(--font-ui); text-align: center; letter-spacing: 0; }
 
 /* "Claude wants to show you something" */
-.nudge {
-  position: absolute; left: 50%; bottom: 14px; z-index: 7; transform: translateX(-50%);
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: min(560px, calc(100% - 24px));
-  padding: 10px 10px 10px 14px; border: 1px solid var(--agent-border); border-radius: 10px;
-  background: var(--bg); box-shadow: var(--shadow-pop); font-size: 13px;
-}
-.nudge .who { display: flex; align-items: center; gap: 8px; flex: 1 1 260px; min-width: 0; }
-.nudge .where { font: 12px var(--font-code); color: var(--fg-muted); }
-.nudge.enter { animation: rise 0.3s ease-out; }
-@keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } }
+.nudge { position: absolute; left: 50%; top: 10px; z-index: 15; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; width: min(520px, calc(100% - 24px)); padding: 7px 8px 7px 12px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--bg); box-shadow: var(--shadow); font-size: 12.5px; }
+.nudge .who { flex: 1 1 240px; min-width: 0; }
+.nudge .who span { font: 11px var(--font-code); color: var(--muted); }
 
 /* Status line */
-.status {
-  display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 10px; overflow: hidden;
-  border-top: 1px solid var(--border); background: var(--bg-subtle); font: 12px var(--font-code); color: var(--fg-muted); white-space: nowrap;
-}
-.mode { padding: 1px 8px; border-radius: 4px; background: var(--accent); color: var(--accent-fg); font-weight: 700; letter-spacing: 0.04em; }
-.mode[data-mode="VISUAL"] { background: var(--agent-dot); color: var(--agent-ink); }
-.mode[data-mode="INSERT"] { background: var(--add-fg); color: var(--bg); }
+.status { display: flex; align-items: center; gap: 12px; height: 24px; padding: 0 10px; overflow: hidden; border-top: 1px solid var(--line); background: var(--panel); font: 11px var(--font-code); color: var(--muted); white-space: nowrap; }
+.mode { padding: 0 7px; border-radius: 3px; background: var(--accent); color: var(--accent-fg); font-weight: 600; letter-spacing: 0.04em; }
+.mode[data-mode="VISUAL"] { background: var(--warn); color: var(--bg); }
+.mode[data-mode="SYMBOL"] { background: var(--syn-function); color: var(--bg); }
+.mode[data-mode="FILE"] { background: var(--fg); color: var(--bg); }
+.mode[data-mode="INSERT"] { background: var(--add); color: var(--bg); }
 .status .pending { color: var(--fg); min-width: 3ch; }
-.status .conn { display: inline-flex; align-items: center; gap: 6px; }
-.status .conn i { width: 7px; height: 7px; border-radius: 50%; background: var(--live); }
 .status .hints { margin-left: auto; font-family: var(--font-ui); }
 
-/* Selection bubble */
-.bubble {
-  position: fixed; z-index: 20; display: flex; align-items: center; gap: 4px; padding: 3px;
-  border-radius: 8px; background: var(--fg); box-shadow: var(--shadow-pop);
-}
-.bubble button { border: 0; border-radius: 6px; background: var(--accent); color: var(--accent-fg); padding: 4px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.bubble span { color: var(--bg); font: 11px var(--font-code); padding: 0 6px; opacity: 0.8; }
-
 /* Overlays */
-.overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--page) 70%, transparent); backdrop-filter: blur(2px); }
-.modal { width: min(820px, 100%); max-height: min(84vh, 760px); overflow: auto; padding: 18px 20px 20px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-pop); }
-.modal h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 16px; }
+.overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--page) 65%, transparent); backdrop-filter: blur(2px); }
+.modal { width: min(780px, 100%); max-height: min(84vh, 740px); overflow: auto; padding: 14px 16px 16px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); box-shadow: var(--shadow); }
+.modal h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; }
 .modal h2 .spacer { flex: 1; }
-.modal p { margin: 0 0 12px; color: var(--fg-muted); font-size: 13px; max-width: 70ch; }
-.keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 28px; }
-.keys h3 { grid-column: 1 / -1; margin: 14px 0 2px; font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--fg-muted); }
-.keys div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border-muted); font-size: 13px; }
-.keys div span:last-child { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
-.modal textarea { width: 100%; height: 340px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-inset); color: var(--fg); font: 12px/1.5 var(--font-code); }
-.verdicts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
-.verdicts label { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; }
+.keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0 24px; }
+.keys h3 { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.keys div { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.picker { width: min(640px, 100%); }
+.picker input { width: 100%; height: 30px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); }
+.picker ol { list-style: none; margin: 8px 0 0; padding: 0; max-height: min(52vh, 420px); overflow: auto; }
+.picker li { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 12.5px; }
+.picker li[aria-selected="true"] { background: var(--accent-soft); }
+.picker li .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11.5px var(--font-code); color: var(--muted); }
 
-/* Narrow screens: panels become drawers, split view gives way to unified */
 @media (max-width: 760px) {
-  .main { grid-template-columns: minmax(0, 1fr); }
-  .buffer { grid-column: 1; }
-  .tree, .activity { grid-column: 1; position: absolute; top: 0; bottom: 0; z-index: 8; width: min(300px, 86%); box-shadow: var(--shadow-pop); }
-  .tree { left: 0; } .activity { right: 0; }
-  .file { margin: 10px 8px; } .summary { margin: 10px 8px 2px; }
-  .status .hints, .status .conn span { display: none; }
+  .main { grid-template-columns: var(--lw, 0px) minmax(0, 1fr) var(--rw, 0px); }
+  .status .hints { display: none; }
+  .chat-input .hint { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 </style>
 
 <div class="demo" role="note">
   <strong>diffd review mockup</strong>
-  <span>A sample review of a change Claude made to diffd. Select code or press <kbd>g</kbd><kbd>c</kbd><kbd>c</kbd> to comment, <kbd>?</kbd> for every key. Claude's side is simulated.</span>
+  <span>A sample review of a change Claude made to diffd. Select code or press <kbd>g</kbd><kbd>c</kbd><kbd>c</kbd> to comment · <kbd>g</kbd><kbd>enter</kbd> for the plain file · <kbd>?</kbd> for every key. Claude's side is simulated.</span>
   <span class="spacer"></span>
-  <button class="btn" id="play-show" type="button">Ask Claude to show you something</button>
+  <button class="btn" id="play-show" type="button">Claude shows you something</button>
   <button class="btn" id="play-edit" type="button">Play Claude's next edit</button>
-  <button class="btn" id="reset" type="button">Reset</button>
+  <button class="btn ghost" id="reset" type="button">Reset</button>
 </div>
 
-<div class="app" id="app">
+<div class="app">
   <header class="top">
     <span class="brand"><i></i>diffd</span>
-    <div class="title-wrap">
-      <div class="title" id="title"></div>
-      <div class="meta" id="meta"></div>
-    </div>
-    <div class="actions">
-      <span class="presence" id="presence" data-state="listening"><span class="dot"></span><span id="presence-text">Claude is listening</span></span>
-      <div class="seg" role="group" aria-label="Panels">
-        <button id="t-tree" type="button" aria-pressed="true">Files</button>
-        <button id="t-act" type="button" aria-pressed="true">Activity</button>
-      </div>
-      <div class="seg" role="group" aria-label="Diff layout">
-        <button id="v-split" type="button" aria-pressed="true">Split</button>
-        <button id="v-unified" type="button" aria-pressed="false">Unified</button>
-      </div>
-      <button class="btn" id="copy-json" type="button">Copy threads as JSON</button>
-    </div>
+    <span class="title" id="title"></span>
+    <span class="revs" id="revs"></span>
+    <span class="stats" id="stats"></span>
+    <span class="grow"></span>
+    <span class="presence" id="presence" data-state="listening"><span class="dot"></span><span id="presence-text">Claude is listening</span></span>
   </header>
-  <div class="main" id="main" data-tree="on" data-act="on">
-    <nav class="tree" id="tree" aria-label="Changed files">
-      <input class="tree-filter" id="filter" type="search" placeholder="Filter files" aria-label="Filter files" autocomplete="off">
-      <ul id="tree-list"></ul>
-    </nav>
-    <main class="buffer split" id="buffer" tabindex="-1"></main>
-    <aside class="activity" id="activity" aria-label="Activity">
-      <div class="act-head">Activity <span class="count" id="act-count" hidden></span></div>
-      <ol class="act-list" id="act-list"></ol>
+  <div class="main" id="main">
+    <aside class="drawer left" id="left" aria-label="Changed files">
+      <div class="drawer-body tree">
+        <div class="pane-head">Files <span class="n" id="file-count"></span></div>
+        <input class="filter" id="filter" type="search" placeholder="Filter files" aria-label="Filter files" autocomplete="off">
+        <ul id="tree-list" role="tree"></ul>
+      </div>
+      <div class="handle" id="left-handle" role="separator" aria-orientation="vertical" aria-label="Resize files panel" tabindex="0"></div>
     </aside>
-    <button class="btn edge-tab" id="edge-tab" type="button" hidden></button>
+    <div class="center">
+      <main class="buffer" id="buffer" tabindex="-1"></main>
+      <section class="chat" aria-label="Chat with Claude">
+        <div class="chat-log" id="chat-log" hidden></div>
+        <form class="chat-input" id="chat-form">
+          <input id="chat-text" autocomplete="off" placeholder="Ask Claude about this diff" aria-label="Message Claude">
+          <span class="hint"><kbd>space</kbd><kbd>i</kbd> to focus · <kbd>enter</kbd> to send</span>
+        </form>
+      </section>
+    </div>
+    <aside class="drawer right" id="right" aria-label="Activity">
+      <div class="drawer-body">
+        <div class="pane-head">Activity <span class="count" id="act-count" hidden></span></div>
+        <ol class="act-list" id="act-list"></ol>
+      </div>
+      <div class="handle" id="right-handle" role="separator" aria-orientation="vertical" aria-label="Resize activity panel" tabindex="0"></div>
+    </aside>
     <div class="nudge" id="nudge" hidden></div>
+    <div class="bubble" id="bubble" hidden><button class="btn primary" id="bubble-btn" type="button">Comment <kbd>gc</kbd></button></div>
+    <div class="pop" id="pop" hidden></div>
   </div>
   <footer class="status" id="status" aria-live="polite"></footer>
 </div>
 
-<div class="bubble" id="bubble" hidden><button id="bubble-btn" type="button">Comment</button><span>gc</span></div>
-
 <div class="overlay" id="help" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
-    <h2 id="help-title">Keys <span class="spacer"></span><button class="btn" data-close type="button">Close <kbd>esc</kbd></button></h2>
-    <p>Vim-style, mostly borrowed from Zed's vim keymap. Leader is <kbd>space</kbd>. Browser <kbd>Ctrl</kbd><kbd>F</kbd> is never intercepted.</p>
+    <h2 id="help-title">Keys <span class="spacer"></span><button class="btn ghost" data-close type="button">Close <kbd>esc</kbd></button></h2>
     <div class="keys" id="keys"></div>
   </div>
 </div>
-
-<div class="overlay" id="export" hidden>
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="export-title">
-    <h2 id="export-title">Threads as JSON <span class="spacer"></span><button class="btn" data-close type="button">Close <kbd>esc</kbd></button></h2>
-    <p id="export-msg">Paste this into any LLM. Each entry carries the file, side, lines and the exact code it refers to.</p>
-    <textarea id="export-text" readonly aria-label="Threads as JSON"></textarea>
+<div class="overlay" id="picker" hidden>
+  <div class="modal picker" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <h2 id="picker-title"></h2>
+    <input id="picker-q" autocomplete="off" aria-label="Filter">
+    <ol id="picker-list"></ol>
   </div>
 </div>
-
 
 <script>
 "use strict";
 /* ---------------------------------------------------------------------------
- * Sample review data. In diffd this arrives as a typed snapshot generated in
- * Rust (difftastic alignment + tree-sitter highlighting); here it is authored
- * by hand: S = same line, A = added, D = deleted, C = changed pair with the
- * novel tokens difftastic would report.
+ * Sample data. diffd builds this in Rust (difftastic + tree-sitter); here it is
+ * hand-written. S same · X same tokens, different layout · A added · D deleted ·
+ * C changed pair. The last argument lists novel tokens; omitted = whole line.
  * ------------------------------------------------------------------------- */
 const S = (t) => ({ k: "same", o: t, n: t });
-const A = (t) => ({ k: "add", o: null, n: t });
-const D = (t) => ({ k: "del", o: t, n: null });
+const X = (o, n) => ({ k: "same", o, n });
+const A = (t, nv) => ({ k: "add", o: null, n: t, ne: nv });
+const D = (t, nv) => ({ k: "del", o: t, n: null, oe: nv });
 const C = (o, n, oe = [], ne = []) => ({ k: "chg", o, n, oe, ne });
 
 const REVIEW = {
   title: "Batch feedback before waking the agent",
   repo: "diffd",
-  base: "main",
-  head: "claude/feedback-batching",
-  summary:
-    "Comments now reach me in batches instead of one at a time. <code>wait_for_feedback</code> returns once you pause for 1.5&nbsp;s with no draft open. Messages also record when they were delivered to me and when you read my reply, which the page shows as Sent, Seen and Replied.",
+  from: "main",
+  to: "claude/feedback-batching",
+  worktree: true,
+  summary: "Comments now reach me in batches instead of one at a time. <code>wait_for_feedback</code> returns once you pause for 1.5&nbsp;s with no draft open. Messages also record when they were delivered and read, which the page shows as Sent, Seen and Replied.",
 };
 
 const FILES = [
-  {
-    path: "crates/diffd-core/src/feedback.rs", lang: "rust", status: "M",
-    rows: [
-      S("use std::time::{Duration, Instant};"),
-      S(""),
-      S("use crate::event::Event;"),
-      S(""),
-      A("/// How long the reviewer must be idle before a batch is released."),
-      A("pub const QUIET_PERIOD: Duration = Duration::from_millis(1500);"),
-      A(""),
-      S("/// Decides when pending feedback should be handed to the agent."),
-      A("///"),
-      A("/// Feedback is released once the reviewer has been idle for"),
-      A("/// [`QUIET_PERIOD`] and has no comment draft open."),
-      S("pub struct FeedbackGate {"),
-      S("    pending: Vec<Event>,"),
-      S("    last_activity: Option<Instant>,"),
-      A("    drafting: bool,"),
-      S("}"),
-      S(""),
-      S("impl FeedbackGate {"),
-      S("    pub fn new() -> Self {"),
-      C("        Self { pending: Vec::new(), last_activity: None }",
-        "        Self { pending: Vec::new(), last_activity: None, drafting: false }", [], [", drafting: false"]),
-      S("    }"),
-      S(""),
-      S("    pub fn push(&mut self, event: Event, now: Instant) {"),
-      S("        self.pending.push(event);"),
-      S("        self.last_activity = Some(now);"),
-      S("    }"),
-      S(""),
-      A("    pub fn set_drafting(&mut self, drafting: bool, now: Instant) {"),
-      A("        self.drafting = drafting;"),
-      A("        self.last_activity = Some(now);"),
-      A("    }"),
-      A(""),
-      C("    /// Returns everything pending as soon as anything is pending.",
-        "    /// Returns the pending batch once the reviewer has settled.",
-        ["everything pending as soon as anything is pending."], ["the pending batch once the reviewer has settled."]),
-      C("    pub fn poll(&mut self, _now: Instant) -> Option<Vec<Event>> {",
-        "    pub fn poll(&mut self, now: Instant) -> Option<Vec<Event>> {", ["_now"], ["now"]),
-      A("        let settled = self"),
-      A("            .last_activity"),
-      A("            .is_some_and(|t| now.duration_since(t) >= QUIET_PERIOD);"),
-      C("        if self.pending.is_empty() {",
-        "        if self.pending.is_empty() || !settled || self.drafting {", [],
-        [" || !settled || self.drafting"]),
-      S("            return None;"),
-      S("        }"),
-      S("        Some(std::mem::take(&mut self.pending))"),
-      S("    }"),
-      S("}"),
-    ],
-  },
-  {
-    path: "crates/diffd-server/migrations/0003_delivery.sql", lang: "sql", status: "A",
-    rows: [
-      A("-- When the agent received a message, and when you read the agent's reply."),
-      A("ALTER TABLE messages ADD COLUMN delivered_at INTEGER;"),
-      A("ALTER TABLE messages ADD COLUMN read_at INTEGER;"),
-      A(""),
-      A("CREATE INDEX messages_undelivered"),
-      A("    ON messages (thread_id)"),
-      A("    WHERE delivered_at IS NULL;"),
-    ],
-  },
-  {
-    path: "crates/diffd-server/src/adapters/mcp.rs", lang: "rust", status: "M",
-    rows: [
-      S("use std::time::Duration;"),
-      S(""),
-      S("use rmcp::{handler::server::wrapper::Parameters, tool, tool_router};"),
-      S("use schemars::JsonSchema;"),
-      S("use serde::Deserialize;"),
-      S(""),
-      S("use crate::app::{App, FeedbackBatch};"),
-      C("use diffd_core::ReviewId;", "use diffd_core::{ReviewId, feedback::QUIET_PERIOD};", [], ["{", ", feedback::QUIET_PERIOD}"]),
-      S(""),
-      S("#[derive(Debug, Deserialize, JsonSchema)]"),
-      S("pub struct WaitForFeedback {"),
-      S("    /// Review to listen on. Defaults to the last review you shared."),
-      S("    pub review_id: Option<ReviewId>,"),
-      S("    /// Give up after this many seconds and return an empty batch."),
-      S("    #[serde(default = \"default_timeout\")]"),
-      S("    pub timeout_seconds: u64,"),
-      S("}"),
-      S(""),
-      S("fn default_timeout() -> u64 {"),
-      S("    240"),
-      S("}"),
-      S(""),
-      S("#[tool_router]"),
-      S("impl DiffdMcp {"),
-      S("    /// Block until the reviewer leaves feedback on a review."),
-      A("    ///"),
-      A("    /// Comments written in quick succession arrive together: the call"),
-      A("    /// returns once the reviewer pauses."),
-      S("    #[tool]"),
-      S("    async fn wait_for_feedback("),
-      S("        &self,"),
-      S("        Parameters(req): Parameters<WaitForFeedback>,"),
-      S("    ) -> Result<FeedbackBatch, McpError> {"),
-      S("        let review = self.resolve_review(req.review_id)?;"),
-      C("        let deadline = Duration::from_secs(req.timeout_seconds);",
-        "        let deadline = Duration::from_secs(req.timeout_seconds).max(QUIET_PERIOD);", [], [".max(QUIET_PERIOD)"]),
-      S("        let batch = self.app.next_feedback(review, deadline).await?;"),
-      A("        self.app.mark_delivered(review, &batch).await?;"),
-      S("        Ok(batch)"),
-      S("    }"),
-      S("}"),
-    ],
-  },
-  {
-    path: "crates/diffd-server/src/adapters/poll.rs", lang: "rust", status: "D",
-    rows: [
-      D("use std::time::Duration;"),
-      D(""),
-      D("use crate::app::App;"),
-      D("use diffd_core::{Event, ReviewId};"),
-      D(""),
-      D("/// Checks for new comments every 500 ms."),
-      D("pub async fn poll_comments(app: &App, review: ReviewId) -> Vec<Event> {"),
-      D("    loop {"),
-      D("        let events = app.new_events(review).await;"),
-      D("        if !events.is_empty() {"),
-      D("            return events;"),
-      D("        }"),
-      D("        tokio::time::sleep(Duration::from_millis(500)).await;"),
-      D("    }"),
-      D("}"),
-    ],
-  },
-  {
-    path: "web/src/components/DeliveryBadge.tsx", lang: "tsx", status: "A",
-    rows: [
-      A("import type { Delivery } from \"../gen/Delivery\";"),
-      A("import { assertNever } from \"../model/assert\";"),
-      A(""),
-      A("const LABEL = {"),
-      A("  sent: \"Sent\","),
-      A("  seen: \"Seen by Claude\","),
-      A("  replied: \"Claude replied\","),
-      A("} as const satisfies Record<Delivery[\"state\"], string>;"),
-      A(""),
-      A("/** Shows where a comment is on its way to the agent. */"),
-      A("export function DeliveryBadge(props: { delivery: Delivery }) {"),
-      A("  return ("),
-      A("    <span"),
-      A("      class=\"delivery\""),
-      A("      data-state={props.delivery.state}"),
-      A("      title={describe(props.delivery)}"),
-      A("    >"),
-      A("      {LABEL[props.delivery.state]}"),
-      A("    </span>"),
-      A("  );"),
-      A("}"),
-      A(""),
-      A("function describe(d: Delivery): string {"),
-      A("  switch (d.state) {"),
-      A("    case \"sent\":"),
-      A("      return `Sent ${d.sentAt}`;"),
-      A("    case \"seen\":"),
-      A("      return `Delivered ${d.seenAt}`;"),
-      A("    case \"replied\":"),
-      A("      return `Answered ${d.repliedAt}`;"),
-      A("    default:"),
-      A("      return assertNever(d);"),
-      A("  }"),
-      A("}"),
-    ],
-  },
-  {
-    path: "web/src/gen/Delivery.ts", lang: "tsx", status: "A", generated: "ts-rs",
-    rows: [
-      A("// This file was generated by ts-rs. Do not edit it by hand."),
-      A(""),
-      A("export type Delivery ="),
-      A("  | { state: \"sent\"; sentAt: string }"),
-      A("  | { state: \"seen\"; sentAt: string; seenAt: string }"),
-      A("  | { state: \"replied\"; sentAt: string; seenAt: string; repliedAt: string };"),
-    ],
-  },
+  { path: "crates/diffd-core/src/feedback.rs", lang: "rust", status: "M", rows: [
+    S("use std::time::{Duration, Instant};"),
+    S(""),
+    S("use crate::event::Event;"),
+    S(""),
+    A("/// How long the reviewer must be idle before a batch is released."),
+    A("pub const QUIET_PERIOD: Duration = Duration::from_millis(1500);"),
+    A(""),
+    S("/// Decides when pending feedback should be handed to the agent."),
+    A("///"),
+    A("/// Feedback is released once the reviewer has been idle for"),
+    A("/// [`QUIET_PERIOD`] and has no comment draft open."),
+    S("pub struct FeedbackGate {"),
+    S("    pending: Vec<Event>,"),
+    S("    last_activity: Option<Instant>,"),
+    A("    drafting: bool,"),
+    S("}"),
+    S(""),
+    S("impl FeedbackGate {"),
+    S("    pub fn new() -> Self {"),
+    X("        Self { pending: Vec::new(), last_activity: None }", "        Self {"),
+    A("            pending: Vec::new(),", []),
+    A("            last_activity: None,", []),
+    A("            drafting: false,"),
+    A("        }", []),
+    S("    }"),
+    S(""),
+    S("    pub fn push(&mut self, event: Event, now: Instant) {"),
+    S("        self.pending.push(event);"),
+    S("        self.last_activity = Some(now);"),
+    S("    }"),
+    S(""),
+    A("    pub fn set_drafting(&mut self, drafting: bool, now: Instant) {"),
+    A("        self.drafting = drafting;"),
+    A("        self.last_activity = Some(now);"),
+    A("    }"),
+    A(""),
+    C("    /// Returns everything pending as soon as anything is pending.",
+      "    /// Returns the pending batch once the reviewer has settled.",
+      ["everything", "as soon as anything is pending."], ["the", "batch once the reviewer has settled."]),
+    C("    pub fn poll(&mut self, _now: Instant) -> Option<Vec<Event>> {",
+      "    pub fn poll(&mut self, now: Instant) -> Option<Vec<Event>> {", ["_now"], ["now"]),
+    A("        let settled = self"),
+    A("            .last_activity"),
+    A("            .is_some_and(|t| now.duration_since(t) >= QUIET_PERIOD);"),
+    C("        if self.pending.is_empty() {",
+      "        if self.pending.is_empty() || !settled || self.drafting {", [], ["|| !settled || self.drafting"]),
+    S("            return None;"),
+    S("        }"),
+    S("        Some(std::mem::take(&mut self.pending))"),
+    S("    }"),
+    S("}"),
+  ] },
+  { path: "crates/diffd-server/migrations/0003_delivery.sql", lang: "sql", status: "A", rows: [
+    A("-- When the agent received a message, and when you read its reply."),
+    A("ALTER TABLE messages ADD COLUMN delivered_at INTEGER;"),
+    A("ALTER TABLE messages ADD COLUMN read_at INTEGER;"),
+    A(""),
+    A("CREATE INDEX messages_undelivered"),
+    A("    ON messages (thread_id)"),
+    A("    WHERE delivered_at IS NULL;"),
+  ] },
+  { path: "crates/diffd-server/src/adapters/mcp.rs", lang: "rust", status: "M", rows: [
+    S("use std::time::Duration;"),
+    S(""),
+    S("use rmcp::{handler::server::wrapper::Parameters, tool, tool_router};"),
+    S("use schemars::JsonSchema;"),
+    S("use serde::Deserialize;"),
+    S(""),
+    S("use crate::app::{App, FeedbackBatch};"),
+    C("use diffd_core::ReviewId;", "use diffd_core::{ReviewId, feedback::QUIET_PERIOD};", [], ["{", ", feedback::QUIET_PERIOD}"]),
+    S(""),
+    S("#[derive(Debug, Deserialize, JsonSchema)]"),
+    S("pub struct WaitForFeedback {"),
+    S("    /// Review to listen on. Defaults to the last review you shared."),
+    S("    pub review_id: Option<ReviewId>,"),
+    S("    /// Give up after this many seconds and return an empty batch."),
+    S("    #[serde(default = \"default_timeout\")]"),
+    S("    pub timeout_seconds: u64,"),
+    S("}"),
+    S(""),
+    S("fn default_timeout() -> u64 {"),
+    S("    240"),
+    S("}"),
+    S(""),
+    S("#[tool_router]"),
+    S("impl DiffdMcp {"),
+    S("    /// Block until the reviewer leaves feedback on a review."),
+    A("    ///"),
+    A("    /// Comments written in quick succession arrive together: the call"),
+    A("    /// returns once the reviewer pauses."),
+    S("    #[tool]"),
+    S("    async fn wait_for_feedback("),
+    S("        &self,"),
+    S("        Parameters(req): Parameters<WaitForFeedback>,"),
+    S("    ) -> Result<FeedbackBatch, McpError> {"),
+    S("        let review = self.resolve_review(req.review_id)?;"),
+    X("        let deadline = Duration::from_secs(req.timeout_seconds);", "        let deadline = Duration::from_secs(req.timeout_seconds)"),
+    A("            .max(QUIET_PERIOD);", [".max(QUIET_PERIOD)"]),
+    S("        let batch = self.app.next_feedback(review, deadline).await?;"),
+    A("        self.app.mark_delivered(review, &batch).await?;"),
+    S("        Ok(batch)"),
+    S("    }"),
+    S("}"),
+  ] },
+  { path: "crates/diffd-server/src/adapters/poll.rs", lang: "rust", status: "D", rows: [
+    D("use std::time::Duration;"),
+    D(""),
+    D("use crate::app::App;"),
+    D("use diffd_core::{Event, ReviewId};"),
+    D(""),
+    D("/// Checks for new comments every 500 ms."),
+    D("pub async fn poll_comments(app: &App, review: ReviewId) -> Vec<Event> {"),
+    D("    loop {"),
+    D("        let events = app.new_events(review).await;"),
+    D("        if !events.is_empty() {"),
+    D("            return events;"),
+    D("        }"),
+    D("        tokio::time::sleep(Duration::from_millis(500)).await;"),
+    D("    }"),
+    D("}"),
+  ] },
+  { path: "web/src/components/DeliveryBadge.tsx", lang: "tsx", status: "A", rows: [
+    A('import type { Delivery } from "../gen/Delivery";'),
+    A('import { match } from "ts-pattern";'),
+    A(""),
+    A("const LABEL = {"),
+    A('  sent: "Sent",'),
+    A('  seen: "Seen by Claude",'),
+    A('  replied: "Claude replied",'),
+    A('} as const satisfies Record<Delivery["state"], string>;'),
+    A(""),
+    A("/** Shows where a comment is on its way to the agent. */"),
+    A("export function DeliveryBadge(props: { delivery: Delivery }) {"),
+    A("  return ("),
+    A('    <span class="delivery" data-state={props.delivery.state} title={describe(props.delivery)}>'),
+    A("      {LABEL[props.delivery.state]}"),
+    A("    </span>"),
+    A("  );"),
+    A("}"),
+    A(""),
+    A("function describe(d: Delivery): string {"),
+    A("  return match(d)"),
+    A('    .with({ state: "sent" }, (d) => `Sent ${d.sentAt}`)'),
+    A('    .with({ state: "seen" }, (d) => `Delivered ${d.seenAt}`)'),
+    A('    .with({ state: "replied" }, (d) => `Answered ${d.repliedAt}`)'),
+    A("    .exhaustive();"),
+    A("}"),
+  ] },
+  { path: "web/src/gen/Delivery.ts", lang: "tsx", status: "A", collapsedBy: "Claude: generated by ts-rs", rows: [
+    A("// This file was generated by ts-rs. Do not edit it by hand."),
+    A(""),
+    A("export type Delivery ="),
+    A('  | { state: "sent"; sentAt: string }'),
+    A('  | { state: "seen"; sentAt: string; seenAt: string }'),
+    A('  | { state: "replied"; sentAt: string; seenAt: string; repliedAt: string };'),
+  ] },
+  { path: "Cargo.lock", lang: "toml", status: "M", collapsedBy: "Claude: lockfile", rows: [
+    S("[[package]]"),
+    S('name = "diffd-server"'),
+    S('version = "0.1.0"'),
+    S("dependencies = ["),
+    S(' "axum",'),
+    S(' "diffd-core",'),
+    A(' "humantime",'),
+    S(' "rmcp",'),
+    S("]"),
+  ] },
 ];
 
-/* Claude's notes, in tour order. Lines are 1-based in the new file. */
 const NOTES = [
   { id: "n1", file: 0, side: "new", lines: [5, 6], kind: "why",
-    body: "1.5&nbsp;s covers the gap between saving one comment and starting the next, and a single comment still feels instant. It's a constant for now; it can move into config if it needs tuning." },
-  { id: "n2", file: 0, side: "new", lines: [34, 38], kind: "explain",
-    body: "A batch goes out once you've been idle for the quiet period with no draft open. An open draft holds it back, so I don't start answering while you're mid-thought. Nothing you write is ever dropped; it just waits for the pause." },
-  { id: "n3", file: 2, side: "new", lines: [35, 35], kind: "risk",
+    body: "1.5&nbsp;s covers the gap between saving one comment and starting the next, while a single comment still feels instant. It's a constant for now; it can move into config if it needs tuning." },
+  { id: "n2", file: 0, side: "new", lines: [38, 42], kind: "explain",
+    body: "A batch goes out once you've been idle for the quiet period with no draft open. An open draft holds it back, so I don't start answering while you're mid-thought. Nothing is dropped; it waits for the pause." },
+  { id: "n3", file: 2, side: "new", lines: [35, 36], kind: "risk",
     body: "A timeout shorter than the quiet period could never return a batch, so it's clamped up to it. If nothing settles, the call still returns an empty batch at the deadline." },
   { id: "n4", file: 1, side: "new", lines: [5, 7], kind: "explain",
-    body: "Receipts live on messages, not threads, so every reply gets its own delivered and read state. The partial index keeps the \"what hasn't been delivered\" query cheap as history grows." },
+    body: "Receipts live on messages, not threads, so every reply gets its own delivered and read state. The partial index keeps the \"not delivered yet\" query cheap as history grows." },
 ];
 
-/* Conversation threads. Bodies written by you are escaped when rendered. */
 const THREADS = [
-  { id: "t1", file: 0, side: "new", lines: [28, 29], resolved: false, msgs: [
+  { id: "t1", file: 0, side: "new", lines: [32, 33], resolved: false, msgs: [
     { who: "you", at: "6 min ago", text: "Who calls set_drafting? If the tab closes with a draft open, does feedback get stuck?", delivery: "replied" },
     { who: "agent", at: "1 min ago", html: "The page toggles it over the WebSocket. When the socket closes, the server calls <code>set_drafting(false, now)</code>, so a closed tab can't hold feedback back. I'll add a test for the disconnect path." },
   ] },
@@ -632,49 +576,49 @@ const THREADS = [
 ];
 
 const ACTIVITY = [
-  { what: "Claude replied", where: "feedback.rs:28", at: "1 min", go: { thread: "t1" }, unread: true },
-  { what: "Revision 2 · 2 files changed", where: "feedback.rs · mcp.rs", at: "3 min", go: { file: 0 } },
-  { what: "You commented", where: "DeliveryBadge.tsx:6", at: "4 min", go: { thread: "t2" } },
-  { what: "You commented", where: "feedback.rs:28", at: "6 min", go: { thread: "t1" } },
-  { what: "Claude opened the review with 4 notes", where: "start the tour", at: "9 min", go: { note: "n1" } },
+  { what: "Claude replied", where: "feedback.rs:32", at: "1m", go: { thread: "t1" }, unread: true },
+  { what: "Revision 2 · 2 files", where: "feedback.rs · mcp.rs", at: "3m", go: { file: 0 } },
+  { what: "You commented", where: "DeliveryBadge.tsx:6", at: "4m", go: { thread: "t2" } },
+  { what: "You commented", where: "feedback.rs:32", at: "6m", go: { thread: "t1" } },
+  { what: "Claude opened the review", where: "4 notes · 2 files collapsed", at: "9m", go: { note: "n1" } },
+];
+
+const CHAT = [
+  { who: "you", text: "Why did poll.rs go away?" },
+  { who: "agent", html: "It polled every 500&nbsp;ms and woke me per comment. <a data-go=\"0:new:38\">FeedbackGate::poll</a> replaces it, and <a data-go=\"2:new:35\">mcp.rs:35</a> is where the wait uses it." },
 ];
 
 /* ---------------------------------------------------------------------------
- * Highlighting. diffd bakes this on the backend with tree-sitter; the mockup
- * approximates it with a few regex rules per language.
+ * Highlighting (diffd bakes this on the backend with tree-sitter)
  * ------------------------------------------------------------------------- */
 const RULES = {
   rust: [
-    [/\/\/.*/y, "c"], [/"(?:\\.|[^"\\])*"/y, "s"], [/#!?\[[^\]]*\]/y, "a"], [/\d[\d_]*(?:\.\d+)?\b/y, "n"],
-    [/[a-z_][a-z0-9_]*!/y, "f"],
+    [/\/\/.*/y, "c"], [/"(?:\\.|[^"\\])*"/y, "s"], [/#!?\[[^\]]*\]/y, "a"], [/\d[\d_]*\b/y, "n"], [/[a-z_][a-z0-9_]*!/y, "f"],
     [/(?:use|pub|struct|impl|fn|let|mut|if|else|return|match|for|in|while|loop|async|await|self|Self|const|static|enum|trait|type|where|crate|super|mod|as|move|ref|dyn)\b/y, "k"],
     [/(?:true|false|None)\b/y, "n"], [/(?:u8|u16|u32|u64|usize|i32|i64|bool|str)\b/y, "t"],
     [/[A-Z][A-Z0-9_]{2,}\b/y, "n"], [/[A-Z][A-Za-z0-9_]*\b/y, "t"], [/[a-z_][a-z0-9_]*(?=\s*\()/y, "f"],
   ],
   tsx: [
-    [/\/\/.*/y, "c"], [/\/\*.*?\*\//y, "c"], [/"(?:\\.|[^"\\])*"/y, "s"], [/`(?:\\.|[^`\\])*`/y, "s"],
-    [/<\/?[A-Za-z][\w.]*/y, "g"],
-    [/(?:import|from|export|function|return|const|let|type|as|satisfies|switch|case|default|typeof|interface|extends|new|if|else)\b/y, "k"],
+    [/\/\/.*/y, "c"], [/\/\*.*?\*\//y, "c"], [/"(?:\\.|[^"\\])*"/y, "s"], [/`(?:\\.|[^`\\])*`/y, "s"], [/<\/?[A-Za-z][\w.]*/y, "g"],
+    [/(?:import|from|export|function|return|const|let|type|as|satisfies|switch|case|default|typeof|new|if|else)\b/y, "k"],
     [/(?:string|number|boolean|true|false|null|undefined)\b/y, "n"], [/\d+\b/y, "n"],
     [/[A-Z][A-Za-z0-9_]*\b/y, "t"], [/[a-z][\w-]*(?==)/y, "a"], [/[a-zA-Z_$][\w$]*(?=\s*\()/y, "f"],
   ],
-  sql: [
-    [/--.*/y, "c"], [/'[^']*'/y, "s"], [/(?:ALTER|TABLE|ADD|COLUMN|CREATE|INDEX|ON|WHERE|IS|NOT|NULL)\b/y, "k"],
-    [/(?:INTEGER|TEXT)\b/y, "t"], [/\d+\b/y, "n"],
-  ],
+  sql: [[/--.*/y, "c"], [/'[^']*'/y, "s"], [/(?:ALTER|TABLE|ADD|COLUMN|CREATE|INDEX|ON|WHERE|IS|NOT|NULL)\b/y, "k"], [/(?:INTEGER|TEXT)\b/y, "t"]],
+  toml: [[/#.*/y, "c"], [/"(?:\\.|[^"\\])*"/y, "s"], [/\[\[?[^\]]*\]\]?/y, "t"], [/[a-z_]+(?=\s*=)/y, "a"]],
 };
-const LANG_NAME = { rust: "Rust", tsx: "TypeScript", sql: "SQL" };
+const LANG_NAME = { rust: "Rust", tsx: "TypeScript", sql: "SQL", toml: "TOML" };
 const WORD = /[A-Za-z0-9_$]+|[^A-Za-z0-9_$]/y;
+const IDENT = /[A-Za-z_]\w*/g;
 
 function tokenize(text, lang) {
-  const rules = RULES[lang] || [];
   const toks = [];
   let i = 0;
   scan: while (i < text.length) {
-    for (const [re, cls] of rules) {
+    for (const [re, cls] of RULES[lang] || []) {
       re.lastIndex = i;
       const m = re.exec(text);
-      if (m && m[0].length > 0) { toks.push([i, i + m[0].length, cls]); i += m[0].length; continue scan; }
+      if (m && m[0].length) { toks.push([i, i + m[0].length, cls]); i += m[0].length; continue scan; }
     }
     WORD.lastIndex = i;
     i += WORD.exec(text)[0].length;
@@ -685,45 +629,52 @@ function tokenize(text, lang) {
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ESC[c]);
 
-/* Merge syntax tokens and novel ranges into flat, non-overlapping spans. */
-function lineHtml(text, lang, novel, emClass) {
+/* Novel ranges: undefined means the whole line (minus indentation) is new. */
+function novelRanges(text, novel) {
+  if (!text) return [];
+  if (novel === undefined) { const a = text.search(/\S/); return a < 0 ? [] : [[a, text.length]]; }
+  return novel.map((s) => [text.indexOf(s), text.indexOf(s) + s.length]).filter(([a]) => a >= 0);
+}
+
+/* Flatten syntax tokens, novel ranges, symbol refs and the word cursor into one span run. */
+function lineHtml(text, lang, novel, nvClass, word) {
   if (!text) return "";
-  const toks = tokenize(text, lang);
-  const ems = [];
-  for (const s of novel || []) {
-    const at = text.indexOf(s);
-    if (at >= 0) ems.push([at, at + s.length]);
-  }
+  const toks = tokenize(text, lang), nv = novelRanges(text, novel);
+  const refs = [...text.matchAll(IDENT)].filter((m) => DEF_NAMES.has(m[0])).map((m) => [m.index, m.index + m[0].length]);
   const cuts = new Set([0, text.length]);
-  for (const [a, b] of toks) { cuts.add(a); cuts.add(b); }
-  for (const [a, b] of ems) { cuts.add(a); cuts.add(b); }
+  for (const list of [toks, nv, refs, word ? [word] : []]) for (const [a, b] of list) { cuts.add(a); cuts.add(b); }
   const pts = [...cuts].sort((x, y) => x - y);
-  let html = "", run = "", runKey = null;
-  const flush = () => {
-    if (!run) return;
-    const [cls, em] = runKey.split("|");
-    const classes = [cls && "x-" + cls, em === "1" && emClass].filter(Boolean).join(" ");
-    html += classes ? `<span class="${classes}">${esc(run)}</span>` : esc(run);
-    run = "";
-  };
+  const inside = (list, a, b) => list.some((r) => a >= r[0] && b <= r[1]);
+  let html = "";
   for (let p = 0; p + 1 < pts.length; p++) {
     const a = pts[p], b = pts[p + 1];
     const tok = toks.find((t) => a >= t[0] && b <= t[1]);
-    const inEm = ems.some((r) => a >= r[0] && b <= r[1]);
-    const key = (tok ? tok[2] : "") + "|" + (inEm ? "1" : "0");
-    if (key !== runKey) { flush(); runKey = key; }
-    run += text.slice(a, b);
+    const cls = [tok && "x-" + tok[2], inside(nv, a, b) && /\S/.test(text.slice(a, b)) && nvClass, inside(refs, a, b) && "ref", word && inside([word], a, b) && "wc"].filter(Boolean);
+    html += cls.length ? `<span class="${cls.join(" ")}">${esc(text.slice(a, b))}</span>` : esc(text.slice(a, b));
   }
-  flush();
   return html;
+}
+
+/* Definitions, GitHub-style: diffd extracts them with tree-sitter tags queries. */
+const DEF_RES = [/\bpub const ([A-Z_][A-Z0-9_]*)/, /\bstruct ([A-Za-z_]\w*)/, /\bfn ([a-z_]\w*)/, /\bfunction ([A-Za-z_]\w*)/, /\bexport type ([A-Za-z_]\w*)/, /^const ([A-Z_]\w*) =/, /CREATE INDEX (\w+)/];
+let DEF_NAMES = new Set();
+function symbols() {
+  const out = [];
+  state.files.forEach((f, fi) => f.rows.forEach((r) => {
+    for (const [side, text, line] of [["new", r.n, r.nl], ["old", r.k === "del" ? r.o : null, r.ol]]) {
+      if (!text) continue;
+      for (const re of DEF_RES) { const m = re.exec(text); if (m) out.push({ name: m[1], file: fi, side, line, text: text.trim() }); }
+    }
+  }));
+  return out;
 }
 
 /* ---------------------------------------------------------------------------
  * State
  * ------------------------------------------------------------------------- */
-const CONTEXT = 3;
-const EXPAND_STEP = 5;
+const CONTEXT = 3, STEP = 5;
 let state;
+const changed = (r) => r.k !== "same";
 
 function initState() {
   const files = structuredClone(FILES);
@@ -732,168 +683,102 @@ function initState() {
     for (const r of f.rows) { r.ol = r.o === null ? null : ++o; r.nl = r.n === null ? null : ++n; }
   }
   state = {
-    view: innerWidth < 900 ? "unified" : "split",
-    files, notes: structuredClone(NOTES), threads: structuredClone(THREADS), activity: structuredClone(ACTIVITY),
-    revision: 2, showNotes: true, cursor: { key: null, side: "new" }, visual: null,
-    composer: null, noteIdx: -1, history: [], future: [], played: false, nextId: 3,
-    closedDirs: new Set(), filter: "", pending: [], count: "", message: "", currentFile: 0, nudge: null, selection: null,
+    files, notes: structuredClone(NOTES), threads: structuredClone(THREADS), activity: structuredClone(ACTIVITY), chat: structuredClone(CHAT),
+    revision: 2, cursor: { key: null, side: "new", word: null }, visual: null, mode: "diff", fileView: null,
+    composer: null, noteIdx: -1, jumps: [], jumpAt: 0, pending: [], count: "", message: "", currentFile: 0,
+    closedDirs: new Set(), filter: "", nudge: null, selection: null, played: false, nextId: 3,
   };
-  state.fs = files.map((f, fi) => ({ visible: initialVisible(f, fi), collapsed: Boolean(f.generated), viewed: false, since: new Set() }));
+  DEF_NAMES = new Set(symbols().map((s) => s.name));
+  state.fs = files.map((f, fi) => ({ visible: initialVisible(f, fi), collapsed: Boolean(f.collapsedBy), viewed: false, since: new Set() }));
 }
-
-const anchorsIn = (fi) => [...state.notes, ...state.threads].filter((x) => x.file === fi);
 
 function initialVisible(f, fi) {
   const vis = f.rows.map(() => false);
   f.rows.forEach((r, i) => {
-    if (r.k === "same") return;
+    if (!changed(r)) return;
     for (let j = Math.max(0, i - CONTEXT); j <= Math.min(f.rows.length - 1, i + CONTEXT); j++) vis[j] = true;
   });
-  for (const a of anchorsIn(fi)) {
-    f.rows.forEach((r, i) => {
-      const ln = a.side === "old" ? r.ol : r.nl;
-      if (ln !== null && ln >= a.lines[0] && ln <= a.lines[1]) vis[i] = true;
-    });
+  for (const a of [...state.notes, ...state.threads].filter((x) => x.file === fi)) {
+    f.rows.forEach((r, i) => { const ln = a.side === "old" ? r.ol : r.nl; if (ln !== null && ln >= a.lines[0] && ln <= a.lines[1]) vis[i] = true; });
   }
   return vis;
 }
 
-const fileStats = (f) => ({
-  add: f.rows.filter((r) => r.k !== "same" && r.n !== null).length,
-  del: f.rows.filter((r) => r.k !== "same" && r.o !== null).length,
-});
+const fileStats = (f) => ({ add: f.rows.filter((r) => changed(r) && r.n !== null).length, del: f.rows.filter((r) => changed(r) && r.o !== null).length });
 const baseName = (p) => p.slice(p.lastIndexOf("/") + 1);
 const unread = () => state.activity.filter((a) => a.unread).length;
+const $ = (s) => document.querySelector(s);
+const hiddenFile = (fi) => state.fs[fi].collapsed || state.fs[fi].viewed;
 
 /* ---------------------------------------------------------------------------
- * Rendering the multibuffer
+ * Rendering: rows, gaps, cards
  * ------------------------------------------------------------------------- */
-const $ = (sel) => document.querySelector(sel);
-const COMMENT_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M2 2.5h12v8H8.2L5 13.3v-2.8H2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
-
-function renderHeader() {
-  const totals = state.files.map(fileStats).reduce((t, s) => ({ add: t.add + s.add, del: t.del + s.del }), { add: 0, del: 0 });
-  $("#title").textContent = REVIEW.title;
-  $("#meta").innerHTML =
-    `<span>${REVIEW.repo}</span><span class="branch">${REVIEW.base} ← ${REVIEW.head}</span>` +
-    `<span>rev ${state.revision}</span><span>${state.files.length} files</span>` +
-    `<span><span class="num-add">+${totals.add}</span> <span class="num-del">−${totals.del}</span></span>`;
-}
-
-function gapContext(f, end) {
-  for (let i = end; i >= 0; i--) {
-    const t = f.rows[i].n ?? f.rows[i].o;
-    if (/^\s{0,4}(?:pub(?:\(crate\))? )?(?:async )?(?:fn|struct|impl|enum|trait)\b|^(?:export )?(?:function|const|type)\b|^#\[/.test(t)) return t.trim();
-  }
-  return "";
-}
-
-function rowCells(fi, i, r, part) {
-  const f = state.files[fi];
-  const st = state.fs[fi];
-  const noted = (ln) => state.showNotes && state.notes.some((n) => n.file === fi && n.side === "new" && ln >= n.lines[0] && ln <= n.lines[1]);
-  const numCls = (side, kind, ln) => {
-    const c = ["num", "side-" + side];
-    if (kind) c.push(kind);
-    if (side === "new" && ln !== null && noted(ln)) c.push("noted");
-    if (side === "new" && ln !== null && st.since.has(ln)) c.push("since");
-    return c.join(" ");
-  };
-  const oldKind = r.k === "same" ? "" : "del";
-  const newKind = r.k === "same" ? "" : "add";
-  const oldCode = () => lineHtml(r.o, f.lang, r.k === "chg" ? r.oe : null, "em-del");
-  const newCode = () => lineHtml(r.n, f.lang, r.k === "chg" ? r.ne : null, "em-add");
-  const empty = '<div class="num empty"></div><div class="code empty"></div>';
-  if (state.view === "split") {
-    const left = r.o === null ? empty : `<div class="${numCls("old", oldKind, r.ol)}" data-n="${r.ol}" data-side="old"></div><div class="code ${oldKind}" data-side="old">${oldCode()}</div>`;
-    const right = r.n === null ? empty : `<div class="${numCls("new", newKind, r.nl)}" data-n="${r.nl}" data-side="new"></div><div class="code ${newKind}" data-side="new">${newCode()}</div>`;
-    return left + right;
-  }
-  if (part === "old") return `<div class="${numCls("old", "del", r.ol)}" data-n="${r.ol}" data-side="old"></div><div class="num del"></div><div class="code del" data-side="old">${oldCode()}</div>`;
-  if (part === "new") return `<div class="num add"></div><div class="${numCls("new", "add", r.nl)}" data-n="${r.nl}" data-side="new"></div><div class="code add" data-side="new">${newCode()}</div>`;
-  return `<div class="${numCls("old", "", r.ol)}" data-n="${r.ol}" data-side="old"></div><div class="${numCls("new", "", r.nl)}" data-n="${r.nl}" data-side="new"></div><div class="code" data-side="new">${newCode()}</div>`;
-}
-
-function rowHtml(fi, i, r) {
-  const attrs = (key, side, ol, nl) =>
-    `class="row" data-key="${key}" data-f="${fi}" data-i="${i}" data-side="${side}" data-ol="${ol ?? ""}" data-nl="${nl ?? ""}" data-chg="${r.k === "same" ? 0 : 1}"`;
-  if (state.view === "unified" && r.k === "chg") {
-    return `<div ${attrs(`${fi}:${i}:o`, "old", r.ol, null)}>${rowCells(fi, i, r, "old")}</div>` +
-           `<div ${attrs(`${fi}:${i}:n`, "new", null, r.nl)}>${rowCells(fi, i, r, "new")}</div>`;
-  }
-  if (state.view === "unified") {
-    const part = r.k === "del" ? "old" : r.k === "add" ? "new" : "same";
-    return `<div ${attrs(`${fi}:${i}`, part === "old" ? "old" : "new", r.ol, r.nl)}>${rowCells(fi, i, r, part)}</div>`;
-  }
-  return `<div ${attrs(`${fi}:${i}`, r.n === null ? "old" : "new", r.ol, r.nl)}>${rowCells(fi, i, r)}</div>`;
-}
-
-const STATUS = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed" };
+const COMMENT_ICON = '<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M2 2.5h12v8H8.2L5 13.3v-2.8H2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
 const DELIVERY = { sent: "Sent", seen: "Seen by Claude", replied: "Claude replied" };
-const PERSON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="5.2" r="2.8" fill="currentColor"/><path d="M2.6 14c.5-3 2.7-4.6 5.4-4.6s4.9 1.6 5.4 4.6z" fill="currentColor"/></svg>';
 const rangeLabel = (l) => (l[0] === l[1] ? `L${l[0]}` : `L${l[0]}–${l[1]}`);
+const noted = (fi, ln) => state.notes.some((n) => n.file === fi && n.side === "new" && ln >= n.lines[0] && ln <= n.lines[1]);
+
+function cellHtml(fi, i, side, word) {
+  const f = state.files[fi], r = f.rows[i];
+  const text = side === "old" ? r.o : r.n, ln = side === "old" ? r.ol : r.nl;
+  if (text === null) return '<div class="num empty"></div><div class="code empty"></div>';
+  const kind = changed(r) ? (side === "old" ? "del" : "add") : "";
+  const novel = r.k === "same" ? [] : side === "old" ? r.oe : r.ne;
+  const numCls = ["num", "side-" + side, kind, side === "new" && noted(fi, ln) && "noted", side === "new" && state.fs[fi].since.has(ln) && "since"].filter(Boolean).join(" ");
+  return `<div class="${numCls}" data-n="${ln}" data-side="${side}"></div>` +
+    `<div class="code" data-side="${side}">${lineHtml(text, f.lang, novel, side === "old" ? "nv-del" : "nv-add", word)}</div>`;
+}
+
+function rowHtml(fi, i) {
+  const r = state.files[fi].rows[i];
+  return `<div class="row" data-key="${fi}:${i}" data-f="${fi}" data-i="${i}" data-side="${r.n === null ? "old" : "new"}" data-ol="${r.ol ?? ""}" data-nl="${r.nl ?? ""}" data-chg="${changed(r) ? 1 : 0}">` +
+    cellHtml(fi, i, "old") + cellHtml(fi, i, "new") + "</div>";
+}
 
 function msgHtml(m) {
   const you = m.who === "you";
-  const badge = you && m.delivery ? `<span class="delivery" data-state="${m.delivery}">${DELIVERY[m.delivery]}</span>` : "";
-  return `<div class="msg"><div class="avatar ${you ? "you" : "agent"}">${you ? PERSON : "✦"}</div>` +
-    `<div class="msg-head"><b>${you ? "You" : "Claude"}</b><span class="when">${esc(m.at)}</span>${badge}</div>` +
-    `<p class="msg-body md">${m.html ?? esc(m.text)}</p></div>`;
+  return `<div class="msg"><div class="av${you ? "" : " agent"}">${you ? "Y" : "✦"}</div>` +
+    `<div class="msg-head"><b>${you ? "You" : "Claude"}</b><span class="when">${esc(m.at)}</span>` +
+    (you && m.delivery ? `<span class="delivery" data-state="${m.delivery}">· ${DELIVERY[m.delivery]}</span>` : "") +
+    `</div><p class="msg-body md">${m.html ?? esc(m.text)}</p></div>`;
 }
-
-function composerBody(c) {
-  const what = c.lines[0] === c.lines[1] ? `line ${c.lines[0]}` : `lines ${c.lines[0]}–${c.lines[1]}`;
-  return `<div class="composer" id="composer">` +
-    (c.replyTo ? "" : `<div class="card-top" style="padding:0"><span class="anchor">Comment on ${c.side} ${what}</span></div>`) +
-    (c.quote ? `<pre class="quote">${esc(c.quote)}</pre>` : "") +
-    `<textarea id="composer-text" aria-label="Comment" placeholder="${c.replyTo ? "Reply" : "Comment on this code. Claude sees it once you pause."}"></textarea>` +
-    `<div class="row-btns"><span>Markdown</span><span class="spacer"></span>` +
-    `<button class="btn" type="button" data-cancel>Cancel <kbd>esc</kbd></button>` +
-    `<button class="btn primary" type="button" data-send>Comment <kbd>ctrl</kbd><kbd>enter</kbd></button></div></div>`;
-}
-const replyComposer = (id) => (state.composer && state.composer.replyTo === id ? composerBody(state.composer) : "");
 
 function noteCard(n) {
-  const idx = state.notes.indexOf(n) + 1;
-  return `<div class="inline" data-side="${n.side}"><div class="card note" id="note-${n.id}" data-note="${n.id}">` +
-    `<div class="card-top"><span class="kind" data-kind="${n.kind}">${n.kind}</span><span class="anchor">${rangeLabel(n.lines)}</span><span class="tour">note ${idx} of ${state.notes.length}</span></div>` +
-    msgHtml({ who: "agent", at: "9 min ago", html: n.body }) + (n.replies || []).map(msgHtml).join("") + replyComposer(n.id) +
-    `<div class="card-foot"><button class="link-btn" type="button" data-reply="${n.id}">Reply</button>` +
-    `<button class="link-btn" type="button" data-tour="next">Next note <kbd>]a</kbd></button></div></div></div>`;
+  return `<div class="inline" data-side="${n.side}"><div class="card note" id="note-${n.id}">` +
+    `<div class="card-top"><span class="kind" data-kind="${n.kind}">✦ ${n.kind}</span><span class="where">${rangeLabel(n.lines)}</span><span class="n">note ${state.notes.indexOf(n) + 1}/${state.notes.length}</span></div>` +
+    msgHtml({ who: "agent", at: "9 min ago", html: n.body }) + (n.replies || []).map(msgHtml).join("") +
+    `<div class="card-foot"><button class="link" type="button" data-reply="${n.id}">Reply</button><button class="link" type="button" data-tour="next">Next note <kbd>]a</kbd></button></div></div></div>`;
 }
 
 function threadCard(t) {
-  const f = state.files[t.file];
   return `<div class="inline" data-side="${t.side}"><div class="card${t.resolved ? " resolved" : ""}" id="thread-${t.id}" data-thread="${t.id}">` +
     (t.changedIn ? `<div class="changed-since">These lines changed in rev ${t.changedIn}, after your comment.</div>` : "") +
-    `<div class="card-top"><span class="anchor">${esc(baseName(f.path))} · ${t.side} ${rangeLabel(t.lines)}</span>${t.resolved ? '<span class="kind">resolved</span>' : ""}</div>` +
-    t.msgs.map(msgHtml).join("") + replyComposer(t.id) +
-    `<div class="card-foot"><button class="link-btn" type="button" data-reply="${t.id}">Reply <kbd>r</kbd></button>` +
-    `<button class="link-btn" type="button" data-resolve="${t.id}">${t.resolved ? "Unresolve" : "Resolve"} <kbd>x</kbd></button></div></div></div>`;
+    `<div class="card-top"><span class="where">${t.side} ${rangeLabel(t.lines)}</span>${t.resolved ? '<span class="kind">resolved</span>' : ""}</div>` +
+    t.msgs.map(msgHtml).join("") +
+    `<div class="card-foot"><button class="link" type="button" data-reply="${t.id}">Reply <kbd>r</kbd></button><button class="link" type="button" data-resolve="${t.id}">${t.resolved ? "Unresolve" : "Resolve"} <kbd>x</kbd></button></div></div></div>`;
 }
 
 function inlinesAfter(fi, r) {
   const ends = (a) => a.file === fi && (a.side === "new" ? r.nl !== null && a.lines[1] === r.nl : r.ol !== null && a.lines[1] === r.ol);
-  let html = "";
-  if (state.showNotes) for (const n of state.notes) if (ends(n)) html += noteCard(n);
-  for (const t of state.threads) if (ends(t)) html += threadCard(t);
-  const c = state.composer;
-  if (c && !c.replyTo && ends(c)) html += `<div class="inline" data-side="${c.side}"><div class="card">${composerBody(c)}</div></div>`;
-  return html;
+  return state.notes.filter(ends).map(noteCard).join("") + state.threads.filter(ends).map(threadCard).join("");
+}
+
+function gapContext(f, from) {
+  for (let i = Math.min(from, f.rows.length - 1); i >= 0; i--) {
+    const t = f.rows[i].n ?? f.rows[i].o;
+    if (/^\s{0,4}(?:pub )?(?:async )?(?:fn|struct|impl|enum)\b|^(?:export )?(?:function|const)\b/.test(t)) return t.trim();
+  }
+  return "";
 }
 
 function gapHtml(fi, a, b) {
-  const f = state.files[fi], n = b - a + 1;
-  const top = a === 0, end = b === f.rows.length - 1;
-  const btn = (dir, label, title) => `<button type="button" data-gap="${fi}:${a}:${b}:${dir}" title="${title}">${label}</button>`;
-  const btns = [];
-  if (!top && n > EXPAND_STEP) btns.push(btn("down", `↓ ${EXPAND_STEP}`, "Show more lines below the code above"));
-  btns.push(btn("all", `Show ${n} hidden line${n === 1 ? "" : "s"}`, "Show all hidden lines"));
-  if (!end && n > EXPAND_STEP) btns.push(btn("up", `↑ ${EXPAND_STEP}`, "Show more lines above the code below"));
-  const ctx = end ? "" : gapContext(f, b + 1);
+  const f = state.files[fi], n = b - a + 1, top = a === 0, end = b === f.rows.length - 1;
+  const btn = (dir, label) => `<button type="button" data-gap="${fi}:${a}:${b}:${dir}">${label}</button>`;
   let hidden = "";
-  for (let k = a; k <= b; k++) hidden += rowHtml(fi, k, f.rows[k]);
-  return `<div class="gap" data-gapctl="${fi}:${a}:${b}">${btns.join("")}<span class="ctx">${esc(ctx)}</span></div>` +
+  for (let k = a; k <= b; k++) hidden += rowHtml(fi, k);
+  return `<div class="gap" data-gapctl="${fi}:${a}:${b}">` +
+    (!top && n > STEP ? btn("down", `↓ ${STEP}`) : "") + btn("all", `${n} hidden line${n === 1 ? "" : "s"}`) + (!end && n > STEP ? btn("up", `↑ ${STEP}`) : "") +
+    `<span class="ctx">${esc(end ? "" : gapContext(f, b + 1))}</span></div>` +
     `<div class="gap-body" hidden="until-found" data-gapbody="${fi}:${a}:${b}">${hidden}</div>`;
 }
 
@@ -901,7 +786,7 @@ function rowsHtml(fi) {
   const f = state.files[fi], vis = state.fs[fi].visible;
   let html = "";
   for (let i = 0; i < f.rows.length; ) {
-    if (vis[i]) { html += rowHtml(fi, i, f.rows[i]) + inlinesAfter(fi, f.rows[i]); i++; continue; }
+    if (vis[i]) { html += rowHtml(fi, i) + inlinesAfter(fi, f.rows[i]); i++; continue; }
     let j = i;
     while (j < f.rows.length && !vis[j]) j++;
     html += gapHtml(fi, i, j - 1);
@@ -912,48 +797,66 @@ function rowsHtml(fi) {
 
 function fileHtml(fi) {
   const f = state.files[fi], st = state.fs[fi], s = fileStats(f);
-  const dir = f.path.slice(0, f.path.lastIndexOf("/") + 1);
-  const head = `<div class="file-head">` +
-    `<button class="fold" type="button" data-fold="${fi}" aria-expanded="${!st.collapsed}" aria-label="${st.collapsed ? "Expand" : "Collapse"} ${esc(f.path)}">▾</button>` +
-    `<span class="st" data-s="${f.status}" title="${STATUS[f.status]}">${f.status}</span>` +
-    `<span class="path" title="${esc(f.path)}"><span class="dir">${esc(dir)}</span>${esc(baseName(f.path))}</span>` +
-    `<span class="lang">${f.generated ? "generated · " : ""}${LANG_NAME[f.lang]}</span>` +
-    `<span class="t-counts"><span class="a">+${s.add}</span><span class="d">−${s.del}</span></span>` +
-    `<label class="viewed-box"><input type="checkbox" id="viewed-${fi}" data-viewed="${fi}"${st.viewed ? " checked" : ""}> Viewed</label></div>`;
-  let body = "";
-  if (!st.collapsed) body = `<div class="rows">${rowsHtml(fi)}</div>`;
-  else if (f.generated && !st.viewed) body = `<div class="file-note">Generated by ${esc(f.generated)}, so it starts collapsed. <button class="btn" type="button" data-fold="${fi}">Show file</button></div>`;
-  return `<section class="file${st.collapsed ? " collapsed" : ""}" id="file-${fi}" data-f="${fi}">${head}${body}</section>`;
+  const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/") + 1) : "";
+  const hidden = st.collapsed || st.viewed;
+  return `<section class="file${hidden ? " collapsed" : ""}" id="file-${fi}" data-f="${fi}">` +
+    `<div class="file-head"><button class="fold" type="button" data-fold="${fi}" aria-label="${hidden ? "Expand" : "Collapse"} ${esc(f.path)}">▼</button>` +
+    `<span class="st" data-s="${f.status}">${f.status}</span><span class="path"><span class="dir">${esc(dir)}</span>${esc(baseName(f.path))}</span>` +
+    (f.collapsedBy ? `<span class="chip agent" title="Collapsed when Claude shared the review">✦ ${esc(f.collapsedBy.replace("Claude: ", ""))}</span>` : "") +
+    `<span class="chip">${LANG_NAME[f.lang]}</span><span class="stats"><span class="a">+${s.add}</span><span class="d">−${s.del}</span></span>` +
+    `<label class="viewed-box"><input type="checkbox" id="viewed-${fi}" data-viewed="${fi}"${st.viewed ? " checked" : ""}> Viewed</label></div>` +
+    (hidden ? "" : `<div class="rows">${rowsHtml(fi)}</div>`) + "</section>";
 }
 
-function summaryHtml() {
-  return `<div class="summary"><h2>✦ Claude's summary</h2><p class="md">${REVIEW.summary}</p>` +
-    `<p style="margin-top:6px"><button class="link-btn" type="button" data-tour="start" style="padding-left:0">Walk through Claude's ${state.notes.length} notes <kbd>]a</kbd></button></p></div>`;
+/* File view (g enter): one file, no diff, slight marks in the gutter. */
+function fileViewHtml(fi) {
+  const f = state.files[fi];
+  const side = f.status === "D" ? "old" : "new";
+  let html = "", pendingDel = false;
+  f.rows.forEach((r, i) => {
+    const text = side === "old" ? r.o : r.n;
+    if (text === null) { pendingDel = true; return; }
+    const mark = side === "old" ? "" : r.k === "add" ? "add" : r.k === "chg" ? "mod" : pendingDel ? "del" : "";
+    pendingDel = false;
+    html += `<div class="row" data-key="${fi}:${i}" data-f="${fi}" data-i="${i}" data-side="${side}" data-ol="${r.ol ?? ""}" data-nl="${r.nl ?? ""}" data-chg="0">` +
+      `<div class="mark ${mark}"></div><div class="num" data-n="${side === "old" ? r.ol : r.nl}" data-side="${side}"></div>` +
+      `<div class="code" data-side="${side}">${lineHtml(text, f.lang, [], "", null)}</div></div>`;
+  });
+  return `<div class="fv-banner"><b>${esc(f.path)}</b><span>file at rev ${state.revision}, no diff</span><span class="grow"></span>` +
+    `<span class="legend"><i style="background:var(--add-mark)"></i>added</span><span class="legend"><i style="background:var(--mod-mark)"></i>changed</span><span class="legend"><i style="background:var(--del-mark)"></i>removed</span>` +
+    `<span><kbd>ctrl</kbd><kbd>o</kbd> back to the diff</span></div>` +
+    `<section class="file fv"><div class="rows">${html}</div></section>`;
 }
 
 function renderBuffer() {
   const buf = $("#buffer");
-  buf.className = "buffer " + state.view;
-  buf.innerHTML = summaryHtml() + state.files.map((_, fi) => fileHtml(fi)).join("");
+  if (state.mode === "file") buf.innerHTML = fileViewHtml(state.fileView);
+  else buf.innerHTML = `<div class="summary md"><b>✦ Claude</b> <span>${REVIEW.summary}</span> <button class="link" type="button" data-tour="start">Walk through ${state.notes.length} notes <kbd>]a</kbd></button></div>` +
+    state.files.map((_, fi) => fileHtml(fi)).join("");
   afterRender();
 }
 
-/* Re-render one file and keep `anchor` exactly where it was on screen. */
-function rerenderFile(fi, anchor) {
+/* Everything that changes the DOM goes through here, pinning the line at the top of the screen. */
+function keepScroll(mutate) {
   const buf = $("#buffer");
-  const key = anchor?.dataset?.key;
-  const before = anchor ? anchor.getBoundingClientRect().top : 0;
-  $("#file-" + fi).outerHTML = fileHtml(fi);
+  const top = topVisibleRow(), before = top?.getBoundingClientRect().top;
+  const key = top?.dataset.key;
+  mutate();
   const now = key && buf.querySelector(`.row[data-key="${key}"]`);
   if (now) buf.scrollTop += now.getBoundingClientRect().top - before;
-  afterRender();
+  placePopover();
 }
-
+function rerenderFile(fi) {
+  keepScroll(() => {
+    const el = $("#file-" + fi);
+    if (el && state.mode === "diff") el.outerHTML = fileHtml(fi);
+    afterRender();
+  });
+}
 function afterRender() {
   for (const el of document.querySelectorAll(".gap-body:not([data-bound])")) {
     el.dataset.bound = "1";
     el.addEventListener("beforematch", () => {
-      // Browser find matched text in a collapsed region: keep it open for real.
       const [fi, a, b] = el.dataset.gapbody.split(":").map(Number);
       for (let k = a; k <= b; k++) state.fs[fi].visible[k] = true;
       el.previousElementSibling?.remove();
@@ -966,37 +869,32 @@ function afterRender() {
 }
 
 /* ---------------------------------------------------------------------------
- * File tree, activity, status line
+ * Tree, activity, chat, status
  * ------------------------------------------------------------------------- */
-const targetFile = (go) =>
-  go.file ?? go.show?.file ?? state.threads.find((t) => t.id === go.thread)?.file ?? state.notes.find((n) => n.id === go.note)?.file;
+const targetFile = (go) => go.file ?? go.show?.file ?? state.threads.find((t) => t.id === go.thread)?.file ?? state.notes.find((n) => n.id === go.note)?.file;
 
-function treeHtml(node, depth, prefix) {
+function diffBar(s) {
+  const total = s.add + s.del || 1, a = Math.round((s.add / total) * 5);
+  return `<span class="bar" title="+${s.add} −${s.del}">${[0, 1, 2, 3, 4].map((k) => `<i class="${k < a ? "a" : "d"}"></i>`).join("")}</span>`;
+}
+
+function treeHtml(node, prefix) {
   let html = "";
   for (const [name0, child0] of [...node.dirs].sort(([a], [b]) => a.localeCompare(b))) {
     let name = name0, child = child0;
-    while (child.files.length === 0 && child.dirs.size === 1) {
-      const [n2, c2] = [...child.dirs][0];
-      name += "/" + n2;
-      child = c2;
-    }
-    const key = prefix + name + "/";
-    const open = !state.closedDirs.has(key);
-    const inner = treeHtml(child, depth + 1, key);
+    while (!child.files.length && child.dirs.size === 1) { const [n2, c2] = [...child.dirs][0]; name += "/" + n2; child = c2; }
+    const key = prefix + name + "/", open = !state.closedDirs.has(key), inner = treeHtml(child, key);
     if (!inner) continue;
-    html += `<li><div class="t-row t-dir" role="treeitem" tabindex="-1" style="padding-left:${10 + depth * 14}px" data-dir="${esc(key)}" aria-expanded="${open}"><span class="chev">▾</span>${esc(name)}</div>` +
-      (open ? `<ul>${inner}</ul>` : "") + "</li>";
+    html += `<li><div class="t-row t-dir" role="treeitem" data-dir="${esc(key)}" aria-expanded="${open}"><span class="chev">▼</span>${esc(name)}</div>${open ? `<ul>${inner}</ul>` : ""}</li>`;
   }
   for (const fi of node.files) {
-    const f = state.files[fi], st = state.fs[fi], s = fileStats(f);
+    const f = state.files[fi];
     if (state.filter && !f.path.toLowerCase().includes(state.filter)) continue;
-    const comments = state.threads.filter((t) => t.file === fi).length;
+    const threads = state.threads.filter((t) => t.file === fi).length;
     const unreadHere = state.activity.some((a) => a.unread && targetFile(a.go) === fi);
-    html += `<li><div class="t-row t-file${st.viewed ? " viewed" : ""}" role="treeitem" tabindex="-1" style="padding-left:${24 + depth * 14}px" data-file="${fi}" aria-current="${state.currentFile === fi}">` +
-      `<span class="st" data-s="${f.status}">${f.status}</span><span class="name">${esc(baseName(f.path))}</span>` +
-      (unreadHere ? '<span class="dot-unread" title="Unread reply"></span>' : "") +
-      (comments ? `<span class="t-badge">${COMMENT_ICON} ${comments}</span>` : "") +
-      `<span class="t-counts">${s.add ? `<span class="a">+${s.add}</span>` : ""}${s.del ? `<span class="d">−${s.del}</span>` : ""}</span></div></li>`;
+    html += `<li><div class="t-row t-file${hiddenFile(fi) ? " dim" : ""}" role="treeitem" data-file="${fi}" aria-current="${state.currentFile === fi}" title="${esc(f.path)}${f.collapsedBy ? " · collapsed by Claude" : ""}">` +
+      `<span class="st" data-s="${f.status}">${state.fs[fi].viewed ? "✓" : f.status}</span><span class="name">${esc(baseName(f.path))}</span>` +
+      `<span class="t-meta">${unreadHere ? '<span class="dotu" title="Unread reply"></span>' : ""}${threads ? `<span class="c${unreadHere ? " unread" : ""}">${COMMENT_ICON}${threads}</span>` : ""}${diffBar(fileStats(f))}</span></div></li>`;
   }
   return html;
 }
@@ -1011,21 +909,27 @@ function renderTree() {
     }
     node.files.push(fi);
   });
-  $("#tree-list").innerHTML = treeHtml(root, 0, "") || '<li class="t-row" style="padding-left:14px;color:var(--fg-subtle)">No files match</li>';
+  $("#tree-list").innerHTML = treeHtml(root, "") || '<li class="t-row" style="color:var(--subtle)">No files match</li>';
+  $("#file-count").textContent = state.files.length;
 }
 
 function renderActivity() {
   $("#act-list").innerHTML = state.activity.map((a, i) =>
-    `<li class="act${a.unread ? " unread" : ""}${a.fresh ? " enter" : ""}" data-act="${i}" tabindex="0">` +
-    `<span class="mark"></span><span class="what">${esc(a.what)}</span>` +
-    `<span class="where"><span>${esc(a.where)}</span><span>${esc(a.at)}</span></span></li>`).join("");
+    `<li class="act${a.unread ? " unread" : ""}${a.fresh ? " enter" : ""}" data-act="${i}" tabindex="0"><span class="mk"></span><span class="what">${esc(a.what)}</span><span class="wh"><span>${esc(a.where)}</span><span>${esc(a.at)}</span></span></li>`).join("");
   for (const a of state.activity) a.fresh = false;
   const n = unread();
   $("#act-count").hidden = n === 0;
   $("#act-count").textContent = n;
-  const edge = $("#edge-tab");
-  edge.hidden = !(n > 0 && $("#main").dataset.act === "off");
-  edge.innerHTML = `<span class="dot-unread"></span>${n} new`;
+  const h = $("#right-handle");
+  h.innerHTML = n && $("#right").classList.contains("closed") ? '<span class="badge"></span>' : "";
+  h.title = n ? `${n} unread in activity` : "";
+}
+
+function renderChat() {
+  const log = $("#chat-log");
+  log.hidden = state.chat.length === 0;
+  log.innerHTML = state.chat.map((m) => `<div class="cm"><div class="av${m.who === "you" ? "" : " agent"}">${m.who === "you" ? "Y" : "✦"}</div><p class="md">${m.html ?? esc(m.text)}</p></div>`).join("");
+  log.scrollTop = log.scrollHeight;
 }
 
 function hunkStarts() {
@@ -1033,179 +937,203 @@ function hunkStarts() {
   return rows.filter((r, k) => r.dataset.chg === "1" && (k === 0 || rows[k - 1].dataset.chg !== "1" || rows[k - 1].dataset.f !== r.dataset.f));
 }
 
+function currentMode() {
+  if (document.activeElement?.matches?.("#pop textarea, #chat-text")) return "INSERT";
+  if (state.visual) return "VISUAL";
+  if (state.cursor.word) return "SYMBOL";
+  return state.mode === "file" ? "FILE" : "NORMAL";
+}
+
 function renderStatus() {
   const cur = cursorRow();
-  let pos = "";
+  let pos = "no cursor";
   if (cur) {
-    const f = state.files[+cur.dataset.f];
     const ln = (state.cursor.side === "old" ? cur.dataset.ol : cur.dataset.nl) || cur.dataset.nl || cur.dataset.ol;
-    pos = `${baseName(f.path)}:${ln} ${state.cursor.side}`;
+    pos = `${baseName(state.files[+cur.dataset.f].path)}:${ln} ${state.cursor.side}`;
   }
   const hunks = hunkStarts();
-  const at = cur ? hunks.filter((h) => h === cur || h.compareDocumentPosition(cur) & Node.DOCUMENT_POSITION_FOLLOWING).length : 0;
-  const mode = document.activeElement?.id === "composer-text" ? "INSERT" : state.visual ? "VISUAL" : "NORMAL";
-  $("#status").innerHTML =
-    `<span class="mode" data-mode="${mode}">${mode}</span><span>${esc(pos || "no cursor")}</span>` +
-    `<span>hunk ${at}/${hunks.length}</span><span>note ${Math.max(0, state.noteIdx + 1)}/${state.notes.length}</span>` +
-    `<span class="pending">${esc(state.pending.join(" "))}</span>` +
-    `<span class="conn"><i></i><span>live · rev ${state.revision}</span></span>` +
-    `<span class="hints">${esc(state.message || "]c next hunk · ]a next note · gcc comment · ? keys")}</span>`;
+  const at = cur ? hunks.filter((h) => h === cur || follows(h, cur)).length : 0;
+  const mode = currentMode();
+  const word = state.cursor.word ? ` · ${state.cursor.word.text}` : "";
+  $("#status").innerHTML = `<span class="mode" data-mode="${mode}">${mode}</span><span>${esc(pos + word)}</span>` +
+    (state.mode === "diff" ? `<span>hunk ${at}/${hunks.length}</span>` : "") +
+    `<span>jumps ${state.jumpAt}/${state.jumps.length}</span><span class="pending">${esc([state.count, ...state.pending].join(" ").trim())}</span>` +
+    `<span>rev ${state.revision} · live</span><span class="hints">${esc(state.message || hintFor(mode))}</span>`;
 }
-
-let messageTimer = 0;
-function say(message) {
-  state.message = message;
-  renderStatus();
-  clearTimeout(messageTimer);
-  messageTimer = setTimeout(() => { state.message = ""; renderStatus(); }, 2800);
+function hintFor(mode) {
+  if (mode === "SYMBOL") return "w b next / previous symbol · gd or enter to definition · ctrl-o back · esc";
+  if (mode === "FILE") return "ctrl-o back to the diff · gd definition · w symbol mode";
+  if (mode === "VISUAL") return "j k extend · gc comment · esc";
+  return "]c hunk · ]f file · w symbols · gc comment · g enter file · ? keys";
 }
+let msgTimer = 0;
+function say(m) { state.message = m; renderStatus(); clearTimeout(msgTimer); msgTimer = setTimeout(() => { state.message = ""; renderStatus(); }, 2800); }
 
 /* ---------------------------------------------------------------------------
- * Cursor
+ * Cursor, word (symbol) cursor
  * ------------------------------------------------------------------------- */
 const navRows = () => [...$("#buffer").querySelectorAll(".row")].filter((r) => !r.closest(".gap-body[hidden]"));
 const cursorRow = () => (state.cursor.key ? $("#buffer").querySelector(`.row[data-key="${state.cursor.key}"]`) : null);
-
+const follows = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+function topVisibleRow() {
+  const top = $("#buffer").getBoundingClientRect().top + 34;
+  return navRows().find((r) => r.getBoundingClientRect().bottom > top) || null;
+}
+function redrawCell(row, side, word) {
+  const cell = row?.querySelector(`.code[data-side="${side}"]`);
+  if (!cell) return;
+  const f = state.files[+row.dataset.f], r = f.rows[+row.dataset.i];
+  const text = side === "old" ? r.o : r.n;
+  const diff = state.mode === "diff";
+  const novel = !diff || r.k === "same" ? [] : side === "old" ? r.oe : r.ne;
+  cell.innerHTML = lineHtml(text, f.lang, novel, diff ? (side === "old" ? "nv-del" : "nv-add") : "", word);
+}
+let wordCell = null;
 function paintCursor() {
   const buf = $("#buffer");
   for (const el of buf.querySelectorAll(".row.cur, .row.vsel, .code.caret")) el.classList.remove("cur", "vsel", "caret");
+  if (wordCell) { const row = buf.querySelector(`.row[data-key="${wordCell.key}"]`); redrawCell(row, wordCell.side, null); wordCell = null; }
   const row = cursorRow();
   if (!row) return;
   row.classList.add("cur");
   (row.querySelector(`.code[data-side="${state.cursor.side}"]`) || row.querySelector(".code[data-side]"))?.classList.add("caret");
+  if (state.cursor.word) { redrawCell(row, state.cursor.side, state.cursor.word.range); wordCell = { key: row.dataset.key, side: state.cursor.side }; }
   if (state.visual) {
-    const rows = navRows();
-    const a = rows.findIndex((r) => r.dataset.key === state.visual.anchor);
-    const b = rows.indexOf(row);
+    const rows = navRows(), a = rows.findIndex((r) => r.dataset.key === state.visual.anchor), b = rows.indexOf(row);
     if (a >= 0 && b >= 0) for (let k = Math.min(a, b); k <= Math.max(a, b); k++) if (rows[k].dataset.f === row.dataset.f) rows[k].classList.add("vsel");
   }
 }
-
-function setCursor(row, opts = {}) {
+function setCursor(row, { side, scroll = "nearest", word = null } = {}) {
   if (!row) return;
   state.cursor.key = row.dataset.key;
-  if (opts.side) state.cursor.side = opts.side;
-  else if (state.view === "unified" || !row.querySelector(`.code[data-side="${state.cursor.side}"]`)) state.cursor.side = row.dataset.side;
+  if (side) state.cursor.side = side;
+  else if (!row.querySelector(`.code[data-side="${state.cursor.side}"]`)) state.cursor.side = row.dataset.side;
+  state.cursor.word = word;
   if (state.currentFile !== +row.dataset.f) { state.currentFile = +row.dataset.f; renderTree(); }
   paintCursor();
-  if (opts.scroll !== false) row.scrollIntoView({ block: opts.center ? "center" : "nearest" });
+  if (scroll) row.scrollIntoView({ block: scroll });
+  renderStatus();
+}
+function lineTextAt(row, side) {
+  const r = state.files[+row.dataset.f].rows[+row.dataset.i];
+  return (side === "old" ? r.o : r.n) || "";
+}
+/* w / b: step through identifiers on the line; that's symbol mode. */
+function stepWord(dir) {
+  const row = cursorRow();
+  if (!row) return;
+  const words = [...lineTextAt(row, state.cursor.side).matchAll(IDENT)].map((m) => ({ text: m[0], range: [m.index, m.index + m[0].length] }));
+  if (!words.length) return say("No symbols on this line");
+  const at = state.cursor.word ? words.findIndex((w) => w.range[0] === state.cursor.word.range[0]) : -1;
+  let next = at < 0 ? (dir > 0 ? 0 : words.length - 1) : at + dir;
+  if (next < 0 || next >= words.length) { move(dir); next = null; }
+  if (next === null) {
+    const r2 = cursorRow(), w2 = [...lineTextAt(r2, state.cursor.side).matchAll(IDENT)];
+    if (!w2.length) return;
+    const m = dir > 0 ? w2[0] : w2[w2.length - 1];
+    state.cursor.word = { text: m[0], range: [m.index, m.index + m[0].length] };
+  } else state.cursor.word = words[next];
+  paintCursor();
   renderStatus();
 }
 
-function topVisibleRow() {
-  const top = $("#buffer").getBoundingClientRect().top + 44;
-  return navRows().find((r) => r.getBoundingClientRect().bottom > top) || null;
-}
-const rerenderKeep = (fi) => rerenderFile(fi, topVisibleRow());
-const lineText = (fi, side, [a, b]) =>
-  state.files[fi].rows.filter((r) => { const ln = side === "old" ? r.ol : r.nl; return ln !== null && ln >= a && ln <= b; })
-    .map((r) => (side === "old" ? r.o : r.n)).join("\n");
-
 /* ---------------------------------------------------------------------------
- * Navigation and jump history (ctrl-o / ctrl-i)
+ * Jump list (ctrl-o / ctrl-i), vim semantics, across diff and file view
  * ------------------------------------------------------------------------- */
-function remember(extra = {}) {
-  state.history.push({ key: state.cursor.key, side: state.cursor.side, top: $("#buffer").scrollTop, ...extra });
-  state.future = [];
+const here = () => ({ mode: state.mode, fileView: state.fileView, key: state.cursor.key, side: state.cursor.side, word: state.cursor.word, top: $("#buffer").scrollTop });
+function remember() {
+  state.jumps = state.jumps.slice(0, state.jumpAt);
+  state.jumps.push(here());
+  state.jumpAt = state.jumps.length;
 }
-function restore(h) {
-  if (h.vis) { state.fs[h.vis.fi].visible = h.vis.visible; rerenderFile(h.vis.fi); }
-  $("#buffer").scrollTop = h.top;
-  const row = h.key && $("#buffer").querySelector(`.row[data-key="${h.key}"]`);
-  if (row) setCursor(row, { side: h.side, scroll: false });
+function restore(l) {
+  if (l.mode !== state.mode || l.fileView !== state.fileView) { state.mode = l.mode; state.fileView = l.fileView; renderBuffer(); }
+  $("#buffer").scrollTop = l.top;
+  const row = l.key && $("#buffer").querySelector(`.row[data-key="${l.key}"]`);
+  if (row) setCursor(row, { side: l.side, scroll: false, word: l.word });
+  else renderStatus();
 }
 function jumpBack() {
-  const h = state.history.pop();
-  if (!h) return say("Nothing to go back to");
-  state.future.push({ key: state.cursor.key, side: state.cursor.side, top: $("#buffer").scrollTop });
-  restore(h);
+  if (state.jumpAt === 0) return say("Start of the jump list");
+  if (state.jumpAt === state.jumps.length) state.jumps.push(here());
+  state.jumpAt--;
+  restore(state.jumps[state.jumpAt]);
 }
 function jumpForward() {
-  const h = state.future.pop();
-  if (!h) return say("Nothing to go forward to");
-  state.history.push({ key: state.cursor.key, side: state.cursor.side, top: $("#buffer").scrollTop });
-  restore(h);
+  if (state.jumpAt >= state.jumps.length - 1) return say("End of the jump list");
+  state.jumpAt++;
+  restore(state.jumps[state.jumpAt]);
 }
 
-/* Make sure a line is rendered (unfold file, reveal context) and return its row. */
+/* ---------------------------------------------------------------------------
+ * Navigation
+ * ------------------------------------------------------------------------- */
 function rowFor(fi, side, line) {
+  if (state.mode === "file" && state.fileView !== fi) { state.mode = "diff"; state.fileView = null; renderBuffer(); }
   const f = state.files[fi], st = state.fs[fi];
   const i = f.rows.findIndex((r) => (side === "old" ? r.ol : r.nl) === line);
   if (i < 0) return null;
-  let dirty = false;
-  if (st.collapsed) { st.collapsed = false; dirty = true; }
-  if (!st.visible[i]) {
+  if (state.mode === "diff" && (st.collapsed || st.viewed || !st.visible[i])) {
+    st.collapsed = false; st.viewed = false;
     for (let k = Math.max(0, i - 2); k <= Math.min(f.rows.length - 1, i + 2); k++) st.visible[k] = true;
-    dirty = true;
+    rerenderFile(fi);
   }
-  if (dirty) rerenderKeep(fi);
-  const buf = $("#buffer");
-  return buf.querySelector(`.row[data-f="${fi}"][data-i="${i}"][data-side="${side}"]`) || buf.querySelector(`.row[data-f="${fi}"][data-i="${i}"]`);
+  return $("#buffer").querySelector(`.row[data-f="${fi}"][data-i="${i}"]`);
 }
-
-function goTo(fi, side, line, { flash = false, card = null } = {}) {
+function goTo(fi, side, line, { card = null, word = null } = {}) {
   remember();
   const row = rowFor(fi, side, line);
   if (!row) return;
-  setCursor(row, { side, center: true });
-  if (flash) { row.classList.remove("target"); void row.offsetWidth; row.classList.add("target"); }
-  if (card) {
-    const el = document.getElementById(card);
-    if (el) { el.scrollIntoView({ block: "center" }); el.classList.add("focus"); setTimeout(() => el.classList.remove("focus"), 1800); }
-  }
+  setCursor(row, { side, scroll: "center", word });
+  row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
+  const el = card && document.getElementById(card);
+  if (el) { el.scrollIntoView({ block: "nearest" }); el.classList.add("focus"); setTimeout(() => el.classList.remove("focus"), 1600); }
 }
-
 function move(delta) {
   const rows = navRows();
   if (!rows.length) return;
   const at = rows.findIndex((r) => r.dataset.key === state.cursor.key);
   setCursor(rows[at < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, at + delta))]);
 }
-const halfPage = () => Math.max(5, Math.floor($("#buffer").clientHeight / 40));
-const follows = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-
+const halfPage = () => Math.max(5, Math.floor($("#buffer").clientHeight / 36));
 function hunk(dir) {
   const starts = hunkStarts(), cur = cursorRow();
-  const target = dir > 0 ? starts.find((h) => !cur || follows(cur, h)) : [...starts].reverse().find((h) => cur && follows(h, cur));
-  if (!target) return say(dir > 0 ? "No more hunks below" : "No more hunks above");
+  const t = dir > 0 ? starts.find((h) => !cur || follows(cur, h)) : [...starts].reverse().find((h) => cur && follows(h, cur));
+  if (!t) return say(dir > 0 ? "No more hunks below" : "No more hunks above");
   remember();
-  setCursor(target, { center: true });
+  setCursor(t, { scroll: "center" });
 }
-
 function openFile(fi) {
   remember();
+  if (state.mode === "file") { state.mode = "diff"; state.fileView = null; renderBuffer(); }
   const st = state.fs[fi];
-  if (st.collapsed && !state.files[fi].generated) { st.collapsed = false; rerenderFile(fi); }
+  if (st.collapsed || st.viewed) { st.collapsed = false; st.viewed = false; rerenderFile(fi); }
   const buf = $("#buffer"), sec = $("#file-" + fi);
-  buf.scrollTop += sec.getBoundingClientRect().top - buf.getBoundingClientRect().top - 8;
-  const first = sec.querySelector(".row");
+  buf.scrollTop += sec.getBoundingClientRect().top - buf.getBoundingClientRect().top - 6;
+  const first = sec.querySelector(".row[data-chg='1']") || sec.querySelector(".row");
   if (first) setCursor(first, { scroll: false });
-  else { state.currentFile = fi; renderTree(); renderStatus(); }
 }
+/* ]f / [f skip files that are collapsed (by Claude, or marked viewed). */
 function fileJump(dir) {
-  const fi = (state.currentFile ?? 0) + dir;
-  if (fi < 0 || fi >= state.files.length) return say(dir > 0 ? "Last file" : "First file");
-  openFile(fi);
+  for (let fi = (state.currentFile ?? 0) + dir; fi >= 0 && fi < state.files.length; fi += dir) {
+    if (!hiddenFile(fi)) { if (state.mode === "file") { remember(); state.fileView = fi; renderBuffer(); return; } return openFile(fi); }
+  }
+  say(dir > 0 ? "No more open files below" : "No more open files above");
 }
-
 function noteJump(dir) {
-  if (!state.showNotes) { state.showNotes = true; renderBuffer(); }
   const idx = state.noteIdx < 0 && dir > 0 ? 0 : state.noteIdx + dir;
   if (idx < 0 || idx >= state.notes.length) return say(dir > 0 ? "That was Claude's last note" : "That was the first note");
   state.noteIdx = idx;
   const n = state.notes[idx];
   goTo(n.file, n.side, n.lines[1], { card: "note-" + n.id });
 }
-
 function threadJump(dir) {
-  const cards = [...$("#buffer").querySelectorAll(".card[data-thread]")];
-  const cur = cursorRow();
-  const next = dir > 0 ? cards.find((c) => !cur || follows(cur, c)) : [...cards].reverse().find((c) => cur && follows(c, cur));
-  if (!next) return say("No more threads that way");
-  const t = state.threads.find((x) => x.id === next.dataset.thread);
+  const cards = [...$("#buffer").querySelectorAll(".card[data-thread]")], cur = cursorRow();
+  const c = dir > 0 ? cards.find((x) => !cur || follows(cur, x)) : [...cards].reverse().find((x) => cur && follows(x, cur));
+  if (!c) return say("No more threads that way");
+  const t = state.threads.find((x) => x.id === c.dataset.thread);
   goTo(t.file, t.side, t.lines[1], { card: "thread-" + t.id });
 }
-
 function activityGo(i) {
   const a = state.activity[i];
   if (!a) return;
@@ -1213,105 +1141,111 @@ function activityGo(i) {
   const go = a.go;
   if (go.thread) { const t = state.threads.find((x) => x.id === go.thread); goTo(t.file, t.side, t.lines[1], { card: "thread-" + t.id }); }
   else if (go.note) { state.noteIdx = state.notes.findIndex((n) => n.id === go.note) - 1; noteJump(1); }
-  else if (go.show) goTo(go.show.file, go.show.side, go.show.lines[0], { flash: true });
+  else if (go.show) goTo(go.show.file, go.show.side, go.show.lines[0]);
   else if (go.file !== undefined) openFile(go.file);
   renderActivity();
   renderTree();
 }
-function unreadJump() {
-  const i = state.activity.findIndex((a) => a.unread);
-  if (i < 0) return say("Nothing unread");
-  activityGo(i);
-}
+function unreadJump() { const i = state.activity.findIndex((a) => a.unread); i < 0 ? say("Nothing unread") : activityGo(i); }
 
 /* ---------------------------------------------------------------------------
- * Context: expand gaps, whole file, fold
+ * Context and views
  * ------------------------------------------------------------------------- */
 function expandGap(spec) {
-  const [fs, as, bs, dir] = spec.split(":");
-  const fi = +fs, a = +as, b = +bs, vis = state.fs[fi].visible;
-  const buf = $("#buffer");
-  const above = [...buf.querySelectorAll(`.row[data-f="${fi}"][data-i="${a - 1}"]`)].pop();
-  const below = buf.querySelector(`.row[data-f="${fi}"][data-i="${b + 1}"]`);
-  if (dir === "down") for (let k = a; k < a + EXPAND_STEP; k++) vis[k] = true;
-  else if (dir === "up") for (let k = b; k > b - EXPAND_STEP; k--) vis[k] = true;
+  const [fs, as, bs, dir] = spec.split(":"), fi = +fs, a = +as, b = +bs, vis = state.fs[fi].visible;
+  if (dir === "down") for (let k = a; k < a + STEP; k++) vis[k] = true;
+  else if (dir === "up") for (let k = b; k > b - STEP; k--) vis[k] = true;
   else for (let k = a; k <= b; k++) vis[k] = true;
-  rerenderFile(fi, dir === "up" ? below ?? above : above ?? below);
+  rerenderFile(fi);
 }
 function expandNearest() {
   const cur = cursorRow();
-  if (!cur) return;
+  if (!cur || state.mode !== "diff") return;
   const gaps = [...$("#file-" + cur.dataset.f).querySelectorAll(".gap")];
-  const below = gaps.find((g) => follows(cur, g));
-  const above = [...gaps].reverse().find((g) => follows(g, cur));
-  const g = below || above;
+  const below = gaps.find((g) => follows(cur, g)), above = [...gaps].reverse().find((g) => follows(g, cur)), g = below || above;
   if (!g) return say("No hidden lines in this file");
   const [fi, a, b] = g.dataset.gapctl.split(":");
   expandGap(`${fi}:${a}:${b}:${g === below ? "down" : "up"}`);
 }
-function expandAll() { state.fs.forEach((st) => st.visible.fill(true)); renderBuffer(); say("Showing every line"); }
-function collapseAll() { state.fs.forEach((st, fi) => (st.visible = initialVisible(state.files[fi], fi))); renderBuffer(); say("Back to hunks"); }
-function fullFile() {
-  const cur = cursorRow();
-  if (!cur) return;
-  const fi = +cur.dataset.f;
-  remember({ vis: { fi, visible: [...state.fs[fi].visible] } });
-  state.fs[fi].visible.fill(true);
-  rerenderFile(fi, cur);
-  say("Whole file · ctrl-o to go back");
-}
+function setAll(fn, msg) { keepScroll(() => { state.fs.forEach(fn); renderBuffer(); }); say(msg); }
 function toggleFold(fi) {
-  const buf = $("#buffer"), head = () => $(`#file-${fi} .file-head`);
-  const before = head().getBoundingClientRect().top;
-  state.fs[fi].collapsed = !state.fs[fi].collapsed;
-  $("#file-" + fi).outerHTML = fileHtml(fi);
-  buf.scrollTop += head().getBoundingClientRect().top - before;
-  afterRender();
-}
-function setViewed(fi, viewed) {
   const st = state.fs[fi];
-  st.viewed = viewed;
-  st.collapsed = viewed;
-  const buf = $("#buffer"), head = () => $(`#file-${fi} .file-head`);
-  const before = head().getBoundingClientRect().top;
+  const open = st.collapsed || st.viewed;
+  st.collapsed = !open; if (open) st.viewed = false;
+  const buf = $("#buffer"), head = () => $(`#file-${fi} .file-head`), before = head().getBoundingClientRect().top;
   $("#file-" + fi).outerHTML = fileHtml(fi);
   buf.scrollTop += head().getBoundingClientRect().top - before;
   afterRender();
 }
-function markViewed() {
-  const fi = state.currentFile ?? 0;
-  setViewed(fi, !state.fs[fi].viewed);
-  const next = state.fs.findIndex((st, k) => k > fi && !st.viewed);
-  if (state.fs[fi].viewed && next >= 0) openFile(next);
+function setViewed(fi, v) {
+  const st = state.fs[fi];
+  st.viewed = v;
+  const buf = $("#buffer"), head = () => $(`#file-${fi} .file-head`), before = head().getBoundingClientRect().top;
+  $("#file-" + fi).outerHTML = fileHtml(fi);
+  buf.scrollTop += head().getBoundingClientRect().top - before;
+  afterRender();
+}
+/* g enter: the plain file at the cursor. ctrl-o comes back to the diff. */
+function openFileView() {
+  const cur = cursorRow();
+  if (!cur) return say("Put the cursor on a line first");
+  if (state.mode === "file") return say("Already in file view · ctrl-o to go back");
+  const fi = +cur.dataset.f, i = cur.dataset.i;
+  remember();
+  state.mode = "file";
+  state.fileView = fi;
+  renderBuffer();
+  const row = $("#buffer").querySelector(`.row[data-i="${i}"]`) || $("#buffer").querySelector(".row");
+  setCursor(row, { scroll: "center" });
 }
 
 /* ---------------------------------------------------------------------------
- * Comments. In diffd every comment is anchored to lines and goes to the agent
- * over the page's WebSocket; replies come back the same way.
+ * Comments: a floating popover where you selected. Nothing scrolls.
  * ------------------------------------------------------------------------- */
 const holderOf = (id) => state.threads.find((t) => t.id === id) || state.notes.find((n) => n.id === id);
-
+function lineText(fi, side, [a, b]) {
+  return state.files[fi].rows.filter((r) => { const ln = side === "old" ? r.ol : r.nl; return ln !== null && ln >= a && ln <= b; }).map((r) => (side === "old" ? r.o : r.n)).join("\n");
+}
 function openComposer(c) {
-  if (state.composer) state.composer = null;
   state.visual = null;
   state.composer = c;
-  const fi = c.replyTo ? holderOf(c.replyTo).file : c.file;
-  if (!c.replyTo) rowFor(fi, c.side, c.lines[1]);
-  rerenderKeep(fi);
-  const ta = $("#composer-text");
-  if (ta) { ta.focus({ preventScroll: true }); document.getElementById("composer").scrollIntoView({ block: "nearest" }); }
+  const h = c.replyTo ? holderOf(c.replyTo) : c;
+  const where = `${baseName(state.files[h.file].path)} · ${h.side} ${rangeLabel(h.lines)}`;
+  $("#pop").innerHTML =
+    `<div class="pop-head"><span>${c.replyTo ? "Reply on" : "Comment on"}</span><span class="where">${esc(where)}</span></div>` +
+    (c.quote ? `<pre>${esc(c.quote)}</pre>` : "") +
+    `<textarea id="pop-text" aria-label="Comment" placeholder="${c.replyTo ? "Reply" : "What should Claude know about this code?"}"></textarea>` +
+    `<div class="pop-foot"><span>Claude sees it once you pause</span><span class="spacer"></span>` +
+    `<button class="btn ghost" type="button" data-cancel>Cancel</button><button class="btn primary" type="button" data-send>Comment <kbd>⌘</kbd><kbd>↵</kbd></button></div>`;
+  $("#pop").hidden = false;
+  $("#bubble").hidden = true;
+  paintCursor();
+  placePopover();
+  $("#pop-text").focus({ preventScroll: true });
   renderStatus();
 }
-function closeComposer() {
+function composerAnchor() {
   const c = state.composer;
-  if (!c) return;
-  state.composer = null;
-  rerenderKeep(c.replyTo ? holderOf(c.replyTo).file : c.file);
-  $("#buffer").focus({ preventScroll: true });
-  renderStatus();
+  if (!c) return null;
+  if (c.replyTo) return document.querySelector(`#thread-${c.replyTo} .card-foot, #note-${c.replyTo} .card-foot`);
+  const f = state.files[c.file];
+  const i = f.rows.findIndex((r) => (c.side === "old" ? r.ol : r.nl) === c.lines[1]);
+  return $("#buffer").querySelector(`.row[data-f="${c.file}"][data-i="${i}"] .code[data-side="${c.side}"]`);
 }
+function placePopover() {
+  const pop = $("#pop"), a = composerAnchor();
+  if (pop.hidden || !a) return;
+  const main = $("#main").getBoundingClientRect(), buf = $("#buffer").getBoundingClientRect(), r = a.getBoundingClientRect();
+  const w = pop.offsetWidth, hgt = pop.offsetHeight;
+  let top = r.bottom + 4;
+  if (top + hgt > buf.bottom - 4) top = Math.max(buf.top + 4, r.top - hgt - 4);
+  const left = Math.max(buf.left + 8, Math.min(buf.right - w - 8, r.left + 12));
+  pop.style.top = top - main.top + "px";
+  pop.style.left = left - main.left + "px";
+}
+function closeComposer() { state.composer = null; $("#pop").hidden = true; $("#buffer").focus({ preventScroll: true }); renderStatus(); }
 function sendComposer() {
-  const c = state.composer, text = $("#composer-text").value.trim();
+  const c = state.composer, text = $("#pop-text").value.trim();
   if (!text) return say("Write something first");
   const msg = { who: "you", at: "just now", text, delivery: "sent" };
   let thread;
@@ -1319,51 +1253,37 @@ function sendComposer() {
     const n = holderOf(c.replyTo);
     (n.replies ||= []).push(msg);
     thread = { id: n.id, file: n.file, side: n.side, lines: n.lines, note: n };
-  } else if (c.replyTo) {
-    thread = holderOf(c.replyTo);
-    thread.msgs.push(msg);
-  } else {
-    thread = { id: "t" + state.nextId++, file: c.file, side: c.side, lines: c.lines, resolved: false, msgs: [msg] };
-    state.threads.push(thread);
-  }
-  const where = `${baseName(state.files[thread.file].path)}:${thread.lines[0]}`;
-  const go = thread.note ? { note: thread.id } : { thread: thread.id };
+  } else if (c.replyTo) { thread = holderOf(c.replyTo); thread.msgs.push(msg); }
+  else { thread = { id: "t" + state.nextId++, file: c.file, side: c.side, lines: c.lines, resolved: false, msgs: [msg] }; state.threads.push(thread); }
+  const where = `${baseName(state.files[thread.file].path)}:${thread.lines[0]}`, go = thread.note ? { note: thread.id } : { thread: thread.id };
   state.activity.unshift({ what: "You commented", where, at: "now", go, fresh: true });
-  state.composer = null;
-  rerenderKeep(thread.file);
-  $("#buffer").focus({ preventScroll: true });
-  simulateAgent(thread, msg, where, go);
+  closeComposer();
+  rerenderFile(thread.file);
+  simulateReply(thread, msg, where, go);
 }
-
-/* The real agent answers through MCP; here the timing is faked. */
-function simulateAgent(thread, msg, where, go) {
-  setTimeout(() => { msg.delivery = "seen"; rerenderKeep(thread.file); }, 1700);
+function simulateReply(thread, msg, where, go) {
+  setTimeout(() => { msg.delivery = "seen"; rerenderFile(thread.file); }, 1700);
   setTimeout(() => setPresence("working"), 2100);
   setTimeout(() => {
     msg.delivery = "replied";
     const html = /\?\s*$/.test(msg.text)
-      ? "<em>Simulated reply.</em> In diffd this is Claude's real answer, written with your selected lines and the surrounding hunk in hand."
-      : "<em>Simulated reply.</em> Got it. I'll make that change now, and the diff will update here when I save.";
+      ? "<em>Simulated.</em> In diffd this is Claude's real answer, written with your selected lines and their hunk in hand."
+      : "<em>Simulated.</em> On it. The diff will update here when I save the change.";
     (thread.note ? thread.note.replies : thread.msgs).push({ who: "agent", at: "just now", html });
     state.activity.unshift({ what: "Claude replied", where, at: "now", go, unread: true, fresh: true });
     setPresence("listening");
-    rerenderKeep(thread.file);
+    rerenderFile(thread.file);
   }, 4600);
 }
-
-function setPresence(s) {
-  $("#presence").dataset.state = s;
-  $("#presence-text").textContent = s === "working" ? "Claude is working" : "Claude is listening";
-}
+function setPresence(s) { $("#presence").dataset.state = s; $("#presence-text").textContent = s === "working" ? "Claude is working" : "Claude is listening"; }
 
 function cursorLines() {
   const cur = cursorRow();
-  if (!cur) return null;
+  if (!cur || state.mode !== "diff") return null;
   const fi = +cur.dataset.f, side = state.cursor.side, key = side === "old" ? "ol" : "nl";
   let rows = [cur];
   if (state.visual) {
-    const all = navRows();
-    const a = all.findIndex((r) => r.dataset.key === state.visual.anchor), b = all.indexOf(cur);
+    const all = navRows(), a = all.findIndex((r) => r.dataset.key === state.visual.anchor), b = all.indexOf(cur);
     rows = all.slice(Math.min(a, b), Math.max(a, b) + 1).filter((r) => +r.dataset.f === fi);
   }
   const nums = rows.map((r) => +r.dataset[key]).filter(Boolean);
@@ -1371,57 +1291,50 @@ function cursorLines() {
   const lines = [Math.min(...nums), Math.max(...nums)];
   return { file: fi, side, lines, quote: lineText(fi, side, lines) };
 }
-function commentLines() {
-  const c = cursorLines();
-  if (!c) return say("Move the cursor onto a line first (j / k, or click)");
-  openComposer(c);
-}
-function threadNearCursor() {
-  const cur = cursorRow();
-  const cards = [...$("#buffer").querySelectorAll(".card[data-thread]")];
-  return cards.find((c) => !cur || follows(cur, c)) || cards.pop();
-}
-function replyNearest() {
-  const card = threadNearCursor();
-  if (!card) return say("No thread to reply to");
-  openComposer({ replyTo: card.dataset.thread });
-}
-function toggleResolved(id) {
-  const t = holderOf(id);
-  t.resolved = !t.resolved;
-  rerenderKeep(t.file);
-  say(t.resolved ? "Thread resolved" : "Thread reopened");
-}
+function commentLines() { const c = cursorLines(); c ? openComposer(c) : say("Comments go on diff lines · move the cursor onto one"); }
+function nearThread() { const cur = cursorRow(), cards = [...$("#buffer").querySelectorAll(".card[data-thread]")]; return cards.find((c) => !cur || follows(cur, c)) || cards.pop(); }
+function toggleResolved(id) { const t = holderOf(id); t.resolved = !t.resolved; rerenderFile(t.file); }
 
-/* Mouse selection → "Comment" bubble */
 function readSelection() {
   const sel = getSelection();
   if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
-  const range = sel.getRangeAt(0);
-  const elOf = (n) => (n.nodeType === 1 ? n : n.parentElement);
-  const a = elOf(range.startContainer)?.closest(".code[data-side]"), b = elOf(range.endContainer)?.closest(".code[data-side]");
-  if (!a || !b) return null;
+  const range = sel.getRangeAt(0), el = (n) => (n.nodeType === 1 ? n : n.parentElement);
+  const a = el(range.startContainer)?.closest(".code[data-side]"), b = el(range.endContainer)?.closest(".code[data-side]");
+  if (!a || !b || state.mode !== "diff") return null;
   const ra = a.closest(".row"), rb = b.closest(".row");
   if (ra.dataset.f !== rb.dataset.f) return null;
-  const side = b.dataset.side, key = side === "old" ? "ol" : "nl";
-  const nums = [ra, rb].map((r) => +r.dataset[key]).filter(Boolean);
+  const side = b.dataset.side, key = side === "old" ? "ol" : "nl", nums = [ra, rb].map((r) => +r.dataset[key]).filter(Boolean);
   if (!nums.length) return null;
-  return { file: +ra.dataset.f, side, lines: [Math.min(...nums), Math.max(...nums)], quote: sel.toString(), rect: range.getBoundingClientRect() };
+  return { file: +ra.dataset.f, side, lines: [Math.min(...nums), Math.max(...nums)], quote: sel.toString().trim(), rect: range.getBoundingClientRect() };
 }
 function updateBubble() {
   const s = readSelection(), b = $("#bubble");
   state.selection = s;
-  if (!s) { b.hidden = true; return; }
+  if (!s || state.composer) { b.hidden = true; return; }
+  const main = $("#main").getBoundingClientRect();
   b.hidden = false;
-  b.style.left = Math.max(8, Math.min(innerWidth - 150, s.rect.right + 6)) + "px";
-  b.style.top = Math.max(8, s.rect.top - 38) + "px";
+  b.style.top = s.rect.bottom - main.top + 4 + "px";
+  b.style.left = Math.min(main.width - 130, s.rect.right - main.left - 40) + "px";
 }
 function commentSelection() {
   const s = state.selection;
   if (!s) return;
   getSelection().removeAllRanges();
-  $("#bubble").hidden = true;
-  openComposer({ file: s.file, side: s.side, lines: s.lines, quote: s.quote.trim() });
+  openComposer({ file: s.file, side: s.side, lines: s.lines, quote: s.quote });
+}
+
+/* ---------------------------------------------------------------------------
+ * Chat with the agent (general questions, not tied to lines)
+ * ------------------------------------------------------------------------- */
+function sendChat(text) {
+  state.chat.push({ who: "you", text });
+  renderChat();
+  setPresence("working");
+  setTimeout(() => {
+    state.chat.push({ who: "agent", html: "<em>Simulated.</em> Claude answers here, and links like <a data-go=\"0:new:32\">feedback.rs:32</a> jump into the diff (ctrl-o to come back)." });
+    setPresence("listening");
+    renderChat();
+  }, 2200);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1441,132 +1354,93 @@ function playEdit() {
     const t2 = holderOf("t2");
     t2.changedIn = 3;
     t2.msgs[0].delivery = "replied";
-    t2.msgs.push({ who: "agent", at: "just now", html: "Switched both labels to say <code>agent</code>. Once a review knows which agent it's talking to, I'll pass the name in instead." });
+    t2.msgs.push({ who: "agent", at: "just now", html: "Switched both labels to <code>agent</code>. Once a review knows which agent it's talking to, I'll pass the name in instead." });
     state.activity.unshift(
       { what: "Claude replied", where: "DeliveryBadge.tsx:6", at: "now", go: { thread: "t2" }, unread: true, fresh: true },
-      { what: "Revision 3 · 1 file changed", where: "DeliveryBadge.tsx", at: "now", go: { file: 4 }, fresh: true },
-    );
+      { what: "Revision 3 · 1 file", where: "DeliveryBadge.tsx", at: "now", go: { file: 4 }, fresh: true });
     setPresence("listening");
     renderHeader();
-    rerenderKeep(4);
-    for (const r of $("#file-4").querySelectorAll('.row[data-nl="6"], .row[data-nl="7"]')) r.classList.add("flash");
-    say("Revision 3 arrived · your scroll position didn't move");
+    if (state.mode === "diff") rerenderFile(4); else renderBuffer();
+    for (const r of document.querySelectorAll('#file-4 .row[data-nl="6"], #file-4 .row[data-nl="7"]')) r.classList.add("flash");
+    say("Revision 3 arrived · your scroll didn't move");
   }, 1500);
 }
-
 function playShow() {
-  state.nudge = { file: 2, side: "new", lines: [35, 35] };
-  const n = $("#nudge");
-  n.innerHTML =
-    `<div class="who"><span class="avatar agent">✦</span><span><b>Claude wants to show you something</b><br>` +
-    `<span class="where">mcp.rs:35 · where the timeout gets clamped</span></span></div>` +
-    `<button class="btn" type="button" data-nudge="later">Later <kbd>esc</kbd></button>` +
-    `<button class="btn primary" type="button" data-nudge="go">Show me <kbd>enter</kbd></button>`;
-  n.hidden = false;
-  n.classList.remove("enter"); void n.offsetWidth; n.classList.add("enter");
-  say("You asked Claude, in Claude Code, where the timeout gets clamped");
+  state.nudge = { file: 2, side: "new", lines: [35, 36] };
+  $("#nudge").innerHTML = `<div class="who"><b>✦ Claude wants to show you something</b><br><span>mcp.rs:35 · where the timeout gets clamped</span></div>` +
+    `<button class="btn ghost" type="button" data-nudge="later">Later <kbd>esc</kbd></button><button class="btn primary" type="button" data-nudge="go">Show me <kbd>↵</kbd></button>`;
+  $("#nudge").hidden = false;
+  say("You asked Claude where the timeout gets clamped");
 }
 function nudgeDone(go) {
   const s = state.nudge;
   $("#nudge").hidden = true;
   state.nudge = null;
   if (!s) return;
-  if (go) goTo(s.file, s.side, s.lines[0], { flash: true, card: "note-n3" });
-  else {
-    state.activity.unshift({ what: "Claude wants to show you something", where: "mcp.rs:35", at: "now", go: { show: s }, unread: true, fresh: true });
-    renderActivity();
-    renderTree();
-  }
+  if (go) goTo(s.file, s.side, s.lines[0], { card: "note-n3" });
+  else { state.activity.unshift({ what: "Claude wants to show you something", where: "mcp.rs:35", at: "now", go: { show: s }, unread: true, fresh: true }); renderActivity(); renderTree(); }
+}
+function renderHeader() {
+  const t = state.files.map(fileStats).reduce((x, s) => ({ add: x.add + s.add, del: x.del + s.del }), { add: 0, del: 0 });
+  $("#title").textContent = REVIEW.title;
+  $("#revs").innerHTML = `<span>${REVIEW.repo}</span><span class="rev">${REVIEW.from}</span><span>→</span><span class="rev">${REVIEW.to}</span>${REVIEW.worktree ? "<span>+ uncommitted</span>" : ""}<span>· rev ${state.revision}</span>`;
+  $("#stats").innerHTML = `<span>${state.files.length} files</span><span class="a">+${t.add}</span><span class="d">−${t.del}</span>`;
 }
 
 /* ---------------------------------------------------------------------------
- * Symbols: GitHub-style search-based navigation. diffd extracts definitions
- * with tree-sitter tags queries at build time; the mockup uses regexes.
+ * Symbols: go to definition, references, outline, file picker
  * ------------------------------------------------------------------------- */
-const DEF_RES = [
-  /\bpub const ([A-Z_][A-Z0-9_]*)/, /\bstruct ([A-Za-z_]\w*)/, /\bfn ([a-z_]\w*)/, /\bfunction ([A-Za-z_]\w*)/,
-  /\bexport type ([A-Za-z_]\w*)/, /^const ([A-Z_]\w*) =/, /CREATE INDEX (\w+)/,
-];
-function symbols() {
-  const out = [];
-  state.files.forEach((f, fi) => f.rows.forEach((r) => {
-    for (const [side, text, line] of [["new", r.n, r.nl], ["old", r.k === "del" ? r.o : null, r.ol]]) {
-      if (!text) continue;
-      for (const re of DEF_RES) {
-        const m = re.exec(text);
-        if (m) out.push({ name: m[1], file: fi, side, line, text: text.trim() });
-      }
-    }
-  }));
-  return out;
-}
-function wordAtPoint(x, y) {
-  let node = null, offset = 0;
-  if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); node = p?.offsetNode; offset = p?.offset ?? 0; }
-  else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); node = r?.startContainer; offset = r?.startOffset ?? 0; }
-  if (!node || node.nodeType !== 3) return null;
-  const t = node.textContent;
-  let a = offset, b = offset;
-  while (a > 0 && /\w/.test(t[a - 1])) a--;
-  while (b < t.length && /\w/.test(t[b])) b++;
-  return a < b ? t.slice(a, b) : null;
-}
 function wordForCursor() {
+  if (state.cursor.word) return state.cursor.word.text;
   const cur = cursorRow();
   if (!cur) return null;
-  if (state.word && state.word.key === cur.dataset.key) return state.word.text;
-  const text = cur.querySelector(`.code[data-side="${state.cursor.side}"]`)?.textContent || cur.textContent;
-  const defs = symbols(), names = new Set(defs.map((d) => d.name));
-  const line = +(state.cursor.side === "old" ? cur.dataset.ol : cur.dataset.nl);
-  const words = text.match(/[A-Za-z_]\w*/g) || [];
+  const words = lineTextAt(cur, state.cursor.side).match(IDENT) || [];
+  const defs = symbols(), line = +(state.cursor.side === "old" ? cur.dataset.ol : cur.dataset.nl);
   const elsewhere = (w) => defs.some((d) => d.name === w && !(d.file === +cur.dataset.f && d.line === line));
-  return words.find((w) => names.has(w) && elsewhere(w)) || words.find((w) => names.has(w)) || null;
+  return words.find(elsewhere) || words.find((w) => DEF_NAMES.has(w)) || null;
 }
-const where = (fi, line, side) => `${baseName(state.files[fi].path)}:${line}${side === "old" ? " old" : ""}`;
+const whereLabel = (fi, line, side) => `${baseName(state.files[fi].path)}:${line}${side === "old" ? " (old)" : ""}`;
 function gotoDefinition(word = wordForCursor()) {
-  if (!word) return say("No symbol with a definition on this line");
+  if (!word) return say("No symbol here · w to pick one");
   const cur = cursorRow(), fi = cur ? +cur.dataset.f : -1;
   const defs = symbols().filter((d) => d.name === word).sort((a, b) => (b.file === fi) - (a.file === fi));
   if (!defs.length) return say(`No definition of ${word} in this diff`);
-  if (defs.length === 1) { say(`Definition of ${word}`); return goTo(defs[0].file, defs[0].side, defs[0].line, { flash: true }); }
-  openPicker(`Definitions of ${word}`, () => defs.map((d) => ({ label: where(d.file, d.line, d.side), sub: d.text, run: () => goTo(d.file, d.side, d.line, { flash: true }) })));
+  const jump = (d) => {
+    const i = state.files[d.file].rows.findIndex((r) => (d.side === "old" ? r.ol : r.nl) === d.line);
+    const text = (d.side === "old" ? state.files[d.file].rows[i].o : state.files[d.file].rows[i].n) || "";
+    const at = text.search(new RegExp(`\\b${word}\\b`));
+    goTo(d.file, d.side, d.line, { word: at >= 0 ? { text: word, range: [at, at + word.length] } : null });
+    say(`Definition of ${word} · ctrl-o to go back`);
+  };
+  if (defs.length === 1) return jump(defs[0]);
+  openPicker(`Definitions of ${word}`, () => defs.map((d) => ({ label: whereLabel(d.file, d.line, d.side), sub: d.text, run: () => jump(d) })));
 }
 function references(word = wordForCursor()) {
-  if (!word) return say("No symbol on this line");
+  if (!word) return say("No symbol here · w to pick one");
   const re = new RegExp(`\\b${word}\\b`), refs = [];
   state.files.forEach((f, fi) => f.rows.forEach((r) => {
     if (r.n && re.test(r.n)) refs.push({ fi, side: "new", line: r.nl, text: r.n.trim() });
     else if (r.o && re.test(r.o)) refs.push({ fi, side: "old", line: r.ol, text: r.o.trim() });
   }));
-  openPicker(`${refs.length} references to ${word}`, () => refs.map((x) => ({ label: where(x.fi, x.line, x.side), sub: x.text, run: () => goTo(x.fi, x.side, x.line, { flash: true }) })));
+  openPicker(`${refs.length} references to ${word}`, () => refs.map((x) => ({ label: whereLabel(x.fi, x.line, x.side), sub: x.text, run: () => goTo(x.fi, x.side, x.line) })));
 }
 function outline(all) {
-  const fi = state.currentFile ?? 0;
-  const syms = symbols().filter((s) => all || s.file === fi);
-  openPicker(all ? "Symbols in this diff" : `Symbols in ${baseName(state.files[fi].path)}`,
-    () => syms.map((s) => ({ label: s.name, sub: where(s.file, s.line, s.side), run: () => goTo(s.file, s.side, s.line, { flash: true }) })));
+  const fi = state.currentFile ?? 0, syms = symbols().filter((s) => all || s.file === fi);
+  openPicker(all ? "Symbols in this diff" : `Symbols in ${baseName(state.files[fi].path)}`, () => syms.map((s) => ({ label: s.name, sub: whereLabel(s.file, s.line, s.side), run: () => goTo(s.file, s.side, s.line) })));
 }
-function filePicker() {
-  openPicker("Go to file", () => state.files.map((f, fi) => ({ label: baseName(f.path), sub: f.path, run: () => openFile(fi) })));
-}
+function filePicker() { openPicker("Go to file", () => state.files.map((f, fi) => ({ label: baseName(f.path), sub: f.path, run: () => openFile(fi) }))); }
 function searchPicker() {
-  openPicker("Search every line, hidden ones included", (q) => {
-    if (q.length < 2) return [{ label: "Type at least 2 characters", sub: "", match: false, run: () => {} }];
+  openPicker("Search every line, hidden ones too", (q) => {
+    if (q.length < 2) return [{ label: "Type at least 2 characters", sub: "", literal: true, run: () => {} }];
     const hits = [];
     state.files.forEach((f, fi) => f.rows.forEach((r) => {
-      if (r.n && r.n.toLowerCase().includes(q)) hits.push({ label: where(fi, r.nl, "new"), sub: r.n.trim(), match: false, run: () => goTo(fi, "new", r.nl, { flash: true }) });
-      else if (r.o && r.o.toLowerCase().includes(q)) hits.push({ label: where(fi, r.ol, "old"), sub: r.o.trim(), match: false, run: () => goTo(fi, "old", r.ol, { flash: true }) });
+      if (r.n && r.n.toLowerCase().includes(q)) hits.push({ label: whereLabel(fi, r.nl, "new"), sub: r.n.trim(), literal: true, run: () => goTo(fi, "new", r.nl) });
+      else if (r.o && r.o.toLowerCase().includes(q)) hits.push({ label: whereLabel(fi, r.ol, "old"), sub: r.o.trim(), literal: true, run: () => goTo(fi, "old", r.ol) });
     }));
     return hits;
   });
 }
-
-/* Picker overlay shared by files, symbols, references and search */
-document.body.insertAdjacentHTML("beforeend",
-  '<div class="overlay" id="picker" hidden><div class="modal picker" role="dialog" aria-modal="true" aria-labelledby="picker-title">' +
-  '<h2 id="picker-title"></h2><input class="tree-filter" id="picker-q" style="margin:0;width:100%" autocomplete="off" aria-label="Filter">' +
-  '<ol class="picker-list" id="picker-list"></ol></div></div>');
-function fuzzy(q, s) { let i = 0; for (const ch of s) if (ch === q[i]) i++; return i === q.length; }
+const fuzzy = (q, s) => { let i = 0; for (const ch of s) if (ch === q[i]) i++; return i === q.length; };
 function openPicker(title, source) {
   state.picker = { source, sel: 0, items: [] };
   $("#picker-title").textContent = title;
@@ -1576,143 +1450,130 @@ function openPicker(title, source) {
   $("#picker-q").focus();
 }
 function refreshPicker() {
-  const q = $("#picker-q").value.trim().toLowerCase();
-  const items = state.picker.source(q).filter((it) => it.match === false || !q || fuzzy(q, (it.label + " " + it.sub).toLowerCase())).slice(0, 200);
-  state.picker.items = items;
-  state.picker.sel = Math.min(state.picker.sel, Math.max(0, items.length - 1));
-  $("#picker-list").innerHTML = items.map((it, i) =>
-    `<li data-pick="${i}" aria-selected="${i === state.picker.sel}"><span>${esc(it.label)}</span><span class="sub">${esc(it.sub)}</span></li>`).join("") ||
-    '<li class="empty">No matches</li>';
+  const q = $("#picker-q").value.trim().toLowerCase(), p = state.picker;
+  p.items = p.source(q).filter((it) => it.literal || !q || fuzzy(q, (it.label + " " + it.sub).toLowerCase())).slice(0, 200);
+  p.sel = Math.min(p.sel, Math.max(0, p.items.length - 1));
+  $("#picker-list").innerHTML = p.items.map((it, i) => `<li data-pick="${i}" aria-selected="${i === p.sel}"><span>${esc(it.label)}</span><span class="sub">${esc(it.sub)}</span></li>`).join("") || '<li><span style="color:var(--subtle)">No matches</span></li>';
   $("#picker-list").querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
 }
 function closePicker() { $("#picker").hidden = true; state.picker = null; $("#buffer").focus({ preventScroll: true }); }
 function pick(i) { const it = state.picker?.items[i]; closePicker(); it?.run(); }
 
 /* ---------------------------------------------------------------------------
- * Export, panels, layout
+ * Drawers: drag to resize, drag to the edge to leave only a handle
  * ------------------------------------------------------------------------- */
-function exportJson() {
-  const threads = state.threads.map((t) => ({
-    id: t.id, file: state.files[t.file].path, side: t.side, lines: t.lines, code: lineText(t.file, t.side, t.lines),
-    resolved: t.resolved, ...(t.changedIn ? { changed_in_revision: t.changedIn } : {}),
-    messages: t.msgs.map((m) => ({ author: m.who === "you" ? "you" : "claude", body: m.text ?? m.html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ") })),
-  }));
-  return JSON.stringify({ diffd: 1, review: { title: REVIEW.title, repo: REVIEW.repo, base: REVIEW.base, head: REVIEW.head, revision: state.revision }, threads }, null, 2);
-}
-async function copyJson() {
-  const text = exportJson();
-  try {
-    await navigator.clipboard.writeText(text);
-    say(`Copied ${state.threads.length} threads as JSON`);
-  } catch {
-    $("#export-text").value = text;
-    $("#export").hidden = false;
-    $("#export-text").focus();
-    $("#export-text").select();
-  }
-}
-function syncToggles() {
+const drawers = { left: { w: 240, closed: false }, right: { w: 240, closed: false } };
+function applyDrawers() {
   const main = $("#main");
-  $("#t-tree").setAttribute("aria-pressed", String(main.dataset.tree === "on"));
-  $("#t-act").setAttribute("aria-pressed", String(main.dataset.act === "on"));
-  $("#v-split").setAttribute("aria-pressed", String(state.view === "split"));
-  $("#v-unified").setAttribute("aria-pressed", String(state.view === "unified"));
-}
-function togglePanel(which) {
-  const main = $("#main"), key = which === "tree" ? "tree" : "act";
-  main.dataset[key] = main.dataset[key] === "on" ? "off" : "on";
-  syncToggles();
-  renderActivity();
-}
-/* Rebuild the whole buffer while keeping the line at the top of the screen in place. */
-function rebuild(mutate) {
-  const top = topVisibleRow(), before = top?.getBoundingClientRect().top;
-  const cur = cursorRow(), cf = cur?.dataset.f, ci = cur?.dataset.i, cs = state.cursor.side;
-  mutate();
-  renderBuffer();
-  syncToggles();
-  const buf = $("#buffer");
-  if (cur) {
-    const row = buf.querySelector(`.row[data-f="${cf}"][data-i="${ci}"][data-side="${cs}"]`) || buf.querySelector(`.row[data-f="${cf}"][data-i="${ci}"]`);
-    if (row) { state.cursor.key = row.dataset.key; paintCursor(); }
+  for (const side of ["left", "right"]) {
+    const d = drawers[side];
+    main.style.setProperty(side === "left" ? "--lw" : "--rw", d.closed ? "11px" : d.w + "px");
+    $("#" + side).classList.toggle("closed", d.closed);
   }
-  const now = top && buf.querySelector(`.row[data-f="${top.dataset.f}"][data-i="${top.dataset.i}"]`);
-  if (now) buf.scrollTop += now.getBoundingClientRect().top - before;
-  renderStatus();
+  renderActivity();
+  placePopover();
 }
-const setView = (v) => rebuild(() => (state.view = v));
-const toggleNotes = () => { rebuild(() => (state.showNotes = !state.showNotes)); say(state.showNotes ? "Showing Claude's notes" : "Hiding Claude's notes"); };
-function switchSide() {
-  if (state.view !== "split") return say("Both sides share one column in unified view");
-  const row = cursorRow();
-  const other = state.cursor.side === "new" ? "old" : "new";
-  if (row?.querySelector(`.code[data-side="${other}"]`)) { state.cursor.side = other; paintCursor(); renderStatus(); }
-  else say(`This line has no ${other} side`);
+function toggleDrawer(side) { drawers[side].closed = !drawers[side].closed; applyDrawers(); }
+for (const side of ["left", "right"]) {
+  const h = $(`#${side}-handle`);
+  h.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    h.setPointerCapture(e.pointerId);
+    const main = $("#main").getBoundingClientRect(), d = drawers[side], startX = e.clientX;
+    let moved = false;
+    h.classList.add("dragging");
+    const onMove = (ev) => {
+      if (Math.abs(ev.clientX - startX) > 3) moved = true;
+      if (!moved) return;
+      const w = side === "left" ? ev.clientX - main.left : main.right - ev.clientX;
+      d.closed = w < 110;
+      if (!d.closed) d.w = Math.max(160, Math.min(480, w));
+      applyDrawers();
+    };
+    const onUp = () => {
+      h.classList.remove("dragging");
+      h.removeEventListener("pointermove", onMove);
+      h.removeEventListener("pointerup", onUp);
+      if (!moved && d.closed) { d.closed = false; applyDrawers(); }
+    };
+    h.addEventListener("pointermove", onMove);
+    h.addEventListener("pointerup", onUp);
+  });
+  h.addEventListener("dblclick", () => toggleDrawer(side));
+  h.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDrawer(side); }
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const grow = (e.key === "ArrowRight") === (side === "left");
+      drawers[side].closed = false;
+      drawers[side].w = Math.max(160, Math.min(480, drawers[side].w + (grow ? 16 : -16)));
+      applyDrawers();
+    }
+  });
 }
 
 /* ---------------------------------------------------------------------------
- * Keymap: plain data, run by a small sequence engine with counts and a prefix
- * timeout. Mostly Zed's vim bindings; ctrl-w is avoided because browsers
- * reserve it for closing the tab.
+ * Keymap: data, run by a small sequence engine (counts, modes, prefix timeout)
  * ------------------------------------------------------------------------- */
 const KEYMAP = {
   "j": (n) => move(n), "k": (n) => move(-n), "down": (n) => move(n), "up": (n) => move(-n),
-  "g g": () => { remember(); setCursor(navRows()[0], { center: true }); },
-  "G": () => { remember(); setCursor(navRows().at(-1), { center: true }); },
+  "g g": () => { remember(); setCursor(navRows()[0], { scroll: "center" }); },
+  "G": () => { remember(); setCursor(navRows().at(-1), { scroll: "center" }); },
   "ctrl-d": () => move(halfPage()), "ctrl-u": () => move(-halfPage()),
   "tab": () => switchSide(),
-  "] c": () => hunk(1), "[ c": () => hunk(-1),
-  "] f": () => fileJump(1), "[ f": () => fileJump(-1),
-  "] a": () => noteJump(1), "[ a": () => noteJump(-1),
-  "] t": () => threadJump(1), "[ t": () => threadJump(-1),
+  "w": () => stepWord(1), "b": () => stepWord(-1),
+  "] c": () => hunk(1), "[ c": () => hunk(-1), "] f": () => fileJump(1), "[ f": () => fileJump(-1),
+  "] a": () => noteJump(1), "[ a": () => noteJump(-1), "] t": () => threadJump(1), "[ t": () => threadJump(-1),
   "] n": () => unreadJump(), "[ n": () => unreadJump(),
   "shift-enter": () => expandNearest(),
-  "z a": () => toggleFold(state.currentFile ?? 0), "z R": () => expandAll(), "z M": () => collapseAll(),
-  "g space": () => fullFile(),
+  "z a": () => toggleFold(state.currentFile ?? 0),
+  "z R": () => setAll((st) => { st.visible.fill(true); st.collapsed = false; }, "Showing every line"),
+  "z M": () => setAll((st, fi) => { st.visible = initialVisible(state.files[fi], fi); st.collapsed = Boolean(state.files[fi].collapsedBy); }, "Back to hunks"),
+  "g enter": () => openFileView(),
   "g d": () => gotoDefinition(), "ctrl-]": () => gotoDefinition(), "g r r": () => references(),
   "g s": () => outline(false), "g S": () => outline(true),
   "ctrl-o": () => jumpBack(), "ctrl-i": () => jumpForward(),
   "/": () => searchPicker(),
-  "v": () => startVisual(), "V": () => startVisual(),
-  "g c c": () => commentLines(),
-  "r": () => replyNearest(), "x": () => { const c = threadNearCursor(); if (c) toggleResolved(c.dataset.thread); },
-  "space e": () => togglePanel("tree"), "space n": () => togglePanel("act"), "space a": () => toggleNotes(),
+  "V": () => startVisual(), "v": () => startVisual(),
+  "g c c": () => commentLines(), "g c": () => (state.selection ? commentSelection() : commentLines()),
+  "r": () => { const c = nearThread(); c ? openComposer({ replyTo: c.dataset.thread }) : say("No thread to reply to"); },
+  "x": () => { const c = nearThread(); if (c) toggleResolved(c.dataset.thread); },
+  "space e": () => toggleDrawer("left"), "space n": () => toggleDrawer("right"),
   "space f": () => filePicker(), "ctrl-p": () => filePicker(),
-  "space s": () => setView(state.view === "split" ? "unified" : "split"),
-  "space v": () => markViewed(), "space y": () => copyJson(),
+  "space i": () => $("#chat-text").focus(),
+  "space v": () => { const fi = state.currentFile ?? 0; setViewed(fi, !state.fs[fi].viewed); if (state.fs[fi].viewed) fileJump(1); },
   "?": () => ($("#help").hidden = false),
   "esc": () => escapeAll(),
 };
-const VISUAL_KEYMAP = { "g c": () => commentLines(), "c": () => commentLines(), "esc": () => { state.visual = null; paintCursor(); } };
+const SYMBOL_KEYMAP = { "enter": () => gotoDefinition() };
+const VISUAL_KEYMAP = { "g c": () => commentLines(), "c": () => commentLines() };
 
 const HELP = [
-  ["Move", [["j k", "Line down / up (counts work: 5j)"], ["gg G", "First / last line"], ["ctrl-d ctrl-u", "Half a page down / up"], ["tab", "Switch between old and new side"], ["ctrl-o ctrl-i", "Jump back / forward"]]],
-  ["Review", [["]c [c", "Next / previous hunk, across files"], ["]f [f", "Next / previous file"], ["]a [a", "Next / previous Claude note"], ["]t [t", "Next / previous thread"], ["]n", "Next unread activity"], ["space v", "Mark file viewed, go to the next one"]]],
-  ["Context", [["shift-enter", "Show more lines near the cursor"], ["za", "Collapse / expand this file"], ["zR zM", "Show every line / back to hunks"], ["g space", "Open the whole file right here"]]],
-  ["Comment", [["gcc", "Comment on this line"], ["V … gc", "Comment on the selected lines"], ["gc", "Comment on a mouse selection"], ["r x", "Reply to / resolve the next thread"], ["space y", "Copy all threads as JSON"]]],
-  ["Find", [["gd ctrl-]", "Go to definition (or ctrl-click a name)"], ["grr", "Find references"], ["gs gS", "Symbols in this file / in the diff"], ["space f ctrl-p", "Go to file"], ["/", "Search every line, hidden ones too"], ["ctrl-f", "Browser find, never intercepted"]]],
-  ["View", [["space s", "Split / unified"], ["space e", "Files panel"], ["space n", "Activity panel"], ["space a", "Show / hide Claude's notes"], ["?", "This list"]]],
+  ["Move", [["j k", "Line down / up (5j works)"], ["gg G", "First / last line"], ["ctrl-d ctrl-u", "Half a page"], ["tab", "Switch old / new side"], ["ctrl-o ctrl-i", "Jump back / forward"]]],
+  ["Symbols", [["w b", "Next / previous symbol on the line"], ["gd enter", "Go to definition (or ctrl-click)"], ["grr", "Find references"], ["gs gS", "Symbols in file / in diff"]]],
+  ["Review", [["]c [c", "Next / previous hunk"], ["]f [f", "Next / previous file, skipping collapsed ones"], ["]a [a", "Claude's notes, in order"], ["]t [t", "Next / previous thread"], ["]n", "Next unread activity"], ["space v", "Mark viewed, go to next file"]]],
+  ["Context", [["shift-enter", "Show more lines near the cursor"], ["za", "Collapse / expand file"], ["zR zM", "Everything / back to hunks"], ["g enter", "The plain file here, no diff"]]],
+  ["Talk", [["gcc", "Comment on this line"], ["V … gc", "Comment on selected lines"], ["gc", "Comment on a mouse selection"], ["r x", "Reply / resolve next thread"], ["space i", "Ask Claude anything"]]],
+  ["Panels", [["space e", "Files drawer"], ["space n", "Activity drawer"], ["space f ctrl-p", "Go to file"], ["/", "Search every line"], ["ctrl-f", "Browser find, never intercepted"]]],
 ];
-$("#keys").innerHTML = HELP.map(([group, rows]) =>
-  `<h3>${group}</h3>` + rows.map(([keys, desc]) =>
-    `<div><span>${esc(desc)}</span><span>${keys.split(" ").map((k) => (k === "…" ? "…" : `<kbd>${esc(k)}</kbd>`)).join(" ")}</span></div>`).join("")).join("");
+$("#keys").innerHTML = HELP.map(([g, rows]) => `<h3>${g}</h3>` + rows.map(([k, d]) =>
+  `<div><span>${esc(d)}</span><span>${k.split(" ").map((x) => (x === "…" ? "…" : `<kbd>${esc(x)}</kbd>`)).join(" ")}</span></div>`).join("")).join("");
 
-function startVisual() {
-  const cur = cursorRow();
-  if (!cur) return say("Move the cursor onto a line first");
-  state.visual = { anchor: cur.dataset.key };
-  paintCursor();
-  say("Visual · j / k to extend, gc to comment, esc to cancel");
+function switchSide() {
+  const row = cursorRow(), other = state.cursor.side === "new" ? "old" : "new";
+  if (state.mode !== "diff") return;
+  if (row?.querySelector(`.code[data-side="${other}"]`)) { state.cursor.side = other; state.cursor.word = null; paintCursor(); renderStatus(); }
+  else say(`This line has no ${other} side`);
 }
+function startVisual() { const cur = cursorRow(); if (!cur) return; state.visual = { anchor: cur.dataset.key }; state.cursor.word = null; paintCursor(); }
 function escapeAll() {
-  if (!$("#help").hidden || !$("#export").hidden) { $("#help").hidden = true; $("#export").hidden = true; return; }
+  if (!$("#help").hidden) { $("#help").hidden = true; return; }
   if (state.nudge) return nudgeDone(false);
   if (state.composer) return closeComposer();
-  if (state.visual) { state.visual = null; paintCursor(); return; }
+  if (state.visual) { state.visual = null; return paintCursor(); }
+  if (state.cursor.word) { state.cursor.word = null; return paintCursor(); }
   getSelection().removeAllRanges();
-  $("#bubble").hidden = true;
 }
-
 function keyToken(e) {
   if (e.key === " ") return "space";
   if (e.key === "Enter") return e.shiftKey ? "shift-enter" : "enter";
@@ -1724,19 +1585,16 @@ function keyToken(e) {
   if (e.ctrlKey) return e.key.length === 1 ? "ctrl-" + e.key.toLowerCase() : null;
   return e.key.length === 1 ? e.key : null;
 }
-
 let pendingTimer = 0;
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Control" || e.key === "Meta") document.body.classList.add("sym");
   const t = e.target;
-  if (t.id === "composer-text") {
+  if (t.id === "pop-text") {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendComposer(); }
-    else if (e.key === "Escape") {
-      e.preventDefault();
-      if (t.value.trim() && !state.discardArmed) { state.discardArmed = true; say("Press esc again to discard this comment"); setTimeout(() => (state.discardArmed = false), 2500); }
-      else { state.discardArmed = false; closeComposer(); }
-    }
+    else if (e.key === "Escape") { e.preventDefault(); closeComposer(); }
     return;
   }
+  if (t.id === "chat-text") { if (e.key === "Escape") { t.blur(); $("#buffer").focus({ preventScroll: true }); renderStatus(); } return; }
   if (t.id === "picker-q") {
     const p = state.picker;
     if (e.key === "Escape") { e.preventDefault(); closePicker(); }
@@ -1745,28 +1603,25 @@ document.addEventListener("keydown", (e) => {
     else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) { e.preventDefault(); p.sel = Math.max(0, p.sel - 1); refreshPicker(); }
     return;
   }
-  if (t.matches?.("input, textarea, select")) return;
-  if (!$("#help").hidden || !$("#export").hidden) { if (e.key === "Escape" || e.key === "?") { e.preventDefault(); escapeAll(); } return; }
-  if (state.nudge && (e.key === "Enter" || e.key === "Escape")) { e.preventDefault(); nudgeDone(e.key === "Enter"); return; }
+  if (t.matches?.("input, textarea")) return;
+  if (!$("#help").hidden) { if (e.key === "Escape" || e.key === "?") { e.preventDefault(); escapeAll(); } return; }
+  if (state.nudge && (e.key === "Enter" || e.key === "Escape")) { e.preventDefault(); return nudgeDone(e.key === "Enter"); }
 
   const tok = keyToken(e);
   if (!tok) return;
-  if (!state.pending.length && (/^[1-9]$/.test(tok) || (state.count && /^[0-9]$/.test(tok)))) {
-    e.preventDefault(); state.count += tok; renderStatus(); return;
-  }
-  const map = state.visual ? { ...KEYMAP, ...VISUAL_KEYMAP } : KEYMAP;
+  if (!state.pending.length && (/^[1-9]$/.test(tok) || (state.count && /^\d$/.test(tok)))) { e.preventDefault(); state.count += tok; return renderStatus(); }
+  const map = { ...KEYMAP, ...(state.cursor.word ? SYMBOL_KEYMAP : {}), ...(state.visual ? VISUAL_KEYMAP : {}) };
   const seq = [...state.pending, tok].join(" ");
-  const hasSelection = state.selection && !getSelection().isCollapsed;
   clearTimeout(pendingTimer);
-  if (seq === "g c" && hasSelection) { e.preventDefault(); state.pending = []; commentSelection(); return renderStatus(); }
-  if (map[seq]) {
+  const exact = map[seq], longer = Object.keys(map).some((k) => k.startsWith(seq + " "));
+  if (exact && !(longer && seq === "g c" && !state.selection && !state.visual)) {
     e.preventDefault();
     const n = Math.max(1, +state.count || 1);
     state.pending = []; state.count = "";
-    map[seq](n);
+    exact(n);
     return renderStatus();
   }
-  if (Object.keys(map).some((k) => k.startsWith(seq + " "))) {
+  if (longer) {
     e.preventDefault();
     state.pending.push(tok);
     pendingTimer = setTimeout(() => { state.pending = []; renderStatus(); }, 1200);
@@ -1776,14 +1631,18 @@ document.addEventListener("keydown", (e) => {
   if (map[tok]) { e.preventDefault(); map[tok](1); }
   renderStatus();
 });
+document.addEventListener("keyup", (e) => { if (e.key === "Control" || e.key === "Meta") document.body.classList.remove("sym"); });
+window.addEventListener("blur", () => document.body.classList.remove("sym"));
 
 /* ---------------------------------------------------------------------------
  * Mouse
  * ------------------------------------------------------------------------- */
+document.addEventListener("mousedown", (e) => { if (e.target.closest("#bubble")) e.preventDefault(); });
 document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-gap],[data-fold],[data-reply],[data-resolve],[data-tour],[data-send],[data-cancel],[data-close],[data-nudge],[data-pick],.t-dir,.t-file,.act,.num[data-n],.code[data-side]");
+  const el = e.target.closest("[data-gap],[data-fold],[data-reply],[data-resolve],[data-tour],[data-send],[data-cancel],[data-close],[data-nudge],[data-pick],[data-go],.t-dir,.t-file,.act,.num[data-n],.code[data-side],#bubble-btn");
   if (!el) return;
   const d = el.dataset;
+  if (el.id === "bubble-btn") return commentSelection();
   if (d.gap) return expandGap(d.gap);
   if (d.fold !== undefined) return toggleFold(+d.fold);
   if (d.reply) return openComposer({ replyTo: d.reply });
@@ -1794,71 +1653,69 @@ document.addEventListener("click", (e) => {
   if (d.close !== undefined) return escapeAll();
   if (d.nudge) return nudgeDone(d.nudge === "go");
   if (d.pick !== undefined) return pick(+d.pick);
+  if (d.go) { const [fi, side, line] = d.go.split(":"); return goTo(+fi, side, +line); }
   if (d.dir) { state.closedDirs.has(d.dir) ? state.closedDirs.delete(d.dir) : state.closedDirs.add(d.dir); return renderTree(); }
-  if (d.file !== undefined) { if (innerWidth < 760) togglePanel("tree"); return openFile(+d.file); }
+  if (d.file !== undefined) return openFile(+d.file);
   if (d.act !== undefined) return activityGo(+d.act);
   const row = el.closest(".row");
   if (!row) return;
-  if (el.classList.contains("num")) {
-    // Clicking a line number starts a comment there; shift-click extends from the cursor.
-    const side = d.side, key = side === "old" ? "ol" : "nl", line = +d.n, fi = +row.dataset.f;
-    const cur = cursorRow();
+  if (el.classList.contains("num") && state.mode === "diff") {
+    const side = d.side, key = side === "old" ? "ol" : "nl", line = +d.n, fi = +row.dataset.f, cur = cursorRow();
     if (e.shiftKey && cur && +cur.dataset.f === fi && cur.dataset[key]) {
-      const a = Math.min(line, +cur.dataset[key]), b = Math.max(line, +cur.dataset[key]);
-      return openComposer({ file: fi, side, lines: [a, b], quote: lineText(fi, side, [a, b]) });
+      const lines = [Math.min(line, +cur.dataset[key]), Math.max(line, +cur.dataset[key])];
+      return openComposer({ file: fi, side, lines, quote: lineText(fi, side, lines) });
     }
     setCursor(row, { side, scroll: false });
     return openComposer({ file: fi, side, lines: [line, line], quote: lineText(fi, side, [line, line]) });
   }
-  if (getSelection().isCollapsed) {
-    setCursor(row, { side: d.side, scroll: false });
-    const word = wordAtPoint(e.clientX, e.clientY);
-    state.word = word ? { key: row.dataset.key, text: word } : null;
-    if (word && (e.ctrlKey || e.metaKey)) gotoDefinition(word);
+  if (!getSelection().isCollapsed) return;
+  const ref = e.target.closest(".ref");
+  const side = d.side;
+  let word = null;
+  if (ref) {
+    const range = document.createRange();
+    range.setStart(el, 0); range.setEndBefore(ref);
+    const at = range.toString().length;
+    word = { text: ref.textContent, range: [at, at + ref.textContent.length] };
   }
+  setCursor(row, { side, scroll: false, word });
+  if (word && (e.ctrlKey || e.metaKey)) gotoDefinition(word.text);
 });
 document.addEventListener("change", (e) => { if (e.target.dataset.viewed !== undefined) setViewed(+e.target.dataset.viewed, e.target.checked); });
 document.addEventListener("selectionchange", () => requestAnimationFrame(updateBubble));
-$("#bubble-btn").addEventListener("click", commentSelection);
-$("#bubble-btn").addEventListener("mousedown", (e) => e.preventDefault());
 $("#picker-q").addEventListener("input", () => { state.picker.sel = 0; refreshPicker(); });
 $("#filter").addEventListener("input", (e) => { state.filter = e.target.value.trim().toLowerCase(); renderTree(); });
-$("#t-tree").addEventListener("click", () => togglePanel("tree"));
-$("#t-act").addEventListener("click", () => togglePanel("act"));
-$("#edge-tab").addEventListener("click", () => togglePanel("act"));
-$("#v-split").addEventListener("click", () => setView("split"));
-$("#v-unified").addEventListener("click", () => setView("unified"));
-$("#copy-json").addEventListener("click", copyJson);
+$("#chat-form").addEventListener("submit", (e) => { e.preventDefault(); const t = $("#chat-text").value.trim(); if (t) { $("#chat-text").value = ""; sendChat(t); } });
+$("#chat-text").addEventListener("focus", renderStatus);
 $("#play-edit").addEventListener("click", playEdit);
 $("#play-show").addEventListener("click", playShow);
 $("#reset").addEventListener("click", init);
-for (const ov of document.querySelectorAll(".overlay")) ov.addEventListener("click", (e) => { if (e.target === ov) { ov.id === "picker" ? closePicker() : escapeAll(); } });
-
-let scrollFrame = 0;
+for (const ov of document.querySelectorAll(".overlay")) ov.addEventListener("click", (e) => { if (e.target === ov) (ov.id === "picker" ? closePicker : escapeAll)(); });
+let frame = 0;
 $("#buffer").addEventListener("scroll", () => {
-  if (scrollFrame) return;
-  scrollFrame = requestAnimationFrame(() => {
-    scrollFrame = 0;
-    const top = $("#buffer").getBoundingClientRect().top + 50;
-    let cur = 0;
-    for (const sec of document.querySelectorAll(".file")) if (sec.getBoundingClientRect().top <= top) cur = +sec.dataset.f;
-    if (cur !== state.currentFile) {
-      state.currentFile = cur;
-      for (const el of document.querySelectorAll(".t-file")) el.setAttribute("aria-current", String(+el.dataset.file === cur));
-    }
+  placePopover();
+  if (frame) return;
+  frame = requestAnimationFrame(() => {
+    frame = 0;
     if (state.selection) updateBubble();
+    if (state.mode !== "diff") return;
+    const top = $("#buffer").getBoundingClientRect().top + 40;
+    let cur = 0;
+    for (const sec of document.querySelectorAll(".file[data-f]")) if (sec.getBoundingClientRect().top <= top) cur = +sec.dataset.f;
+    if (cur !== state.currentFile) { state.currentFile = cur; for (const el of document.querySelectorAll(".t-file")) el.setAttribute("aria-current", String(+el.dataset.file === cur)); }
   });
 }, { passive: true });
+window.addEventListener("resize", placePopover);
 
 function init() {
   initState();
-  const main = $("#main");
-  main.dataset.tree = innerWidth >= 760 ? "on" : "off";
-  main.dataset.act = innerWidth >= 1180 ? "on" : "off";
-  for (const id of ["help", "export", "picker", "nudge", "bubble"]) $("#" + id).hidden = true;
+  drawers.left.closed = innerWidth < 760;
+  drawers.right.closed = innerWidth < 1180;
+  for (const id of ["help", "picker", "nudge", "bubble", "pop"]) $("#" + id).hidden = true;
   setPresence("listening");
   renderHeader();
-  syncToggles();
+  applyDrawers();
+  renderChat();
   renderBuffer();
   $("#buffer").scrollTop = 0;
   const first = hunkStarts()[0];
@@ -1866,19 +1723,3 @@ function init() {
 }
 init();
 </script>
-<style>
-.row { min-height: 20px; scroll-margin-top: 48px; scroll-margin-bottom: 24px; }
-.card { scroll-margin-top: 56px; scroll-margin-bottom: 24px; }
-.code[data-side] { cursor: text; }
-.gap-body[hidden] { display: none !important; }
-@supports (content-visibility: hidden) {
-  .gap-body[hidden="until-found"] { display: block !important; content-visibility: hidden; }
-}
-.picker { width: min(680px, 100%); }
-.picker-list { list-style: none; margin: 10px 0 0; padding: 0; max-height: min(52vh, 460px); overflow: auto; }
-.picker-list li { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 14px; align-items: baseline; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-.picker-list li[aria-selected="true"] { background: var(--accent-soft); }
-.picker-list li .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px var(--font-code); color: var(--fg-muted); }
-.picker-list li.empty { color: var(--fg-subtle); cursor: default; }
-.nudge .avatar { flex: none; }
-</style>

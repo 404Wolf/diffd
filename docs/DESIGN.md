@@ -164,20 +164,22 @@ model's context. They teach the workflow:
 | `reply` | reply in a thread; optionally resolve it |
 | `annotate` | add annotations, or start a new thread (e.g. a question for the user) |
 | `refresh` | rebuild now, with an optional note ("addressed the parser comments") |
+| `say` | a chat message to the user, shown in the page's chat box |
 | `show` | point the user at code: `{ review_id, file, lines, side?, message }`. The page shows a prompt, never an automatic jump. |
 | `get_review` | full current state (threads, statuses, revision), to recover context |
 
 ```ts
 share_diff({
   repo_path: string,        // absolute path of the repo/worktree (the agent's cwd)
-  base?: string,            // default "HEAD": uncommitted changes, including untracked files
-                            // a branch like "main": everything since merge-base(main, HEAD), plus uncommitted
-                            // any other rev: diff against it directly
+  from: string,             // any rev: a branch ("main"), tag, commit, "HEAD~3"
+  to?: string,              // any rev; omitted = the working tree (uncommitted + untracked files)
+  merge_base?: boolean,     // default true when `from` is a branch: diff from merge-base(from, to), like a PR
   paths?: string[],         // limit to these paths
+  collapse?: { glob: string, reason: string }[],  // start these collapsed: generated code, lockfiles, vendored files
   title: string,
   summary?: string,         // markdown: what changed and why, shown at the top
   annotations?: Annotation[],
-  watch?: boolean,          // default true: update live as files change
+  watch?: boolean,          // default true when `to` is the working tree: update live as files change
 })
 
 Annotation = {
@@ -188,6 +190,15 @@ Annotation = {
   kind?: "explain" | "why" | "risk" | "question",
 }                           // array order = tour order
 ```
+
+Any two revisions can be compared: `from: "main"` with `to` omitted is "my
+branch plus what I haven't committed"; `from: "v1.2.0", to: "v1.3.0"` compares
+two tags. A review with a fixed `to` doesn't watch anything.
+
+The description also tells the agent to pass `collapse` for files a reviewer
+shouldn't have to scroll past: generated code, lockfiles, snapshots, vendored
+code. Those files start collapsed with the agent's reason on their header, and
+`]f` / `[f` skip them.
 
 The `share_diff` description tells the agent **what to annotate**:
 
@@ -345,9 +356,10 @@ difftastic's own highlighting only has about 6 token kinds, which isn't enough.
   YAML, TOML, Markdown, CSS/HTML), we bring in richer queries from
   nvim-treesitter (Apache-2.0) or Helix (MPL-2.0), adapted to standard
   predicates.
-- **Themes:** capture names map to **GitHub's Primer syntax palette**, light
-  and dark (the `prettylights` colors), through CSS variables. More themes are
-  just more variable sets.
+- **Themes:** capture names map to our own syntax token set (the same
+  Tailwind theme as the rest of the UI), light and dark. Syntax colors stay
+  clear of red and green so they never compete with difftastic's change
+  colors.
 - **Unknown languages** render as plain text in v1. A long-tail fallback
   (syntect with bat's grammars) is a later add-on.
 
@@ -410,26 +422,40 @@ only the changed files.
 - **Multibuffer (Zed):**
   - Every file is stacked in one scroll as excerpts.
   - File headers are sticky, and clicking one collapses that file.
-  - Split view is the default, with unified as a toggle.
-- **File tree (GitHub):**
-  - Collapsible folders, with single-child chains compacted.
-  - Each file shows its status, `+/−`, comment count, an unread dot and a
-    viewed checkbox.
+  - **Split view only**, in difftastic's style: aligned old and new columns,
+    line numbers tinted on changed lines, and color only on the tokens
+    difftastic marks as novel. Unchanged code keeps plain syntax colors, even
+    when it moved or was re-wrapped. Unified view can come later.
+- **File tree (GitHub), in a drawer:**
+  - Drag its edge to resize it. Drag it to the edge to shrink it down to a
+    thin handle; click the handle to bring it back. No toggle button.
+  - Compact rows: collapsible folders, with single-child chains compacted and
+    indent guides.
+  - Each file shows its status, a five-block `+/−` bar, comment count and an
+    unread dot. Collapsed and viewed files are dimmed.
   - The tree follows your scroll.
-- **Activity sidebar:**
+- **Activity sidebar:** the same kind of drawer, on the right.
   - A quiet, chronological feed: agent replies, new annotations, revisions
     ("rev 3 · 2 files"), resolved threads.
   - Unread items are marked. Clicking one, or `]n`, jumps there, and `ctrl-o`
     brings you back.
-  - Collapsible. When it's collapsed, a small count on its edge is the only
+  - When it's shrunk to a handle, a small dot on the handle is the only
     signal.
+- **Chat box**, docked under the diff. A simple place to ask Claude anything
+  that isn't about specific lines. Claude answers there (`say`), and code
+  references in its answers are links into the diff. `space i` focuses it.
 - **Status line (vim):** mode, position, hunk n/m, note n/m, key hints.
 
 ### 8.2 Selecting and commenting
 
 - **Mouse:** select text across lines like in any editor. A small "Comment"
-  button appears by the selection. You can also click the gutter `+` and
+  button appears by the selection. You can also click a line number, and
   shift-click to extend.
+- **The composer is a floating popover** right under the selection, in the
+  page's theme. Writing a comment never scrolls the page, and when the thread
+  lands inline the line at the top of the screen stays exactly where it was.
+  This is a rule for every DOM change in the app: it goes through one
+  "keep the viewport pinned" helper.
 - **Keyboard:** `V` (line) or `v` (char) visual mode, then `gc` to comment. `gcc`
   comments on the current line.
 - **Anchors** store side, start/end line and optional column, plus the selected
@@ -445,7 +471,6 @@ only the changed files.
   label for their kind: explain / why / risk / question). The code range they
   cover is marked in the gutter.
 - **Tour:** `]a` / `[a` step through them in the agent's order.
-- **Visibility:** `space a` hides or shows them all.
 - **Replies:** you can reply to an annotation, and it becomes a thread.
 
 ### 8.4 Live updates
@@ -466,7 +491,7 @@ The page is one self-contained HTML document. It embeds the latest revision,
 compressed, with full file contents, and it needs no network. **Everything
 about reading works offline:**
 
-- scrolling, expanding context, `g space`, search, symbol lookup within the diff
+- scrolling, expanding context, file view, search, symbol lookup within the diff
 - existing threads and annotations
 - the keymap
 
@@ -480,12 +505,15 @@ about reading works offline:**
 
 The connection state is always visible.
 
-### 8.6 Context expansion, `g space`, Ctrl+F
+### 8.6 Context expansion, file view, Ctrl+F
 
 - **Excerpts** start with 3 context lines. Gap rows offer `↑5 · all N · ↓5`,
   and `shift-enter` expands around the cursor (Zed's `ExpandExcerpts`).
-- **`g space`** opens the whole file at the cursor (Zed's `OpenExcerpts`), and
-  `ctrl-o` returns.
+- **`g enter`** leaves the diff for **file view**: the plain file at the
+  cursor, at the current revision, with no red and green. Slight marks in the
+  gutter show what changed: green for added lines, yellow for changed lines,
+  and a red notch where lines were removed. `ctrl-o` returns to the diff
+  where you left it.
 - **Ctrl+F is never intercepted, and nothing scrolls on its own.**
   - Collapsed context is kept in the DOM as `hidden="until-found"`. Browser find
     searches it, and on a match the gap expands (`beforematch`).
@@ -506,38 +534,15 @@ of the diff:
 - **Later** files it in the activity sidebar as unread.
 - The page never scrolls by itself. What you're reading stays put.
 
-### 8.8 Copying threads for any LLM
+### 8.8 Symbol mode and the jump list
 
-`space y` copies every thread as JSON. It works offline, without an agent, and
-with any LLM:
-
-```json
-{
-  "diffd": 1,
-  "review": { "title": "…", "repo": "diffd", "base": "main", "head": "claude/feedback-batching", "revision": 3 },
-  "threads": [
-    {
-      "id": "t1",
-      "file": "crates/diffd-core/src/feedback.rs",
-      "side": "new",
-      "lines": [28, 29],
-      "code": "    pub fn set_drafting(&mut self, drafting: bool, now: Instant) {\n        self.drafting = drafting;",
-      "resolved": false,
-      "messages": [
-        { "author": "you", "body": "Who calls set_drafting? …" },
-        { "author": "claude", "body": "The page toggles it over the WebSocket. …" }
-      ]
-    }
-  ]
-}
-```
-
-- **`side`:** `old` is the removed version and `new` is the added version.
-- **`lines`** are 1-based and inclusive, counted in that side's file.
-- **`code`** is the exact text the thread is anchored to.
-- **`changed_in_revision`** appears when the code changed after the comment.
-
-The agent's `wait_for_feedback` events use this same shape.
+- `w` / `b` put a cursor on the next / previous identifier on the line. That's
+  symbol mode. `enter` or `gd` goes to its definition, and ctrl-click does the
+  same with the mouse. Holding ctrl or cmd underlines everything that has a
+  definition.
+- Every jump (definition, reference, hunk, note, file, activity, a link in
+  chat, file view) goes onto a vim-style **jump list**. `ctrl-o` walks back and
+  `ctrl-i` walks forward, across the diff and file view alike.
 
 ## 9. Keymap
 
@@ -547,16 +552,16 @@ The leader key is `space`. Bindings come from Zed's
 | Keys | Action | From |
 |---|---|---|
 | `j` `k` `gg` `G` `ctrl-d` `ctrl-u`, counts | move | vim |
-| `h` `l` `w` `b` `e` `0` `$` | move within the line | vim |
+| `w` / `b` | symbol mode: next / previous identifier; `enter` goes to its definition | vim |
 | `tab` | switch old / new side | diffd (vim uses `ctrl-w h/l`, but browsers reserve `ctrl-w` to close the tab) |
 | `]c` / `[c` | next / previous hunk, across files | Zed `editor::GoToHunk` |
-| `]f` / `[f` | next / previous file | diffd |
+| `]f` / `[f` | next / previous file, skipping collapsed and viewed files | diffd |
 | `]a` / `[a` | next / previous annotation (tour) | diffd |
 | `]t` / `[t` | next / previous thread | diffd |
 | `]n` / `[n` | next / previous unread activity | diffd |
 | `shift-enter` | expand context around the cursor | Zed `editor::ExpandExcerpts` |
 | `za` · `zR` · `zM` | toggle fold/file · expand all · collapse to hunks | Zed |
-| `g space` | open full file at the cursor | Zed `editor::OpenExcerpts` |
+| `g enter` | file view: the plain file at the cursor, with change marks | diffd |
 | `gd` / `ctrl-]` · `grr` | definition · references | Zed |
 | `gs` / `gS` | file outline / all symbols | Zed |
 | `ctrl-o` / `ctrl-i` | jump back / forward | Zed `pane::GoBack/GoForward` |
@@ -564,11 +569,10 @@ The leader key is `space`. Bindings come from Zed's
 | `v` / `V` | visual char / line | vim |
 | `gc` (visual) · `gcc` | comment on selection · on line | diffd (vim-commentary) |
 | `r` · `x` | reply · resolve (thread under the cursor) | diffd |
-| `space e` · `space n` · `space a` | toggle tree · activity · annotations | LazyVim-style |
+| `space e` · `space n` | files drawer · activity drawer | LazyVim-style |
+| `space i` | focus the chat box | diffd |
 | `space f` / `ctrl-p` | fuzzy file picker | LazyVim / VS Code |
-| `space s` | split ⇄ unified | diffd |
 | `space v` | mark viewed, jump to next unviewed file | diffd (GitHub) |
-| `space y` | yank all threads as JSON (for pasting into any LLM) | diffd |
 | `?` | show key help | |
 
 The keymap is plain data. A small engine runs it, handling counts, modes and
@@ -655,10 +659,23 @@ imperative DOM, which Solid gives us without leaving the framework.
 - **The client is typed too:** one generated route table, so the page can only
   call endpoints that exist, with the right payloads.
 
+**Code style.** Exhaustive matching goes through **ts-pattern**
+(`match(x).with(...).exhaustive()`), never `switch`. Data crossing a boundary is
+typed by the generated Rust types, so there's nothing to cast.
+
+**Styling and components.** Tailwind v4, with every color, size and radius
+defined once as theme tokens (`@theme`), light and dark. The mockup's CSS
+variables are that token set. Behavior-heavy pieces come from headless,
+accessible Solid primitives rather than hand-rolled ones: Kobalte for popovers,
+dialogs, menus and tooltips, and corvu for the resizable drawers. We style
+them ourselves.
+
 Around it:
 
 | purpose | tool |
 |---|---|
+| styling | Tailwind v4 (theme tokens), Kobalte + corvu (headless components) |
+| pattern matching | ts-pattern |
 | build | Vite, TypeScript (strict), `vite-plugin-singlefile` (one HTML document) |
 | lint and format | Biome |
 | unit tests | Vitest |
@@ -666,7 +683,7 @@ Around it:
 | Markdown | markdown-it (raw HTML off) + DOMPurify |
 | fuzzy file picker | fzf (the JS port) |
 | icons | Octicons (GitHub's own) |
-| colors | Primer palette |
+| syntax colors | our own token set, tuned for both themes |
 
 ## 12. Repo layout and quality bar
 
