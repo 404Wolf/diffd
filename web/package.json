@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gen:api": "npx -y -p typescript@6 -p @hey-api/openapi-ts@0.99.0 openapi-ts && node scripts/after-gen-api.mjs"
   },
   "dependencies": {
     "@kobalte/core": "^0.13.14",

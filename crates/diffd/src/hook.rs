@@ -29,12 +29,8 @@ struct HookInput {
     cwd: Option<PathBuf>,
 }
 
-/// The notice `GET /api/wake` answers with (see `diffd_server::app::WakeNotice`).
-#[derive(Debug, Deserialize, serde::Serialize)]
-struct Notice {
-    message: String,
-    reviews: serde_json::Value,
-}
+/// What `GET /api/wake` answers with.
+type Notice = diffd_server::app::WakeNotice;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum Harness {

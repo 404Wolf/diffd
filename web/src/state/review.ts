@@ -6,6 +6,7 @@
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 import { match } from "ts-pattern";
+import * as api from "../api";
 import type { ActivityItem } from "../gen/ActivityItem";
 import type { Anchor } from "../gen/Anchor";
 import type { ClientMsg } from "../gen/ClientMsg";
@@ -28,6 +29,7 @@ import type { Snapshot } from "../gen/Snapshot";
 import type { Thread } from "../gen/Thread";
 import type { ThreadId } from "../gen/ThreadId";
 import { setAgentName } from "../lib/agent";
+import { ok } from "../lib/api";
 import { type FileModel, fileModel } from "../lib/diffModel";
 import { carrySpan, rangeOf, relocate, type Span, stepAhead } from "../lib/history";
 import { type FileGroup, labelsOf, resolveGroups } from "../lib/kinds";
@@ -230,18 +232,13 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   // cursor, file view, comments and marks all work on them as on any other file.
   const [context, setContext] = createSignal<FileDiff[]>([]);
   const loadingContext = new Map<string, Promise<FileDiff | null>>();
-  const fetchContext = (path: string): Promise<FileDiff | null> => {
-    const q = new URLSearchParams({ path });
-    return fetch(`/api/reviews/${encodeURIComponent(initial.review.id)}/context?${q}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error((await res.text()) || `Couldn't open ${path}`);
-        return (await res.json()) as FileDiff;
-      })
-      .catch((e: unknown) => {
+  const fetchContext = (path: string): Promise<FileDiff | null> =>
+    ok(api.contextFile({ path: { id: initial.review.id }, query: { path } }), `open ${path}`).catch(
+      (e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
         return null;
-      });
-  };
+      },
+    );
   /** Open a file outside the diff; resolves to its index in the snapshot, or null. */
   const openContext = async (path: string): Promise<number | null> => {
     const at = snapshot().files.findIndex((f) => f.path === path);
@@ -277,8 +274,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   const loadRepoFiles = () => {
     if (repoFiles() !== null || loadingRepoFiles) return;
     loadingRepoFiles = true;
-    fetch(`/api/reviews/${encodeURIComponent(initial.review.id)}/files`)
-      .then((res) => (res.ok ? (res.json() as Promise<string[]>) : Promise.reject(new Error(res.statusText))))
+    ok(api.repoFiles({ path: { id: initial.review.id } }), "list the repository's files")
       .then(setRepoFiles)
       .catch(() => setError("Couldn't list the repository's files"))
       .finally(() => {
@@ -555,6 +551,8 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     groups,
     /** The group that starts at this path, when reading by group. */
     groupAt: (path: string): FileGroup | undefined => groupStarts().get(path),
+    /** Which of the agent's groups (tour chapters) a path is in, or -1. */
+    groupOf: (path: string): number => groups().findIndex((g) => g.paths.includes(path)),
     grouped,
     setGrouped,
     labelsFor,
@@ -623,12 +621,9 @@ export function newId(): string {
 }
 
 /** The diff between two points of a review's history. */
-async function fetchRange(reviewId: string, range: CommitRange): Promise<Snapshot> {
-  const q = new URLSearchParams({ from: range.from });
-  if (range.to !== null) q.set("to", range.to);
-  const res = await fetch(`/api/reviews/${encodeURIComponent(reviewId)}/range?${q}`);
-  if (!res.ok) throw new Error((await res.text()) || `Couldn't load those commits (${res.status})`);
-  return (await res.json()) as Snapshot;
+function fetchRange(reviewId: string, r: CommitRange): Promise<Snapshot> {
+  const query = r.to === null ? { from: r.from } : { from: r.from, to: r.to };
+  return ok(api.range({ path: { id: reviewId }, query }), "load those commits");
 }
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);

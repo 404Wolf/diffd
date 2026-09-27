@@ -1,4 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
+import { deleteReview } from "../api";
 import type { ReviewSummary } from "../gen/ReviewSummary";
 import { ago } from "../lib/time";
 
@@ -7,8 +8,8 @@ export function Home(props: { reviews: ReviewSummary[] }) {
   const [reviews, setReviews] = createSignal(props.reviews);
   const [confirming, setConfirming] = createSignal<string | null>(null);
   const remove = async (id: string) => {
-    const res = await fetch(`/api/reviews/${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (res.ok) setReviews((r) => r.filter((x) => x.review.id !== id));
+    const { response } = await deleteReview({ path: { id } });
+    if (response?.ok) setReviews((r) => r.filter((x) => x.review.id !== id));
     setConfirming(null);
   };
   document.title = "diffd";

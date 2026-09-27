@@ -8,8 +8,8 @@ use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
-use diffd_core::model::{Author, ReviewId};
-use diffd_core::protocol::{Boot, ClientMsg, ReviewSummary, ServerMsg};
+use diffd_core::model::{Author, FileDiff, ReviewId, Snapshot};
+use diffd_core::protocol::{Boot, ClientMsg, ReviewState, ReviewSummary, ServerMsg};
 use futures::{SinkExt, StreamExt};
 use hyper_util::rt::TokioIo;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
@@ -22,9 +22,12 @@ use tungstenite::Message as WsMessage;
 use tungstenite::extensions::compression::deflate::DeflateConfig;
 use tungstenite::handshake::derive_accept_key;
 use tungstenite::protocol::{Role, WebSocketConfig};
+use utoipa::{IntoParams, OpenApi};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use super::mcp::DiffdMcp;
-use crate::app::{App, AppError};
+use crate::app::{App, AppError, WakeNotice};
 
 /// Where the page bundle puts the boot data.
 const BOOT_MARKER: &str = "<!--diffd-boot-->";
@@ -74,16 +77,14 @@ pub fn router_with_access(app: Arc<App>, template: &'static str, shutdown: Cance
     mcp_config.cancellation_token = shutdown.child_token();
     let mcp = StreamableHttpService::new(move || Ok(DiffdMcp::new(mcp_app.clone())), Arc::new(LocalSessionManager::default()), mcp_config);
     let web = Web { app, template, shutdown };
+    let (api, doc) = api().split_for_parts();
+    let doc = Arc::new(doc);
     Router::new()
         .route("/", get(home))
         .route("/r/{id}", get(review_page))
-        .route("/api/reviews", get(list_reviews))
-        .route("/api/reviews/{id}", get(review_state).delete(delete_review))
-        .route("/api/reviews/{id}/range", get(range))
-        .route("/api/reviews/{id}/files", get(repo_files))
-        .route("/api/reviews/{id}/context", get(context_file))
         .route("/api/reviews/{id}/ws", get(ws))
-        .route("/api/wake", get(wake).delete(cancel_wake))
+        .route("/api/openapi.json", get(move || std::future::ready(axum::Json(doc.clone()))))
+        .merge(api)
         .with_state(web)
         // Pages and JSON, compressed: a review is megabytes of code, and the page may
         // be shared over a network. The WebSocket compresses its own messages, and
@@ -91,6 +92,64 @@ pub fn router_with_access(app: Arc<App>, template: &'static str, shutdown: Cance
         .layer(CompressionLayer::new())
         .nest_service("/mcp", mcp)
         .layer(middleware::from_fn(move |req, next| local_only(access.clone(), req, next)))
+}
+
+/// The JSON API, with its OpenAPI description. The page's client is generated
+/// from it (`just gen`), so the two can't drift.
+fn api() -> OpenApiRouter<Web> {
+    OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .routes(routes!(list_reviews))
+        .routes(routes!(review_state, delete_review))
+        .routes(routes!(range))
+        .routes(routes!(repo_files))
+        .routes(routes!(context_file))
+        .routes(routes!(wake, cancel_wake))
+}
+
+/// diffd's HTTP API. The WebSocket's messages and the page's boot data aren't
+/// HTTP responses, but they're listed as schemas so the page's types all come
+/// from here.
+#[derive(OpenApi)]
+#[openapi(
+    info(title = "diffd", description = "Reviews of code changes, between an agent and you."),
+    components(schemas(ServerMsg, ClientMsg, Boot))
+)]
+struct ApiDoc;
+
+/// The OpenAPI description of the JSON API (for generating the page's client).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    let mut doc = api().into_openapi();
+    if let Some(components) = doc.components.as_mut() {
+        for schema in components.schemas.values_mut() {
+            every_field_required(schema);
+        }
+    }
+    doc
+}
+
+/// Our types always serialize every field (an absent `Option` is `null`), but
+/// utoipa lists `Option` fields as not required, which would make them
+/// optional in the page's types. Mark every property of every object required.
+fn every_field_required(schema: &mut utoipa::openapi::RefOr<utoipa::openapi::Schema>) {
+    use utoipa::openapi::schema::{ArrayItems, Schema};
+    let utoipa::openapi::RefOr::T(schema) = schema else { return };
+    match schema {
+        Schema::Object(object) => {
+            object.required = object.properties.keys().cloned().collect();
+            for property in object.properties.values_mut() {
+                every_field_required(property);
+            }
+        }
+        Schema::Array(array) => {
+            if let ArrayItems::RefOrSchema(items) = &mut array.items {
+                every_field_required(items);
+            }
+        }
+        Schema::OneOf(one) => one.items.iter_mut().for_each(every_field_required),
+        Schema::AllOf(all) => all.items.iter_mut().for_each(every_field_required),
+        Schema::AnyOf(any) => any.items.iter_mut().for_each(every_field_required),
+        _ => {}
+    }
 }
 
 /// Only answer requests addressed to this machine (or a host in `access`),
@@ -160,6 +219,8 @@ async fn review_page(State(web): State<Web>, Path(id): Path<String>) -> Response
     }
 }
 
+/// Recent reviews, newest first.
+#[utoipa::path(get, path = "/api/reviews", responses((status = 200, body = Vec<ReviewSummary>)))]
 async fn list_reviews(State(web): State<Web>) -> Response {
     match recent(&web.app).await {
         Ok(r) => axum::Json(r).into_response(),
@@ -167,6 +228,9 @@ async fn list_reviews(State(web): State<Web>) -> Response {
     }
 }
 
+/// Everything the page needs to show a review.
+#[utoipa::path(get, path = "/api/reviews/{id}", params(("id" = String, Path, description = "The review's id")),
+    responses((status = 200, body = ReviewState), (status = 404, body = String)))]
 async fn review_state(State(web): State<Web>, Path(id): Path<String>) -> Response {
     match web.app.state(&ReviewId(id)).await {
         Ok(s) => axum::Json(s).into_response(),
@@ -174,7 +238,8 @@ async fn review_state(State(web): State<Web>, Path(id): Path<String>) -> Respons
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 struct RangeQuery {
     from: String,
     /// A commit; omitted for the working tree.
@@ -182,6 +247,8 @@ struct RangeQuery {
 }
 
 /// The diff between two points in a review's history.
+#[utoipa::path(get, path = "/api/reviews/{id}/range", params(("id" = String, Path), RangeQuery),
+    responses((status = 200, body = Snapshot), (status = 400, body = String), (status = 404, body = String)))]
 async fn range(State(web): State<Web>, Path(id): Path<String>, Query(q): Query<RangeQuery>) -> Response {
     match web.app.range(&ReviewId(id), &q.from, q.to).await {
         Ok(snap) => axum::Json(&*snap).into_response(),
@@ -190,6 +257,8 @@ async fn range(State(web): State<Web>, Path(id): Path<String>, Query(q): Query<R
 }
 
 /// Every file in the review's repository, for browsing beyond the diff.
+#[utoipa::path(get, path = "/api/reviews/{id}/files", params(("id" = String, Path)),
+    responses((status = 200, body = Vec<String>), (status = 404, body = String)))]
 async fn repo_files(State(web): State<Web>, Path(id): Path<String>) -> Response {
     match web.app.repo_files(&ReviewId(id)).await {
         Ok(paths) => axum::Json(paths).into_response(),
@@ -200,7 +269,8 @@ async fn repo_files(State(web): State<Web>, Path(id): Path<String>) -> Response 
 /// Waits longer than this are cut short (the hook just waits again).
 const MAX_WAKE_WAIT: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 struct WakeQuery {
     /// The agent's working directory: reviews of that repository wake it.
     cwd: String,
@@ -211,6 +281,8 @@ struct WakeQuery {
 
 /// Long-poll until the user leaves feedback an agent here should hear about
 /// (200, with the notice), or the wait ends (204). Used by `diffd hook`.
+#[utoipa::path(get, path = "/api/wake", params(WakeQuery),
+    responses((status = 200, body = WakeNotice), (status = 204, description = "The wait ended with nothing to say")))]
 async fn wake(State(web): State<Web>, Query(q): Query<WakeQuery>) -> Response {
     let timeout = q.timeout_secs.map_or(MAX_WAKE_WAIT, std::time::Duration::from_secs).min(MAX_WAKE_WAIT);
     let wait = web.app.wait_for_wake(std::path::Path::new(&q.cwd), &q.waiter, timeout);
@@ -224,22 +296,28 @@ async fn wake(State(web): State<Web>, Query(q): Query<WakeQuery>) -> Response {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 struct CancelWakeQuery {
     waiter: String,
 }
 
+/// Stop waiting for this waiter (its session ended).
+#[utoipa::path(delete, path = "/api/wake", params(CancelWakeQuery), responses((status = 204)))]
 async fn cancel_wake(State(web): State<Web>, Query(q): Query<CancelWakeQuery>) -> Response {
     web.app.cancel_wake(&q.waiter);
     StatusCode::NO_CONTENT.into_response()
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ContextQuery {
     path: String,
 }
 
 /// One file outside the diff, highlighted.
+#[utoipa::path(get, path = "/api/reviews/{id}/context", params(("id" = String, Path), ContextQuery),
+    responses((status = 200, body = FileDiff), (status = 400, body = String), (status = 404, body = String)))]
 async fn context_file(State(web): State<Web>, Path(id): Path<String>, Query(q): Query<ContextQuery>) -> Response {
     match web.app.context_file(&ReviewId(id), &q.path).await {
         Ok(file) => axum::Json(file).into_response(),
@@ -247,6 +325,9 @@ async fn context_file(State(web): State<Web>, Path(id): Path<String>, Query(q): 
     }
 }
 
+/// Delete a review, its threads and its history.
+#[utoipa::path(delete, path = "/api/reviews/{id}", params(("id" = String, Path, description = "The review's id")),
+    responses((status = 204), (status = 404, body = String)))]
 async fn delete_review(State(web): State<Web>, Path(id): Path<String>) -> Response {
     match web.app.delete(&ReviewId(id)).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),

@@ -40,9 +40,12 @@ test:
     SQLX_OFFLINE=true cargo test --workspace
     npm --prefix web test
 
-# Regenerate the TypeScript protocol types from the Rust model.
+# Regenerate the TypeScript protocol types from the Rust model, and the
+# page's API client from the server's OpenAPI description.
 types:
     cargo test -p diffd-core export
+    DIFFD_UPDATE_OPENAPI=1 cargo test -p diffd-server --test openapi
+    npm --prefix web run gen:api
 
 # Refresh the compile-time checked query data in .sqlx after changing SQL.
 sqlx:

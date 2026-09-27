@@ -3,6 +3,7 @@ import { match } from "ts-pattern";
 import type { Thread } from "../gen/Thread";
 import { columnAtPoint, wordAt } from "../lib/code";
 import { rowOf } from "../lib/diffModel";
+import type { FileGroup } from "../lib/kinds";
 import { rowsRenderedEvent } from "../lib/lazyRows";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
 import type { Commands } from "../state/commands";
@@ -120,14 +121,7 @@ export function Buffer(props: Props) {
                 // Files opened for context aren't part of the diff: they only show in file view.
                 <Show when={!props.review.isContext(i)}>
                   <Show when={props.review.groupAt(props.review.paths()[i] ?? "")}>
-                    {(g) => (
-                      <header class="mx-2.5 mt-4 mb-1 first:mt-2" data-group={g().title}>
-                        <h2 class="text-[13px] font-semibold text-fg">{g().title}</h2>
-                        <Show when={g().summary}>
-                          <p class="text-xs text-muted">{g().summary}</p>
-                        </Show>
-                      </header>
-                    )}
+                    {(g) => <ChapterHeader group={g()} review={props.review} />}
                   </Show>
                   <FileSection index={i} review={props.review} view={props.view} cmd={props.cmd} />
                 </Show>
@@ -149,9 +143,60 @@ export function Buffer(props: Props) {
   );
 }
 
+/** Where a chapter of the agent's tour starts: its number, title and what it's about. */
+function ChapterHeader(props: { group: FileGroup; review: Review }) {
+  const number = () => props.review.groups().indexOf(props.group) + 1;
+  return (
+    <header
+      class="mx-2.5 mt-3 mb-0.5 flex items-baseline gap-2 border-t border-line pt-2 text-[12.5px]"
+      data-group={props.group.title}
+    >
+      <span class="shrink-0 font-mono text-[11px] text-subtle">
+        {number()}/{props.review.groups().length}
+      </span>
+      <div class="min-w-0">
+        <h2 class="inline font-semibold text-fg">{props.group.title}</h2>
+        <Show when={props.group.summary}>
+          {(summary) => (
+            <Markdown text={summary()} paths={props.review.paths()} class="max-w-[90ch] text-xs text-muted" />
+          )}
+        </Show>
+      </div>
+    </header>
+  );
+}
+
+/** The tour's chapters, as a line of links: the table of contents. */
+function Contents(props: { review: Review; cmd: Commands }) {
+  return (
+    <nav aria-label="Tour" class="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-[11.5px]">
+      <span class="text-muted">
+        Tour <kbd>]g</kbd>
+      </span>
+      <For each={props.review.groups()}>
+        {(g, i) => (
+          <button
+            type="button"
+            class="cursor-pointer text-muted hover:text-fg hover:underline"
+            data-chapter={i()}
+            title={g.summary ?? g.title}
+            onClick={() => props.cmd.chapterGo(i())}
+          >
+            <span class="font-mono text-subtle">{i() + 1}</span> {g.title}
+          </button>
+        )}
+      </For>
+    </nav>
+  );
+}
+
 function Summary(props: { review: Review; cmd: Commands }) {
   return (
-    <Show when={props.review.meta().summary || props.review.notes().length > 0}>
+    <Show
+      when={
+        props.review.meta().summary || props.review.notes().length > 0 || props.review.groups().length > 0
+      }
+    >
       <div class="mx-2 mt-2 mb-0.5 rounded-md border border-accent-line bg-bg px-2.5 py-1.5 text-[12.5px]">
         <Show when={props.review.meta().summary}>
           {(summary) => (
@@ -160,6 +205,9 @@ function Summary(props: { review: Review; cmd: Commands }) {
               <Markdown text={summary()} paths={props.review.paths()} class="max-w-[90ch]" />
             </div>
           )}
+        </Show>
+        <Show when={props.review.groups().length > 0}>
+          <Contents review={props.review} cmd={props.cmd} />
         </Show>
         <Show when={props.review.notes().length > 0}>
           <button

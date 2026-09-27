@@ -198,6 +198,9 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         >
           ▼
         </span>
+        <span class="font-mono text-[10.5px] font-normal text-subtle">
+          {props.review.groups().indexOf(p.node.group) + 1}
+        </span>
         <span class="min-w-0 flex-1 truncate">{p.node.group.title}</span>
         <span class="font-mono text-[10.5px] font-normal text-subtle">{p.node.count}</span>
       </button>
@@ -298,7 +301,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
   return (
     <nav
       aria-label={
-        mode() === "diff" ? "Changed files" : mode() === "groups" ? "Groups of changes" : "Project files"
+        mode() === "diff" ? "Changed files" : mode() === "groups" ? "The agent's tour" : "Project files"
       }
       class="flex h-full flex-col"
     >
@@ -312,7 +315,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
             Diff <span class="font-medium tracking-normal text-subtle">{props.review.diffCount()}</span>
           </Tab>
           <Tab value="groups">
-            Groups
+            Tour
             <Show when={props.review.groups().length > 0}>
               <span class="font-medium tracking-normal text-subtle"> {props.review.groups().length}</span>
             </Show>
@@ -355,7 +358,8 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         <Labels review={props.review} />
         <Show when={mode() === "groups" && props.review.groups().length === 0}>
           <p class="px-1 pt-1.5 text-[11.5px] text-subtle">
-            The agent hasn't grouped these files. Ask it to group the review's changes (it can with annotate).
+            No tour yet. Ask the agent for one: it groups the changes into chapters, in the order to read
+            them.
           </p>
         </Show>
         <Show when={mode() === "project" && props.review.repoFiles() === null}>

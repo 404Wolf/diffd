@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use diffd_core::model::{Author, Millis, ReviewId, ReviewStatus};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
 use super::feedback::Listening;
@@ -29,14 +29,14 @@ const PREVIEW_CHARS: usize = 160;
 const PREVIEW_ITEMS: usize = 3;
 
 /// What woke the agent, and what to tell it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct WakeNotice {
     /// Addressed to the agent: what happened and what to do.
     pub message: String,
     pub reviews: Vec<WakeReview>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct WakeReview {
     pub review_id: String,
     pub title: String,

@@ -60,6 +60,8 @@ export function TopBar(props: { review: Review }) {
         <span
           class="inline-flex h-[22px] items-center gap-1 rounded-full border border-accent-line bg-accent-soft pr-0.5 pl-2 text-xs text-accent"
           classList={{ "animate-pulse": props.review.loadingSpan() !== undefined }}
+          aria-busy={props.review.loadingSpan() !== undefined}
+          data-span-chip
         >
           <span class="font-mono text-[11px]">
             {spanLabel(props.review.history(), props.review.loadingSpan() ?? props.review.span())}
@@ -129,6 +131,13 @@ export function StatusLine(props: { review: Review; view: View; mode: () => stri
     const at = cur ? lo : 0;
     return `hunk ${at}/${starts.length}`;
   });
+  /** Which chapter of the agent's tour the cursor is in, when reading the tour. */
+  const chapter = createMemo(() => {
+    if (!props.review.grouped()) return "";
+    const c = props.view.cursor();
+    const at = c ? props.review.groupOf(props.review.snapshot().files[c.file]?.path ?? "") : -1;
+    return at < 0 ? "" : `ch ${at + 1}/${props.review.groups().length}`;
+  });
   /** The worst diagnostic on the cursor's line, like an editor's status bar. */
   const lineDiagnostic = createMemo(() => {
     const c = props.view.cursor();
@@ -157,6 +166,7 @@ export function StatusLine(props: { review: Review; view: View; mode: () => stri
       <Show when={hunk()}>
         <span>{hunk()}</span>
       </Show>
+      <Show when={chapter()}>{(ch) => <span data-chapter-status>{ch()}</span>}</Show>
       <span>
         jumps {props.view.jumpPos().at}/{props.view.jumpPos().length}
       </span>

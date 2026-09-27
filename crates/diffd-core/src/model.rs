@@ -7,11 +7,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use utoipa::ToSchema;
 
 macro_rules! id_type {
     ($(#[$doc:meta])* $name:ident) => {
         $(#[$doc])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS, JsonSchema)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
         #[serde(transparent)]
         #[ts(export)]
         pub struct $name(pub String);
@@ -49,7 +50,7 @@ pub type Revision = u32;
 /// Milliseconds since the Unix epoch.
 pub type Millis = u64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum Side {
@@ -57,7 +58,7 @@ pub enum Side {
     New,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum FileStatus {
@@ -70,7 +71,7 @@ pub enum FileStatus {
 }
 
 /// Everything the page needs to render one revision of a review.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Snapshot {
@@ -80,7 +81,7 @@ pub struct Snapshot {
 }
 
 /// One file's diff: both sides in full, aligned line by line.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct FileDiff {
@@ -112,7 +113,7 @@ pub struct FileDiff {
 }
 
 /// Why a file's contents aren't shown.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub enum Omitted {
@@ -134,7 +135,7 @@ impl std::fmt::Display for Omitted {
 }
 
 /// One side of a file.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct SideText {
@@ -147,7 +148,7 @@ pub struct SideText {
 }
 
 /// An aligned pair of 0-based line indices; `None` where one side has no line.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export)]
 pub struct Row(pub Option<u32>, pub Option<u32>);
 
@@ -219,7 +220,7 @@ impl SyntaxClass {
 }
 
 /// A definition found by the tags queries: what `gd` jumps to.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Symbol {
@@ -233,6 +234,7 @@ pub struct Symbol {
     pub start: u32,
     pub end: u32,
     /// The whole definition's first and last line (1-based), e.g. a function with its body.
+    #[schema(min_items = 2, max_items = 2)]
     pub lines: [u32; 2],
 }
 
@@ -240,7 +242,7 @@ pub struct Symbol {
 // Conversation
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum Author {
@@ -249,7 +251,7 @@ pub enum Author {
 }
 
 /// Where a thread lives: a line range on one side of a file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Anchor {
@@ -266,7 +268,7 @@ pub struct Anchor {
 }
 
 /// Two points in a review's history: commits, or the working tree for `to: null`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct CommitRange {
@@ -274,7 +276,7 @@ pub struct CommitRange {
     pub to: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum NoteKind {
@@ -284,7 +286,7 @@ pub enum NoteKind {
     Question,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(export)]
 pub enum ThreadKind {
@@ -294,7 +296,7 @@ pub enum ThreadKind {
     Note { kind: NoteKind, order: u32 },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Thread {
@@ -312,7 +314,7 @@ pub struct Thread {
 }
 
 /// A message in a thread, or in the chat.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Message {
@@ -329,7 +331,7 @@ pub struct Message {
 
 /// How the agent arranged the review for reading: who it is, related changes
 /// grouped together, and labels the user can hide files by.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Layout {
@@ -342,14 +344,15 @@ pub struct Layout {
     pub labels: Vec<Label>,
 }
 
-/// Files that change together for one reason, read one after another.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+/// A chapter of the agent's guided tour: files that change together for one
+/// reason, read one after another.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
 pub struct Group {
     /// What these changes are, in a few words, e.g. "The rate limiter API" or "Database migrations".
     pub title: String,
-    /// One or two plain sentences on what changed and why, shown above the group.
+    /// One or two plain sentences on what changed here and why, shown above the chapter's code.
     #[serde(default)]
     pub summary: Option<String>,
     /// Files in the diff, as paths, directories or globs (`web/src/**`, `*.sql`), in reading order.
@@ -357,7 +360,7 @@ pub struct Group {
 }
 
 /// A label on some files (e.g. `frontend`), which the user can hide.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
 pub struct Label {
@@ -368,13 +371,14 @@ pub struct Label {
 }
 
 /// A range the agent labelled when sharing: tests, or code folded behind a summary.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Region {
     pub path: String,
     pub side: Side,
     /// 1-based inclusive line range; `None` means the whole file.
+    #[schema(min_items = 2, max_items = 2)]
     pub lines: Option<[u32; 2]>,
     pub kind: RegionKind,
     /// For folds: what changed in there, in plain language.
@@ -384,7 +388,7 @@ pub struct Region {
     pub text: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum RegionKind {
@@ -395,7 +399,7 @@ pub enum RegionKind {
 }
 
 /// What the agent is doing, as far as the page can tell.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum Presence {
@@ -407,7 +411,7 @@ pub enum Presence {
     Away,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ShowRequest {
@@ -418,7 +422,7 @@ pub struct ShowRequest {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum ReviewStatus {
@@ -426,7 +430,7 @@ pub enum ReviewStatus {
     Closed,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ReviewMeta {
@@ -447,7 +451,7 @@ pub struct ReviewMeta {
 }
 
 /// How bad a language server's diagnostic is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum Severity {
@@ -459,7 +463,7 @@ pub enum Severity {
 
 /// A language server's error or warning on the new side of a file.
 /// Lines are 1-based; columns count UTF-16 code units from 0, as in the page.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Diagnostic {
@@ -474,7 +478,7 @@ pub struct Diagnostic {
 }
 
 /// What the page can ask a language server about a position.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub enum CodeQuery {
@@ -485,7 +489,7 @@ pub enum CodeQuery {
 
 /// Where a language server points: a file in the repository (a relative
 /// path), or outside it (an absolute path, e.g. a library's source).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct CodeLocation {
@@ -496,7 +500,7 @@ pub struct CodeLocation {
     pub col: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(export)]
 pub enum CodeAnswer {
@@ -514,7 +518,7 @@ pub enum CodeAnswer {
 }
 
 /// A commit between the review's two sides.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Commit {
@@ -528,7 +532,7 @@ pub struct Commit {
 
 /// The commits a review spans, oldest first along first parents, so the page
 /// can walk them one at a time or diff any two.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct History {
@@ -542,7 +546,7 @@ pub struct History {
 }
 
 /// One entry in the page's activity feed.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ActivityItem {
@@ -553,7 +557,7 @@ pub struct ActivityItem {
     pub kind: ActivityKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(export)]
 pub enum ActivityKind {

@@ -384,8 +384,22 @@ export function createView(review: Review) {
   createEffect(() => save("diffd:drawers", { left: { ...drawers.left }, right: { ...drawers.right } }));
   const [rightTab, setRightTab] = createSignal<RightTab>(load<RightTab>("diffd:right-tab", "activity"));
   createEffect(() => save("diffd:right-tab", rightTab()));
-  const [treeMode, setTreeMode] = createSignal<TreeMode>(load<TreeMode>("diffd:tree-mode", "diff"));
-  createEffect(() => save("diffd:tree-mode", treeMode()));
+  // Per review: one the agent made a tour of starts on the tour; others as you last left the drawer.
+  const treeModeKey = `diffd:tree-mode:${id}`;
+  const [treeMode, setTreeMode] = createSignal<TreeMode>(
+    load<TreeMode | null>(treeModeKey, null) ??
+      (review.groups().length > 0 ? "groups" : load<TreeMode>("diffd:tree-mode", "diff")),
+  );
+  createEffect(
+    on(
+      treeMode,
+      (mode) => {
+        save(treeModeKey, mode);
+        if (mode !== "groups") save("diffd:tree-mode", mode);
+      },
+      { defer: true },
+    ),
+  );
   const [folders, setFolders] = createStore<Record<TreeMode, Folders>>({
     diff: { all: null, open: {} },
     project: { all: null, open: {} },

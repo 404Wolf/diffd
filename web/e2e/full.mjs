@@ -103,10 +103,23 @@ const viewport = (page) =>
     }
     return null;
   });
+/** Wait until the part of the history the header names is on screen (the chip shows it while it loads). */
+const spanReady = (page) => page.waitForFunction(() => !document.querySelector('[data-span-chip][aria-busy="true"]'));
+
 async function cursorTo(page, fileName, line, side = "new", pane = ".buffer.focused") {
   // Click the code cell of that line, like a user would.
   const cell = page.locator(`${pane} [data-file-section]:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`).first();
-  await cell.scrollIntoViewIfNeeded();
+  // Rows far from the screen are filled in as they come near it, which can
+  // replace the element being scrolled to: look it up again then.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await cell.scrollIntoViewIfNeeded();
+      break;
+    } catch (e) {
+      if (attempt > 2 || !String(e).includes("not attached")) throw e;
+      await sleep(100);
+    }
+  }
   await cell.click({ position: { x: 4, y: 4 } });
   await sleep(80);
 }
@@ -721,7 +734,10 @@ try {
 
     await page.locator(".buffer.focused").focus();
     await keys(page, "]", "r");
+    // The chip shows the commit at once; its diff follows.
     await page.waitForFunction(() => document.querySelector("header").innerText.includes("×"));
+    await spanReady(page);
+    await page.waitForFunction((all) => document.querySelectorAll("[data-file-section] [data-path]").length < all, all);
     let shown = await paths();
     check(
       JSON.stringify(shown) === JSON.stringify(["src/bucket.rs", "src/legacy.rs", "src/lib.rs", "tests/limiter.rs", "Cargo.lock"]),
@@ -759,12 +775,14 @@ try {
     await keys(page, "]", "r");
     await keys(page, "]", "r");
     await page.waitForFunction(() => document.querySelector("header").innerText.includes("Uncommitted"));
+    await spanReady(page);
     shown = await paths();
     check(shown.includes("flake.nix") && !shown.includes("cmd/probe/main.go"), "the last step is the uncommitted changes");
     await shot(page, "uncommitted");
 
     await keys(page, "]", "r");
     await page.waitForFunction(() => !document.querySelector("header").innerText.includes("×"));
+    await spanReady(page);
     check((await paths()).length === all, "past the last step it's all changes again");
 
     // The agent commits: the review's diff stays the same, the history grows.
@@ -1039,10 +1057,10 @@ try {
     await chip("test").click();
     check((await sections()).length === all.length, "showing them again brings everything back");
 
-    // Groups: the buffer reads group by group, with headers, and ]f follows.
-    await page.getByRole("tab", { name: /^Groups/ }).click();
+    // The tour: a review the agent made one for opens on it, chapter by chapter, and ]f follows.
+    check((await page.getByRole("tab", { name: /^Tour/ }).getAttribute("aria-selected")) === "true", "a review with a tour opens on it");
     const groups = await page.locator("[data-tree-group]").evaluateAll((els) => els.map((e) => e.dataset.treeGroup));
-    check(JSON.stringify(groups) === JSON.stringify(["The limiter", "The web badge", "Storage", "Other changes"]), `the Groups tab lists the agent's groups, then the rest (${groups.join(", ")})`);
+    check(JSON.stringify(groups) === JSON.stringify(["The limiter", "The web badge", "Storage", "Other changes"]), `the Tour tab lists the chapters, then the rest (${groups.join(", ")})`);
     const headers = await page.locator(".buffer.focused header[data-group]").evaluateAll((els) => els.map((e) => e.dataset.group));
     check(headers.length === 4 && headers[0] === "The limiter", "the buffer has a header per group");
     const order = await sections();
@@ -1056,8 +1074,21 @@ try {
     await keys(page, "]", "f");
     const next = await status(page);
     check(/quota\.ts|QuotaBadge\.tsx|api\.ts|badge\.css/.test(next), `and on into the next group (${next.slice(0, 40)})`);
-    await page.getByRole("tab", { name: /^Diff/ }).click();
-    check((await page.locator(".buffer.focused header[data-group]").count()) === 0, "the Diff tab reads in tree order again");
+    check((await page.locator("[data-chapter-status]").innerText()) === "ch 2/4", "the status line says which chapter");
+    await keys(page, "[", "g");
+    check((await status(page)).includes("lib.rs"), "[g goes back to the start of the previous chapter");
+    await keys(page, "]", "g");
+    await keys(page, "]", "g");
+    check((await status(page)).includes("schema.sql"), "]g steps chapter by chapter");
+    const contents = await page.locator("nav[aria-label=Tour] [data-chapter]").allInnerTexts();
+    check(contents.length === 4 && contents[1].includes("The web badge"), "the summary lists the chapters");
+    await page.locator('nav[aria-label=Tour] [data-chapter="1"]').click();
+    check((await page.locator("[data-chapter-status]").innerText()) === "ch 2/4", "and each one goes to its chapter");
+    check((await page.locator('.buffer.focused header[data-group="The limiter"]').innerText()).includes("Burst capacity and how long to wait."), "a chapter starts with what it's about");
+    await page.locator(".buffer.focused").focus();
+    await keys(page, "Space", "t", "g");
+    check((await page.locator(".buffer.focused header[data-group]").count()) === 0, "space t g goes back to the plain diff, in tree order");
+    check((await page.getByRole("tab", { name: /^Diff/ }).getAttribute("aria-selected")) === "true", "on the Diff tab");
 
     // Codex answers a comment: a toast in the corner, which goes to the reply.
     await cursorTo(page, "src/bucket.rs", 1);

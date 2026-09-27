@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use utoipa::ToSchema;
 
 use std::collections::BTreeMap;
 
@@ -15,7 +16,7 @@ use crate::model::{
 
 /// Everything the page needs to render a review. It's embedded in the HTML so
 /// the page works offline, and re-sent when the socket (re)connects.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ReviewState {
@@ -38,7 +39,7 @@ pub struct ReviewState {
     pub diagnostics: BTreeMap<String, Vec<Diagnostic>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(export)]
 pub enum ServerMsg {
@@ -105,7 +106,7 @@ pub enum ServerMsg {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
 pub enum ClientMsg {
@@ -134,7 +135,7 @@ pub enum ClientMsg {
 }
 
 /// A review in the recent list on the home page.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ReviewSummary {
@@ -144,7 +145,7 @@ pub struct ReviewSummary {
 }
 
 /// What the server embeds in each page it serves; the page renders from it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "page", rename_all = "camelCase")]
 #[ts(export)]
 pub enum Boot {

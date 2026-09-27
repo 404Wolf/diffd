@@ -47,9 +47,13 @@ pub struct ShareRequest {
     /// mechanical or uninteresting changes behind a one-sentence summary.
     #[serde(default)]
     pub regions: Vec<RegionInput>,
-    /// For a diff of more than a handful of files: group them by what they're for, in the order to read
-    /// them, e.g. "The limiter API", "Storage", "Tests". Every file belongs to the first group naming it;
-    /// the rest go under "Other changes". The user can read the review group by group.
+    /// A guided tour of the diff, for anything more than a few files: chapters of related changes, in the
+    /// order that makes the change easiest to understand. Usually the data model or types first, then the
+    /// logic that uses them, then callers, UI and config, with tests last. Each chapter has a short title
+    /// ("The rate limiter", "Storing quotas") and a `summary`: one or two sentences on what changed there
+    /// and why, which the user reads before its code. A file belongs to the first chapter naming it; any
+    /// left over go under "Other changes" at the end. The review opens on the tour; the plain diff is a
+    /// click away.
     #[serde(default)]
     pub groups: Vec<Group>,
     /// Labels the user can hide files by, e.g. `frontend` for the web client or `docs`. Tests and generated

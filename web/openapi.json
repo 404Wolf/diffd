@@ -1,0 +1,2201 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "diffd",
+    "description": "Reviews of code changes, between an agent and you.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/reviews": {
+      "get": {
+        "summary": "Recent reviews, newest first.",
+        "operationId": "list_reviews",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{id}": {
+      "get": {
+        "summary": "Everything the page needs to show a review.",
+        "operationId": "review_state",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The review's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewState"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a review, its threads and its history.",
+        "operationId": "delete_review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The review's id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{id}/context": {
+      "get": {
+        "summary": "One file outside the diff, highlighted.",
+        "operationId": "context_file",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDiff"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{id}/files": {
+      "get": {
+        "summary": "Every file in the review's repository, for browsing beyond the diff.",
+        "operationId": "repo_files",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{id}/range": {
+      "get": {
+        "summary": "The diff between two points in a review's history.",
+        "operationId": "range",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "A commit; omitted for the working tree.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wake": {
+      "get": {
+        "summary": "Long-poll until the user leaves feedback an agent here should hear about\n(200, with the notice), or the wait ends (204). Used by `diffd hook`.",
+        "operationId": "wake",
+        "parameters": [
+          {
+            "name": "cwd",
+            "in": "query",
+            "description": "The agent's working directory: reviews of that repository wake it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "waiter",
+            "in": "query",
+            "description": "The harness session, e.g. `claude:<session id>`; a newer wait replaces an older one.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timeout_secs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WakeNotice"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "The wait ended with nothing to say"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Stop waiting for this waiter (its session ended).",
+        "operationId": "cancel_wake",
+        "parameters": [
+          {
+            "name": "waiter",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActivityItem": {
+        "type": "object",
+        "description": "One entry in the page's activity feed.",
+        "required": [
+          "seq",
+          "at",
+          "kind"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "at": {
+            "$ref": "#/components/schemas/u64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ActivityKind"
+          }
+        }
+      },
+      "ActivityKind": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "notes",
+              "collapsed",
+              "type"
+            ],
+            "properties": {
+              "notes": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "collapsed": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "opened"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "threadId",
+              "path",
+              "line",
+              "type"
+            ],
+            "properties": {
+              "threadId": {
+                "$ref": "#/components/schemas/ThreadId"
+              },
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "userCommented"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "threadId",
+              "path",
+              "line",
+              "type"
+            ],
+            "properties": {
+              "threadId": {
+                "$ref": "#/components/schemas/ThreadId"
+              },
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "agentReplied"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "threadId",
+              "path",
+              "line",
+              "type"
+            ],
+            "properties": {
+              "threadId": {
+                "$ref": "#/components/schemas/ThreadId"
+              },
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "agentNoted"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "revision",
+              "paths",
+              "type"
+            ],
+            "properties": {
+              "revision": {
+                "$ref": "#/components/schemas/u32"
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "revision"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "messageId",
+              "type"
+            ],
+            "properties": {
+              "messageId": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "agentSaid"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "request",
+              "type"
+            ],
+            "properties": {
+              "request": {
+                "$ref": "#/components/schemas/ShowRequest"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "show"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "Anchor": {
+        "type": "object",
+        "description": "Where a thread lives: a line range on one side of a file.",
+        "required": [
+          "path",
+          "side",
+          "start",
+          "end",
+          "text",
+          "range"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "text": {
+            "type": "string",
+            "description": "The exact anchored text, used to follow the lines across revisions."
+          },
+          "range": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CommitRange",
+                "description": "Set when the comment was written while looking at part of the review's\nhistory (one commit, or a few) rather than the whole diff."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Author": {
+        "type": "string",
+        "enum": [
+          "user",
+          "agent"
+        ]
+      },
+      "Boot": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "reviews",
+              "page"
+            ],
+            "properties": {
+              "reviews": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ReviewSummary"
+                }
+              },
+              "page": {
+                "type": "string",
+                "enum": [
+                  "home"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "state",
+              "page"
+            ],
+            "properties": {
+              "state": {
+                "$ref": "#/components/schemas/ReviewState"
+              },
+              "page": {
+                "type": "string",
+                "enum": [
+                  "review"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message",
+              "page"
+            ],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "page": {
+                "type": "string",
+                "enum": [
+                  "notFound"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "What the server embeds in each page it serves; the page renders from it."
+      },
+      "ClientMsg": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Start a thread on a selection. The page picks the ids, so sending the\nsame message twice (e.g. after a reconnect) has no extra effect.",
+            "required": [
+              "threadId",
+              "messageId",
+              "anchor",
+              "body",
+              "type"
+            ],
+            "properties": {
+              "threadId": {
+                "$ref": "#/components/schemas/ThreadId"
+              },
+              "messageId": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "anchor": {
+                "$ref": "#/components/schemas/Anchor"
+              },
+              "body": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "comment"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "threadId",
+              "messageId",
+              "body",
+              "type"
+            ],
+            "properties": {
+              "threadId": {
+                "$ref": "#/components/schemas/ThreadId"
+              },
+              "messageId": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "body": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "reply"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "threadId",
+              "resolved",
+              "type"
+            ],
+            "properties": {
+              "threadId": {
+                "$ref": "#/components/schemas/ThreadId"
+              },
+              "resolved": {
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "resolve"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The user opened or closed a comment draft; open drafts hold feedback back.",
+            "required": [
+              "drafting",
+              "type"
+            ],
+            "properties": {
+              "drafting": {
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "drafting"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A message in the chat box.",
+            "required": [
+              "messageId",
+              "body",
+              "type"
+            ],
+            "properties": {
+              "messageId": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "body": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "chat"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The user has seen activity up to `seq`.",
+            "required": [
+              "seq",
+              "type"
+            ],
+            "properties": {
+              "seq": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "read"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Ask a language server about a position in a file on the new side\n(line 1-based, column in UTF-16 code units). Answered with `ServerMsg::Code`.",
+            "required": [
+              "requestId",
+              "query",
+              "path",
+              "line",
+              "col",
+              "type"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "query": {
+                "$ref": "#/components/schemas/CodeQuery"
+              },
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "col": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "code"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "CodeAnswer": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "locations",
+              "type"
+            ],
+            "properties": {
+              "locations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CodeLocation"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "locations"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Markdown, as the server wrote it.",
+            "required": [
+              "markdown",
+              "type"
+            ],
+            "properties": {
+              "markdown": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "hover"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "No language server for this file (or it couldn't answer): fall back to what the page knows.",
+            "required": [
+              "reason",
+              "type"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "unavailable"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "CodeLocation": {
+        "type": "object",
+        "description": "Where a language server points: a file in the repository (a relative\npath), or outside it (an absolute path, e.g. a library's source).",
+        "required": [
+          "path",
+          "external",
+          "line",
+          "col"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "external": {
+            "type": "boolean"
+          },
+          "line": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1-based.",
+            "minimum": 0
+          },
+          "col": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CodeQuery": {
+        "type": "string",
+        "description": "What the page can ask a language server about a position.",
+        "enum": [
+          "definition",
+          "typeDefinition",
+          "hover"
+        ]
+      },
+      "Commit": {
+        "type": "object",
+        "description": "A commit between the review's two sides.",
+        "required": [
+          "sha",
+          "short",
+          "subject",
+          "author",
+          "time"
+        ],
+        "properties": {
+          "sha": {
+            "type": "string"
+          },
+          "short": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/u64"
+          }
+        }
+      },
+      "CommitRange": {
+        "type": "object",
+        "description": "Two points in a review's history: commits, or the working tree for `to: null`.",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Diagnostic": {
+        "type": "object",
+        "description": "A language server's error or warning on the new side of a file.\nLines are 1-based; columns count UTF-16 code units from 0, as in the page.",
+        "required": [
+          "line",
+          "col",
+          "endLine",
+          "endCol",
+          "severity",
+          "message",
+          "source"
+        ],
+        "properties": {
+          "line": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "col": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "endLine": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "endCol": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "message": {
+            "type": "string"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tool that reported it, e.g. `rustc`, `pyright`."
+          }
+        }
+      },
+      "FileDiff": {
+        "type": "object",
+        "description": "One file's diff: both sides in full, aligned line by line.",
+        "required": [
+          "path",
+          "oldPath",
+          "status",
+          "language",
+          "omitted",
+          "details",
+          "collapsed",
+          "labels",
+          "added",
+          "removed",
+          "old",
+          "new",
+          "rows",
+          "since"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "oldPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/FileStatus"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name of the language, when we recognise it."
+          },
+          "omitted": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Omitted",
+                "description": "Why the contents aren't shown, when they aren't."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Changes the rows can't show: the file mode, line endings, the final\nnewline, a submodule's commit. Short phrases, e.g. \"mode 100644 → 100755\"."
+          },
+          "collapsed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the file starts collapsed (set by the agent, e.g. \"generated by ts-rs\")."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What kind of file it is, as diffd can tell by itself: `test`, `generated`."
+          },
+          "added": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "old": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SideText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "new": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SideText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Row"
+            },
+            "description": "The whole file, aligned: (old line index, new line index), 0-based."
+          },
+          "since": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "New-side lines (1-based) that changed since the previous revision."
+          }
+        }
+      },
+      "FileStatus": {
+        "type": "string",
+        "enum": [
+          "added",
+          "deleted",
+          "modified",
+          "renamed",
+          "unchanged"
+        ]
+      },
+      "Group": {
+        "type": "object",
+        "description": "A chapter of the agent's guided tour: files that change together for one\nreason, read one after another.",
+        "required": [
+          "title",
+          "summary",
+          "files"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "What these changes are, in a few words, e.g. \"The rate limiter API\" or \"Database migrations\"."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One or two plain sentences on what changed here and why, shown above the chapter's code."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Files in the diff, as paths, directories or globs (`web/src/**`, `*.sql`), in reading order."
+          }
+        },
+        "additionalProperties": false
+      },
+      "History": {
+        "type": "object",
+        "description": "The commits a review spans, oldest first along first parents, so the page\ncan walk them one at a time or diff any two.",
+        "required": [
+          "base",
+          "commits",
+          "worktree",
+          "truncated"
+        ],
+        "properties": {
+          "base": {
+            "type": "string",
+            "description": "The commit the review compares against."
+          },
+          "commits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Commit"
+            }
+          },
+          "worktree": {
+            "type": "boolean",
+            "description": "The review ends at the working tree, so uncommitted changes follow the last commit."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Only the newest commits are listed."
+          }
+        }
+      },
+      "Label": {
+        "type": "object",
+        "description": "A label on some files (e.g. `frontend`), which the user can hide.",
+        "required": [
+          "name",
+          "files"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Short and lowercase, e.g. `frontend`, `backend`, `docs`, `generated`, `test`."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths, directories or globs, e.g. `web/**` or `*.sqlx`."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Layout": {
+        "type": "object",
+        "description": "How the agent arranged the review for reading: who it is, related changes\ngrouped together, and labels the user can hide files by.",
+        "required": [
+          "agent",
+          "groups",
+          "labels"
+        ],
+        "properties": {
+          "agent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent's name as its harness gives it, e.g. \"Claude\" or \"Codex\"."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Label"
+            }
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "description": "A message in a thread, or in the chat.",
+        "required": [
+          "id",
+          "author",
+          "body",
+          "createdAt",
+          "deliveredAt"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "author": {
+            "$ref": "#/components/schemas/Author"
+          },
+          "body": {
+            "type": "string",
+            "description": "Markdown."
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/u64"
+          },
+          "deliveredAt": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/u64",
+                "description": "When the agent received it (user messages only)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "MessageId": {
+        "type": "string",
+        "description": "One message in a thread or in the chat."
+      },
+      "NoteKind": {
+        "type": "string",
+        "enum": [
+          "explain",
+          "why",
+          "risk",
+          "question"
+        ]
+      },
+      "Omitted": {
+        "type": "string",
+        "description": "Why a file's contents aren't shown.",
+        "enum": [
+          "binary",
+          "tooLarge",
+          "submodule"
+        ]
+      },
+      "Presence": {
+        "type": "string",
+        "description": "What the agent is doing, as far as the page can tell.",
+        "enum": [
+          "listening",
+          "working",
+          "away"
+        ]
+      },
+      "Region": {
+        "type": "object",
+        "description": "A range the agent labelled when sharing: tests, or code folded behind a summary.",
+        "required": [
+          "path",
+          "side",
+          "lines",
+          "kind",
+          "summary",
+          "text"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "lines": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "1-based inclusive line range; `None` means the whole file.",
+            "maxItems": 2,
+            "minItems": 2
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RegionKind"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For folds: what changed in there, in plain language."
+          },
+          "text": {
+            "type": "string",
+            "description": "The anchored text, used to follow the lines across revisions."
+          }
+        }
+      },
+      "RegionKind": {
+        "type": "string",
+        "enum": [
+          "test",
+          "fold"
+        ]
+      },
+      "ReviewId": {
+        "type": "string",
+        "description": "A review: one shared diff and its conversation."
+      },
+      "ReviewMeta": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "repoPath",
+          "repoName",
+          "from",
+          "to",
+          "revision",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ReviewId"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repoPath": {
+            "type": "string"
+          },
+          "repoName": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`None` means the working tree."
+          },
+          "revision": {
+            "$ref": "#/components/schemas/u32"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/u64"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/u64"
+          }
+        }
+      },
+      "ReviewState": {
+        "type": "object",
+        "description": "Everything the page needs to render a review. It's embedded in the HTML so\nthe page works offline, and re-sent when the socket (re)connects.",
+        "required": [
+          "review",
+          "snapshot",
+          "threads",
+          "regions",
+          "layout",
+          "history",
+          "chat",
+          "activity",
+          "presence",
+          "readSeq",
+          "diagnostics"
+        ],
+        "properties": {
+          "review": {
+            "$ref": "#/components/schemas/ReviewMeta"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/Snapshot"
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Thread"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Region"
+            },
+            "description": "Tests and folds the agent marked."
+          },
+          "layout": {
+            "$ref": "#/components/schemas/Layout",
+            "description": "Who the agent is, and how it grouped and labelled the files."
+          },
+          "history": {
+            "$ref": "#/components/schemas/History",
+            "description": "The commits in the review's range."
+          },
+          "chat": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "activity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            }
+          },
+          "presence": {
+            "$ref": "#/components/schemas/Presence"
+          },
+          "readSeq": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Activity up to this sequence number has been seen by the user.",
+            "minimum": 0
+          },
+          "diagnostics": {
+            "type": "object",
+            "description": "Language servers' diagnostics, by path (files in the diff and open for context).",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Diagnostic"
+              }
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ReviewStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "closed"
+        ]
+      },
+      "ReviewSummary": {
+        "type": "object",
+        "description": "A review in the recent list on the home page.",
+        "required": [
+          "review",
+          "unread"
+        ],
+        "properties": {
+          "review": {
+            "$ref": "#/components/schemas/ReviewMeta"
+          },
+          "unread": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Agent activity the user hasn't seen.",
+            "minimum": 0
+          }
+        }
+      },
+      "Row": {
+        "type": "array",
+        "items": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32",
+          "description": "An aligned pair of 0-based line indices; `None` where one side has no line.",
+          "minimum": 0
+        },
+        "description": "An aligned pair of 0-based line indices; `None` where one side has no line.",
+        "maxItems": 2,
+        "minItems": 2
+      },
+      "ServerMsg": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Full state, sent on connect.",
+            "required": [
+              "state",
+              "type"
+            ],
+            "properties": {
+              "state": {
+                "$ref": "#/components/schemas/ReviewState"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "state"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A new revision of the diff.",
+            "required": [
+              "review",
+              "snapshot",
+              "type"
+            ],
+            "properties": {
+              "review": {
+                "$ref": "#/components/schemas/ReviewMeta"
+              },
+              "snapshot": {
+                "$ref": "#/components/schemas/Snapshot"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "revision"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The agent's region labels changed.",
+            "required": [
+              "regions",
+              "type"
+            ],
+            "properties": {
+              "regions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Region"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "regions"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The agent regrouped or relabelled the files.",
+            "required": [
+              "layout",
+              "type"
+            ],
+            "properties": {
+              "layout": {
+                "$ref": "#/components/schemas/Layout"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "layout"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A thread was created or changed.",
+            "required": [
+              "thread",
+              "type"
+            ],
+            "properties": {
+              "thread": {
+                "$ref": "#/components/schemas/Thread"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "thread"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message",
+              "type"
+            ],
+            "properties": {
+              "message": {
+                "$ref": "#/components/schemas/Message"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "chat"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "item",
+              "type"
+            ],
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/ActivityItem"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "activity"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "presence",
+              "type"
+            ],
+            "properties": {
+              "presence": {
+                "$ref": "#/components/schemas/Presence"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "presence"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A file's diagnostics changed (an empty list clears them).",
+            "required": [
+              "path",
+              "diagnostics",
+              "type"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Diagnostic"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "diagnostics"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The answer to a `ClientMsg::Code` question.",
+            "required": [
+              "requestId",
+              "answer",
+              "type"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "answer": {
+                "$ref": "#/components/schemas/CodeAnswer"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "code"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "New commits landed in the review's range.",
+            "required": [
+              "history",
+              "type"
+            ],
+            "properties": {
+              "history": {
+                "$ref": "#/components/schemas/History"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "history"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The agent wants to point the user at some code.",
+            "required": [
+              "request",
+              "type"
+            ],
+            "properties": {
+              "request": {
+                "$ref": "#/components/schemas/ShowRequest"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "show"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The server applied the page's message with this id (see [`ClientMsg`]).",
+            "required": [
+              "id",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ack"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A request from the page failed.",
+            "required": [
+              "message",
+              "type"
+            ],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The review no longer exists (it was deleted): stop reconnecting.",
+            "required": [
+              "message",
+              "type"
+            ],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "gone"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "Severity": {
+        "type": "string",
+        "description": "How bad a language server's diagnostic is.",
+        "enum": [
+          "error",
+          "warning",
+          "info",
+          "hint"
+        ]
+      },
+      "ShowRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "side",
+          "start",
+          "end",
+          "message"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "Side": {
+        "type": "string",
+        "enum": [
+          "old",
+          "new"
+        ]
+      },
+      "SideText": {
+        "type": "object",
+        "description": "One side of a file.",
+        "required": [
+          "lines",
+          "syntax",
+          "novel"
+        ],
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "syntax": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "description": "Per line, flattened `[start, end, class, start, end, class, …]`.\n`class` indexes [`SyntaxClass::ALL`]."
+          },
+          "novel": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            },
+            "description": "Per line, flattened `[start, end, …]`: tokens difftastic marks as novel."
+          }
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "description": "Everything the page needs to render one revision of a review.",
+        "required": [
+          "revision",
+          "files",
+          "symbols"
+        ],
+        "properties": {
+          "revision": {
+            "$ref": "#/components/schemas/u32"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileDiff"
+            }
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Symbol"
+            }
+          }
+        }
+      },
+      "Symbol": {
+        "type": "object",
+        "description": "A definition found by the tags queries: what `gd` jumps to.",
+        "required": [
+          "name",
+          "kind",
+          "file",
+          "side",
+          "line",
+          "start",
+          "end",
+          "lines"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "e.g. \"function\", \"class\", \"method\", \"module\"."
+          },
+          "file": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Index into [`Snapshot::files`].",
+            "minimum": 0
+          },
+          "side": {
+            "$ref": "#/components/schemas/Side"
+          },
+          "line": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "The whole definition's first and last line (1-based), e.g. a function with its body.",
+            "maxItems": 2,
+            "minItems": 2
+          }
+        }
+      },
+      "Thread": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "anchor",
+          "resolved",
+          "changedIn",
+          "outdated",
+          "messages",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ThreadKind"
+          },
+          "anchor": {
+            "$ref": "#/components/schemas/Anchor"
+          },
+          "resolved": {
+            "type": "boolean"
+          },
+          "changedIn": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/u32",
+                "description": "The anchored code changed after the thread started, in this revision."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outdated": {
+            "type": "boolean",
+            "description": "The anchored code can no longer be found."
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/u64"
+          }
+        }
+      },
+      "ThreadId": {
+        "type": "string",
+        "description": "A thread of messages anchored to lines, or an agent note."
+      },
+      "ThreadKind": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Started by the user on a selection.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "comment"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "An annotation the agent wrote when sharing; `order` is its place in the tour.",
+            "required": [
+              "kind",
+              "order",
+              "type"
+            ],
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/NoteKind"
+              },
+              "order": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "note"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "WakeNotice": {
+        "type": "object",
+        "description": "What woke the agent, and what to tell it.",
+        "required": [
+          "message",
+          "reviews"
+        ],
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Addressed to the agent: what happened and what to do."
+          },
+          "reviews": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WakeReview"
+            }
+          }
+        }
+      },
+      "WakeReview": {
+        "type": "object",
+        "required": [
+          "review_id",
+          "title",
+          "url",
+          "comments",
+          "chat"
+        ],
+        "properties": {
+          "review_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "comments": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "chat": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "u32": {
+        "type": "integer",
+        "format": "int32",
+        "minimum": 0
+      },
+      "u64": {
+        "type": "integer",
+        "format": "int64",
+        "minimum": 0
+      }
+    }
+  }
+}

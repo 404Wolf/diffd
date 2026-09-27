@@ -21,7 +21,9 @@ diffd shows your code changes to the user as a live review in their browser, and
 
 When you've made a meaningful change, or the user asks to review something, call share_diff and give the user the url.
 Annotate the parts a reviewer would trip over, in plain language. Mark generated files, lockfiles and vendored code to collapse.
-For a larger diff, group the files into related changes and label the ones a reviewer may want to hide (e.g. `frontend`).
+For more than a few files, give a guided tour with `groups`: chapters of related changes in the order that explains the change
+best (types and data first, then logic, callers, UI, tests last), each with a one or two sentence summary. Label files a reviewer
+may want to hide (e.g. `frontend`).
 When your work spans several commits, share the whole range (e.g. from `main`): the user can step through it one commit at a
 time. Write commit messages a reviewer can follow. Comments made on one commit tell you which (`commented_on`).
 
@@ -238,8 +240,9 @@ Collapse generated code, lockfiles, snapshots and vendored files with `collapse`
 Use `regions` to mark test code (`kind: \"test\"`, whole files or line ranges; the page shows a line along them) and to \
 fold mechanical changes such as renames, moved code or reformatting (`kind: \"fold\"`, with a one-sentence `summary` \
 of what changed there), so the user reads the interesting parts first. \
-When the diff has more than a handful of files, `groups` them by what they're for (\"The API\", \"Database\", \"Tests\"), \
-in the order to read them, and `labels` the files a reviewer may want to hide, e.g. `frontend` for web client code. \
+For more than a few files, give a guided tour: `groups` are its chapters (\"The data model\", \"The API\", \"Tests\"), \
+in the order that explains the change best, each with a short `summary`. `labels` mark files a reviewer may want to \
+hide, e.g. `frontend` for web client code. \
 Tests, lockfiles and generated code (`.sqlx`, `@generated`, minified) are recognised by themselves; mark others \
 with `collapse` or the `generated` label.")]
     async fn share_diff(

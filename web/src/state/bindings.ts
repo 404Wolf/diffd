@@ -87,6 +87,12 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     help: ["Review", "Next / previous file, skipping collapsed"],
   },
   { keys: "[ f", run: ({ cmd }) => cmd.fileJump(-1) },
+  {
+    keys: "] g",
+    run: ({ cmd }) => cmd.chapterJump(1),
+    help: ["Review", "Next / previous chapter of the agent's tour"],
+  },
+  { keys: "[ g", run: ({ cmd }) => cmd.chapterJump(-1) },
   { keys: "] a", run: ({ cmd }) => cmd.noteJump(1), help: ["Review", "The agent's notes, in order"] },
   { keys: "[ a", run: ({ cmd }) => cmd.noteJump(-1) },
   { keys: "] t", run: ({ cmd }) => cmd.threadJump(1), help: ["Review", "Next / previous thread"] },
@@ -218,6 +224,11 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     keys: "space t t",
     run: ({ view }) => view.setTreeMode(view.treeMode() === "diff" ? "project" : "diff"),
     help: ["Panels", "Files: the diff's or the whole project's"],
+  },
+  {
+    keys: "space t g",
+    run: ({ view }) => view.setTreeMode(view.treeMode() === "groups" ? "diff" : "groups"),
+    help: ["Panels", "Read the agent's tour, or the plain diff"],
   },
   {
     keys: "space t c",

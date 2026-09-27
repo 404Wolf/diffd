@@ -354,6 +354,31 @@ export function createCommands(review: Review, view: View) {
     }
   };
 
+  /**
+   * `]g` / `[g`: the next or previous chapter of the agent's tour, at its
+   * first change. Reading by group starts if it hadn't.
+   */
+  const chapterJump = (dir: 1 | -1) => {
+    const chapters = review.groups();
+    if (chapters.length === 0) return view.say("The agent hasn't made a tour of this review");
+    const c = view.cursor();
+    const current = c ? review.groupOf(files()[c.file]?.path ?? "") : -1;
+    chapterGo(current < 0 ? (dir > 0 ? 0 : chapters.length - 1) : current + dir);
+  };
+  /** Go to chapter `i` (0-based) of the tour. */
+  const chapterGo = (i: number) => {
+    const chapters = review.groups();
+    const chapter = chapters[i];
+    if (!chapter)
+      return view.say(i < 0 ? "That's the first chapter" : "That was the last chapter of the tour");
+    if (view.treeMode() !== "groups") view.setTreeMode("groups");
+    // Its first file that's shown (labels can hide some).
+    const file = chapter.paths.map((p) => review.paths().indexOf(p)).find((f) => f >= 0);
+    if (file === undefined) return view.say(`“${chapter.title}” is hidden by labels`);
+    openFile(file);
+    view.say(`Chapter ${i + 1} of ${chapters.length}: ${chapter.title}`);
+  };
+
   const noteJump = (dir: 1 | -1) => {
     const notes = review.notes();
     const idx = view.noteIndex() < 0 && dir > 0 ? 0 : view.noteIndex() + dir;
@@ -976,6 +1001,8 @@ export function createCommands(review: Review, view: View) {
     noteJump,
     threadJump,
     activityGo,
+    chapterJump,
+    chapterGo,
     unreadNext,
     goTo,
     goToThread,
