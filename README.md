@@ -120,6 +120,76 @@ Language servers start in the reviewed repository (at the nearest project
 root, e.g. the folder with `Cargo.toml`) when a review of the working tree
 is open, several at once for mixed diffs, and stop when idle.
 
+### Share it with your other machines
+
+diffd only answers requests for `localhost` unless you tell it otherwise,
+because review comments become input for your agent. To read reviews from
+another machine on a network you trust (a tailnet, say), list the names you'll
+open it by, and set the link agents hand out:
+
+```toml
+[server]
+bind = "0.0.0.0"   # or keep 127.0.0.1 behind a proxy such as `tailscale serve`
+allowed_hosts = ["mybox", "mybox.tailnet.ts.net"]
+public_url = "http://mybox:3433"
+```
+
+Requests for any other host are refused, pages only accept writes from their
+own origin, and MCP (`/mcp`) always answers localhost only: agents run on the
+machine with the code. The same settings exist as `--bind`,
+`--allowed-hosts` and `--public-url`, or `DIFFD_BIND`, `DIFFD_ALLOWED_HOSTS`
+(comma-separated) and `DIFFD_PUBLIC_URL`.
+
+## Run it as a service
+
+The flake has modules for NixOS and home-manager, both as `services.diffd`.
+
+**home-manager** runs diffd as your user, which is usually what you want: it
+reads your checkouts and starts language servers in them. Reviews go to
+`~/.local/share/diffd/diffd.db`, the service gets your profile's `PATH`, and it
+registers `http://localhost:<port>/mcp` in `programs.mcp.servers.diffd`, so
+Claude Code, Codex and OpenCode pick it up when their home-manager MCP
+integration is on (`services.diffd.mcp.enable = false` to skip that).
+
+```nix
+# flake.nix: inputs.diffd.url = "github:404Wolf/diffd";
+{
+  imports = [ inputs.diffd.homeManagerModules.default ];
+  services.diffd = {
+    enable = true;
+    # Optional: share it on your tailnet.
+    allowedHosts = [ "mybox.tailnet.ts.net" ];
+    publicUrl = "https://mybox.tailnet.ts.net:3433";
+  };
+}
+```
+
+On a server you log out of, run `loginctl enable-linger $USER` (or set
+`users.users.<name>.linger = true` on NixOS) so user services keep running.
+
+**NixOS** runs a system service with reviews in `/var/lib/diffd`. It runs as
+a `diffd` user by default; set `user` to an account that can read the
+repositories you review (usually your own).
+
+```nix
+{
+  imports = [ inputs.diffd.nixosModules.default ];
+  services.diffd = {
+    enable = true;
+    user = "alice";
+    bind = "0.0.0.0";
+    allowedHosts = [ "mybox" ];
+    publicUrl = "http://mybox:3433";
+    openFirewall = true;
+    extraPackages = [ pkgs.rust-analyzer pkgs.nil ];
+  };
+}
+```
+
+Both take `port`, `bind`, `allowedHosts`, `publicUrl`, `extraPackages` (put
+on the service's `PATH`, e.g. language servers) and `settings` (merged into
+the config file). `nix flake check` runs a NixOS VM test of the module.
+
 ## How it's built
 
 One Rust binary with the page baked in:
@@ -136,8 +206,9 @@ One Rust binary with the page baked in:
 
 [`docs/DESIGN.md`](docs/DESIGN.md) explains the design.
 
-The server listens on localhost only, and refuses requests with a foreign
-`Host` (DNS rebinding) or `Origin`.
+The server listens on localhost by default, and refuses requests with a
+foreign `Host` (DNS rebinding) or `Origin`; `allowed_hosts` adds names for
+the pages, never for MCP.
 
 ## Develop
 
