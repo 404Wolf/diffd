@@ -10,6 +10,13 @@ use diffd_core::text::split_lines;
 
 use crate::ports::DiffEngine;
 
+/// difftastic's search graph limit, in vertices (its default is 3,000,000).
+/// A file past it gets a line diff. At the default, some ordinary files
+/// (ripgrep's 351-line `default_types.rs`) take 9 s before giving up; at a
+/// million the same diffs come out identical in a third of the time, and the
+/// hopeless cases give up in about a second.
+const GRAPH_LIMIT: &str = "1000000";
+
 pub struct Difftastic {
     pub bin: PathBuf,
     pub timeout: Duration,
@@ -37,7 +44,7 @@ impl DiffEngine for Difftastic {
         std::fs::write(&b, new).ok()?;
 
         let mut child = Command::new(&self.bin)
-            .args(["--display", "json", "--color", "never"])
+            .args(["--display", "json", "--color", "never", "--graph-limit", GRAPH_LIMIT])
             .arg(&a)
             .arg(&b)
             .env("DFT_UNSTABLE", "yes")
