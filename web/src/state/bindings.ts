@@ -103,17 +103,17 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   // Talk
   {
     keys: "g c c",
-    modes: ["normal", "symbol"],
+    modes: ["normal", "symbol", "file"],
     run: ({ cmd }) => cmd.comment(),
     help: ["Talk", "Comment on this line"],
   },
   {
     keys: "V",
-    modes: diffModes,
+    modes: [...diffModes, "file"],
     run: ({ cmd }) => cmd.startVisual(),
     help: ["Talk", "Select lines (then gc to comment)"],
   },
-  { keys: "v", modes: diffModes, run: ({ cmd }) => cmd.startVisual() },
+  { keys: "v", modes: [...diffModes, "file"], run: ({ cmd }) => cmd.startVisual() },
   { keys: "g c", modes: ["visual"], run: ({ cmd }) => cmd.comment() },
   { keys: "c", modes: ["visual"], run: ({ cmd }) => cmd.comment() },
   {

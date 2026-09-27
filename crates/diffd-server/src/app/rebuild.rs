@@ -221,6 +221,11 @@ fn follow(t: &mut Thread, prev: &Snapshot, snap: &Snapshot, revision: Revision) 
             Side::New => f.new.clone(),
         })
     };
+    // Threads on files outside the diff (opened for context) aren't followed here.
+    let in_diff = |s: &Snapshot| s.files.iter().any(|f| f.path == t.anchor.path);
+    if !in_diff(snap) && !in_diff(prev) {
+        return false;
+    }
     let side = side_of(snap);
     let before = side_of(prev);
     let Some(side) = side else {

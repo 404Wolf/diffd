@@ -25,7 +25,8 @@ time. Write commit messages a reviewer can follow. Comments made on one commit t
 
 Then call wait_for_feedback to hear the user's comments. Each comment is anchored to lines of code. Answer each one with reply,
 in its thread, and keep it short; if you change code, the review updates by itself, so say what you changed. Messages from the
-chat box arrive too: answer those with say. If the user asks you (in the terminal) where something is, call show.
+chat box arrive too: answer those with say. If the user asks where something is, or code outside the diff would help, call show:
+it can open any file in the repository. Comments can be on those files too.
 Keep calling wait_for_feedback while you're in a review conversation.";
 
 #[derive(Clone)]
@@ -239,9 +240,10 @@ user's chat messages, or telling them what you're doing. Refer to code as `path:
         ok(&serde_json::json!({ "message_id": msg.id.0 }))
     }
 
-    #[tool(description = "Point the user at some code in the review. The page shows a small prompt \
+    #[tool(description = "Point the user at some code. The page shows a small prompt \
 (\"Claude wants to show you something\") and jumps there only if they accept. Use it when the user asks where \
-something is.")]
+something is, or to bring in code that explains the change. Any file in the repository works, not only files in the \
+diff: others open as plain files the user can read and comment on.")]
     async fn show(&self, Parameters(p): Parameters<ShowParams>) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
         let request =

@@ -3,7 +3,7 @@
  * one immutable value (it can be very large); threads, chat and activity are
  * small and live in a Solid store.
  */
-import { batch, createMemo, createSignal } from "solid-js";
+import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 import { match } from "ts-pattern";
 import type { ActivityItem } from "../gen/ActivityItem";
@@ -11,6 +11,7 @@ import type { Anchor } from "../gen/Anchor";
 import type { ChatMessage } from "../gen/ChatMessage";
 import type { ClientMsg } from "../gen/ClientMsg";
 import type { CommitRange } from "../gen/CommitRange";
+import type { FileDiff } from "../gen/FileDiff";
 import type { History } from "../gen/History";
 import type { Message } from "../gen/Message";
 import type { MessageId } from "../gen/MessageId";
@@ -113,8 +114,84 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     });
     events.onSpan?.();
   };
-  /** What's on screen: the whole review, or the part of its history being walked. */
-  const snapshot = createMemo<Snapshot>(() => spanSnapshot() ?? whole());
+  /** The diff on screen: the whole review, or the part of its history being walked. */
+  const diff = createMemo<Snapshot>(() => spanSnapshot() ?? whole());
+
+  // -- Files outside the diff --------------------------------------------------------
+  // Opened for context (from the tree, by the agent's `show`, or because a thread is
+  // on one). They're appended to the snapshot's files as "unchanged" files, so the
+  // cursor, file view, comments and marks all work on them as on any other file.
+  const [context, setContext] = createSignal<FileDiff[]>([]);
+  const loadingContext = new Map<string, Promise<FileDiff | null>>();
+  const fetchContext = (path: string): Promise<FileDiff | null> => {
+    const q = new URLSearchParams({ path });
+    return fetch(`/api/reviews/${encodeURIComponent(initial.review.id)}/context?${q}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error((await res.text()) || `Couldn't open ${path}`);
+        return (await res.json()) as FileDiff;
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+        return null;
+      });
+  };
+  /** Open a file outside the diff; resolves to its index in the snapshot, or null. */
+  const openContext = async (path: string): Promise<number | null> => {
+    const at = snapshot().files.findIndex((f) => f.path === path);
+    if (at >= 0) return at;
+    let pending = loadingContext.get(path);
+    if (!pending) {
+      pending = fetchContext(path);
+      loadingContext.set(path, pending);
+    }
+    const file = await pending;
+    loadingContext.delete(path);
+    if (!file) return null;
+    if (!context().some((f) => f.path === path)) setContext((c) => [...c, file]);
+    const index = snapshot().files.findIndex((f) => f.path === path);
+    return index >= 0 ? index : null;
+  };
+  /** Files change as the agent works: read the open ones again. */
+  const refreshContext = async () => {
+    const fresh = await Promise.all(context().map((f) => fetchContext(f.path)));
+    setContext((c) => c.map((f, i) => fresh[i] ?? f));
+  };
+  const [repoFiles, setRepoFiles] = createSignal<string[] | null>(null);
+  let loadingRepoFiles = false;
+  /** Every file in the repository, fetched the first time it's needed. */
+  const loadRepoFiles = () => {
+    if (repoFiles() !== null || loadingRepoFiles) return;
+    loadingRepoFiles = true;
+    fetch(`/api/reviews/${encodeURIComponent(initial.review.id)}/files`)
+      .then((res) => (res.ok ? (res.json() as Promise<string[]>) : Promise.reject(new Error(res.statusText))))
+      .then(setRepoFiles)
+      .catch(() => setError("Couldn't list the repository's files"))
+      .finally(() => {
+        loadingRepoFiles = false;
+      });
+  };
+
+  /** What's on screen: the diff, then any files opened for context. */
+  const snapshot = createMemo<Snapshot>(() => {
+    const base = diff();
+    const inDiff = new Set(base.files.map((f) => f.path));
+    const extra = context().filter((f) => !inDiff.has(f.path));
+    return extra.length === 0 ? base : { ...base, files: [...base.files, ...extra] };
+  });
+  // Threads on files outside the review bring those files in, so the threads have somewhere to show.
+  // (Walking commits, threads on files another commit changed just aren't shown.)
+  const triedContext = new Set<string>();
+  createEffect(() => {
+    const paths = new Set(whole().files.map((f) => f.path));
+    for (const t of allThreads()) {
+      const path = t.anchor.path;
+      if (paths.has(path) || triedContext.has(path)) continue;
+      triedContext.add(path);
+      void openContext(path);
+    }
+  });
+  /** Files in the diff come first in `snapshot().files`; files opened for context follow. */
+  const diffCount = () => diff().files.length;
   const range = createMemo(() => rangeOf(history(), span()));
 
   /** The server's threads with anything still in the outbox folded in, so nothing written disappears. */
@@ -232,6 +309,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
         });
         events.onRevision?.(prev, next);
         refreshWorktreeSpan();
+        void refreshContext();
       })
       .with({ type: "history" }, ({ history: next }) => followHistory(next))
       .with({ type: "thread" }, ({ thread }) => upsertThread(thread))
@@ -285,6 +363,11 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     snapshot,
     whole,
     history,
+    diffCount,
+    isContext: (file: number) => file >= diffCount(),
+    openContext,
+    repoFiles,
+    loadRepoFiles,
     span,
     range,
     loadingSpan,

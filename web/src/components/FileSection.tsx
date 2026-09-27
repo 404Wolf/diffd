@@ -1,5 +1,6 @@
 import { createMemo, createRenderEffect, For, Match, Show, Switch } from "solid-js";
 import type { FileDiff } from "../gen/FileDiff";
+import type { FileStatus } from "../gen/FileStatus";
 import type { Thread } from "../gen/Thread";
 import { type Block, blocks, gapContext, regionRows, rowOf } from "../lib/diffModel";
 import { lazyChunks, placeholderHtml } from "../lib/lazyRows";
@@ -19,13 +20,20 @@ interface Props {
   cmd: Commands;
 }
 
-const STATUS_LETTER = { added: "A", deleted: "D", modified: "M", renamed: "R" } as const;
-const STATUS_COLOR = {
+const STATUS_LETTER: Record<FileStatus, string> = {
+  added: "A",
+  deleted: "D",
+  modified: "M",
+  renamed: "R",
+  unchanged: "·",
+};
+const STATUS_COLOR: Record<FileStatus, string> = {
   added: "text-add",
   deleted: "text-del",
   modified: "text-warn",
   renamed: "text-accent",
-} as const;
+  unchanged: "text-subtle",
+};
 
 /** Rows per lazily laid-out chunk in long runs of rows. */
 const CHUNK_ROWS = 80;

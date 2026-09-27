@@ -1,5 +1,6 @@
 //! Use cases. Everything the page or the agent can do goes through [`App`].
 
+mod context;
 mod conversation;
 mod feedback;
 mod history;

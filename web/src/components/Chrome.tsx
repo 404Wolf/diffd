@@ -64,7 +64,7 @@ export function TopBar(props: { review: Review }) {
         </span>
       </Show>
       <span class="flex gap-2 font-mono text-[11.5px] text-muted tabular-nums">
-        <span>{props.review.snapshot().files.length} files</span>
+        <span>{props.review.diffCount()} files</span>
         <span class="text-add">+{totals().add}</span>
         <span class="text-del">−{totals().del}</span>
       </span>

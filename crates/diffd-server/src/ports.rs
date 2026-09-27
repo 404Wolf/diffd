@@ -33,6 +33,10 @@ pub trait RepoSource: Send + Sync {
     /// The commits after `base` up to `to` (or `HEAD`), oldest first along
     /// first parents; at most `limit` of the newest. Also says whether more were left out.
     fn commits(&self, repo: &Repo, resolved: &Resolved, limit: usize) -> anyhow::Result<(Vec<Commit>, bool)>;
+    /// Every file on the `to` side (the working tree: tracked and untracked, minus ignored), tree-ordered.
+    fn files(&self, repo: &Repo, resolved: &Resolved) -> anyhow::Result<Vec<String>>;
+    /// One file on the `to` side, or `None` when there's no such file. Paths are repository-relative.
+    fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Vec<u8>>>;
 }
 
 /// A structural diff engine (difftastic). Returns `None` when it can't help,

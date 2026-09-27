@@ -26,6 +26,72 @@ def git(root: Path, *args: str) -> None:
 
 
 BASE = {
+    # Files the change doesn't touch: context to browse, show and comment on.
+    "src/clock.rs": """
+        //! Time sources for limiters.
+
+        use std::time::Instant;
+
+        /// Something that tells the time, so tests can fake it.
+        pub trait Clock {
+            fn now(&self) -> Instant;
+        }
+
+        /// The real clock.
+        pub struct SystemClock;
+
+        impl Clock for SystemClock {
+            fn now(&self) -> Instant {
+                Instant::now()
+            }
+        }
+    """,
+    "web/src/format.ts": """
+        /** "3s", "2m 5s": a short duration for badges. */
+        export function formatSeconds(total: number): string {
+          if (total < 60) return `${total}s`;
+          const m = Math.floor(total / 60);
+          const s = total % 60;
+          return s === 0 ? `${m}m` : `${m}m ${s}s`;
+        }
+    """,
+    "cmd/probe/flags.go": """
+        package main
+
+        import "flag"
+
+        // Flags for the probe command.
+        type Flags struct {
+        	URL     string
+        	Verbose bool
+        }
+
+        func parseFlags() Flags {
+        	var f Flags
+        	flag.StringVar(&f.URL, "url", "http://localhost:8080/quota", "quota endpoint")
+        	flag.BoolVar(&f.Verbose, "v", false, "print every response")
+        	flag.Parse()
+        	return f
+        }
+    """,
+    "tools/common.py": """
+        \"\"\"Helpers shared by the log tools.\"\"\"
+
+
+        def percent(part, whole):
+            \"\"\"Part of whole as a percentage, 0 when whole is 0.\"\"\"
+            return 0 if whole == 0 else round(100 * part / whole, 1)
+    """,
+    ".github/workflows/ci.yml": """
+        name: ci
+        on: [push, pull_request]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - run: cargo test
+    """,
     "Cargo.toml": """
         [package]
         name = "ratelimit"

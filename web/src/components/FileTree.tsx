@@ -1,7 +1,8 @@
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { FileDiff } from "../gen/FileDiff";
-import { buildTree, type TreeNode } from "../lib/tree";
+import type { FileStatus } from "../gen/FileStatus";
+import { buildTree, parentDir, type TreeNode } from "../lib/tree";
 import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
@@ -11,13 +12,21 @@ const STATUS = {
   deleted: ["D", "text-del"],
   modified: ["M", "text-warn"],
   renamed: ["R", "text-accent"],
-} as const;
+  unchanged: ["·", "text-subtle"],
+} as const satisfies Record<FileStatus, readonly [string, string]>;
 
 /** GitHub-style changed-files tree: compact folders, status, a five-block +/− bar. */
 export function FileTree(props: { review: Review; view: View; cmd: Commands; current: () => number | null }) {
   const [filter, setFilter] = createSignal("");
   const [closed, setClosed] = createStore<Record<string, boolean>>({});
-  const tree = createMemo(() => buildTree(props.review.paths(), filter()));
+  /** Folders whose other files (not in the diff) are listed too. */
+  const [neighbours, setNeighbours] = createStore<Record<string, boolean>>({});
+  const showNeighbours = (dir: string, on: boolean) => {
+    if (on) props.review.loadRepoFiles();
+    setNeighbours(dir, on);
+  };
+  const extra = createMemo(() => (props.review.repoFiles() ?? []).filter((p) => neighbours[parentDir(p)]));
+  const tree = createMemo(() => buildTree(props.review.paths(), filter(), extra()));
   const unreadFiles = createMemo(() => {
     const set = new Set<string>();
     for (const a of props.review.unread()) {
@@ -37,25 +46,60 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
       <Match when={p.node.kind === "dir" && p.node}>
         {(dir) => (
           <li>
-            <button
-              type="button"
-              class="flex h-[22px] w-full cursor-pointer items-center gap-1 rounded px-1 text-left text-[12.5px] whitespace-nowrap text-muted hover:bg-hover"
-              aria-expanded={!closed[dir().path]}
-              onClick={() => setClosed(dir().path, (c) => !c)}
-            >
-              <span
-                class="w-3 flex-none text-center text-[8px] text-subtle transition-transform"
-                classList={{ "-rotate-90": closed[dir().path] }}
+            <div class="group flex items-center rounded hover:bg-hover">
+              <button
+                type="button"
+                class="flex h-[22px] min-w-0 flex-1 cursor-pointer items-center gap-1 px-1 text-left text-[12.5px] whitespace-nowrap text-muted"
+                aria-expanded={!closed[dir().path]}
+                onClick={() => setClosed(dir().path, (c) => !c)}
               >
-                ▼
-              </span>
-              <span class="truncate">{dir().name}</span>
-            </button>
+                <span
+                  class="w-3 flex-none text-center text-[8px] text-subtle transition-transform"
+                  classList={{ "-rotate-90": closed[dir().path] }}
+                >
+                  ▼
+                </span>
+                <span class="truncate">{dir().name}</span>
+              </button>
+              <button
+                type="button"
+                class="mr-0.5 flex-none cursor-pointer rounded px-1 text-[11px] leading-4 text-subtle hover:bg-bg hover:text-fg"
+                classList={{
+                  "invisible group-hover:visible": !neighbours[dir().path],
+                  "text-accent": neighbours[dir().path],
+                }}
+                title={
+                  neighbours[dir().path] ? "Hide files not in the diff" : "Show every file in this folder"
+                }
+                aria-label={`Other files in ${dir().path}`}
+                aria-pressed={Boolean(neighbours[dir().path])}
+                onClick={() => showNeighbours(dir().path, !neighbours[dir().path])}
+              >
+                ⋯
+              </button>
+            </div>
             <Show when={!closed[dir().path]}>
               <ul class="ml-2.5 border-l border-line pl-[3px]">
                 <For each={dir().children}>{(child) => <Node node={child} />}</For>
               </ul>
             </Show>
+          </li>
+        )}
+      </Match>
+      <Match when={p.node.kind === "file" && p.node.index < 0 && p.node}>
+        {(f) => (
+          // A neighbour: in the repository, not in the diff. Opening it fetches it.
+          <li>
+            <button
+              type="button"
+              class="flex h-[22px] w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap text-subtle italic hover:bg-hover hover:text-fg"
+              title={`${f().path} · not changed; open to read or comment`}
+              data-neighbour={f().path}
+              onClick={() => void props.cmd.openPath(f().path)}
+            >
+              <span class="w-3 flex-none" />
+              <span class="min-w-0 flex-1 truncate">{f().name}</span>
+            </button>
           </li>
         )}
       </Match>
@@ -70,8 +114,14 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
                 class="flex h-[22px] w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap hover:bg-hover"
                 classList={{ "bg-accent-soft": props.current() === f().index }}
                 aria-current={props.current() === f().index}
+                data-tree-file={f().path}
+                data-context={props.review.isContext(f().index) ? "" : undefined}
                 title={`${f().path}${file().collapsed ? ` · collapsed: ${file().collapsed}` : ""}`}
-                onClick={() => props.cmd.openFile(f().index)}
+                onClick={() => {
+                  props.cmd.openFile(f().index);
+                  // Opening a file shows what else is in its folder.
+                  showNeighbours(parentDir(f().path), true);
+                }}
               >
                 <span
                   class={`w-3 flex-none text-center font-mono text-[10px] font-semibold ${props.view.flags.viewed[f().path] ? "text-subtle" : color}`}
@@ -110,8 +160,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     <nav aria-label="Changed files">
       <div class="sticky top-0 z-[2] bg-panel px-2.5 pt-2 pb-1.5">
         <div class="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold tracking-wider text-muted uppercase">
-          Files{" "}
-          <span class="font-medium tracking-normal text-subtle">{props.review.snapshot().files.length}</span>
+          Files <span class="font-medium tracking-normal text-subtle">{props.review.diffCount()}</span>
         </div>
         <input
           type="search"

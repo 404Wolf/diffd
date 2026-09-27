@@ -120,7 +120,7 @@ try {
     await sleep(400);
     check((await page.locator("header").innerText()).includes("Add burst capacity"), "title in the top bar");
     const sections = await page.$$eval("[data-file-section] [data-path]", (els) => els.map((e) => e.dataset.path));
-    const tree = await page.$$eval("nav[aria-label='Changed files'] button[title]", (els) => els.map((e) => e.getAttribute("title").split(" · ")[0]));
+    const tree = await page.$$eval("[data-tree-file]", (els) => els.map((e) => e.dataset.treeFile));
     check(JSON.stringify(sections) === JSON.stringify(tree), "the diff lists files in tree order");
     check((await page.locator(".nv-add").count()) > 20, "novel tokens are highlighted");
     check((await page.locator(".s-keyword").count()) > 20, "syntax is highlighted");
@@ -418,6 +418,59 @@ try {
     check((await panes()) === 1, "and closes again");
   });
 
+  await section("Files outside the diff", async () => {
+    await page.locator('[data-tree-file="web/src/api.ts"]').click();
+    await page.waitForSelector('[data-neighbour="web/src/format.ts"]');
+    check(true, "opening a file in the tree lists the other files in its folder");
+    check((await page.locator('[data-neighbour="web/src/api.ts"]').count()) === 0, "files in the diff aren't listed twice");
+
+    await page.locator('[data-neighbour="web/src/format.ts"]').click();
+    await page.waitForFunction(() => document.querySelector(".buffer.focused .fv")?.textContent.includes("formatSeconds"));
+    check((await status(page)).includes("FILE"), "clicking one opens it as a plain file");
+    check(await page.getByText("opened for context").isVisible(), "marked as not part of the diff");
+    check((await page.locator(".buffer.focused .fv .s-keyword").count()) > 3, "highlighted like the rest");
+    check((await page.locator('[data-tree-file="web/src/format.ts"]').count()) === 1, "and it joins the tree");
+
+    await page.locator('.buffer.focused .fv .row[data-nl="3"] .code').click({ position: { x: 4, y: 4 } });
+    await keys(page, "g", "c", "c");
+    await page.keyboard.type("Should hours get their own unit?");
+    await keys(page, "Control+Enter");
+    await page.waitForFunction(() => document.querySelector(".buffer.focused .fv [data-thread]")?.textContent.includes("own unit"));
+    check(true, "comments work on it, and show inline");
+    const got = await agent.call("wait_for_feedback", { review_id: reviewId, timeout_seconds: 20 });
+    const item = got.items.find((i) => i.path === "web/src/format.ts");
+    check(item && item.lines[0] === 3 && item.code.includes("if (total < 60)"), `the agent gets the file, line and code (${item?.code})`);
+    await agent.call("reply", { thread_id: item.thread_id, body: "Not yet: the badge never shows more than an hour." });
+    await page.waitForFunction(() => document.body.textContent.includes("never shows more than an hour"));
+    check(true, "and its reply shows there too");
+    check((await page.locator('[data-tree-file="web/src/format.ts"]').innerText()).includes("◆1"), "the tree counts the thread");
+
+    await agent.call("show", { review_id: reviewId, file: "src/clock.rs", lines: [7, 9], message: "The Clock trait limiters take" });
+    await page.getByText("The Clock trait limiters take").waitFor();
+    await keys(page, "Enter");
+    await page.waitForFunction(() => document.querySelector(".buffer.focused .fv")?.textContent.includes("pub trait Clock"));
+    check((await at(page)) === "clock.rs", "the agent can show a file that isn't in the diff");
+    check((await status(page)).includes("clock.rs:7"), "at the lines it chose");
+    await keys(page, "Control+o");
+    await keys(page, "Control+o");
+    check(!(await status(page)).includes("FILE"), "ctrl-o walks back to the diff");
+
+    const probe = page.locator('[aria-label="Other files in cmd/probe/"]');
+    await probe.click({ force: true });
+    await page.waitForSelector('[data-neighbour="cmd/probe/flags.go"]');
+    check(true, "a folder's ⋯ lists everything in it");
+    await probe.click({ force: true });
+    check((await page.locator('[data-neighbour="cmd/probe/flags.go"]').count()) === 0, "and hides them again");
+
+    const seen = new Set();
+    await keys(page, "g", "g");
+    for (let i = 0; i < 25; i++) {
+      await keys(page, "]", "f");
+      seen.add(await at(page));
+    }
+    check(!seen.has("format.ts") && !seen.has("clock.rs"), "]f only walks the diff");
+  });
+
   await section("Marks", async () => {
     await cursorTo(page, "cmd/probe/main.go", 11);
     await keys(page, "m", "a");
@@ -497,6 +550,8 @@ try {
     const copies = await page.getByText("Written while the server was down.").count();
     check(copies === 1, "after a reload the comment exists exactly once");
     check((await page.locator("section[aria-label='Marks']").innerText()).includes("main.go:11"), "marks survive a reload");
+    await page.waitForSelector('[data-tree-file="web/src/format.ts"]');
+    check(true, "files outside the diff with threads come back after a reload");
   });
 
   await section("Walking the commits one at a time", async () => {
@@ -515,7 +570,7 @@ try {
       JSON.stringify(shown) === JSON.stringify(["src/bucket.rs", "src/legacy.rs", "src/lib.rs", "tests/limiter.rs", "Cargo.lock"]),
       `]r shows only the first commit's files: ${shown.join(", ")}`,
     );
-    check((await page.locator("nav[aria-label='Changed files'] button[title]").count()) === 5, "the file tree follows");
+    check((await page.locator("[data-tree-file]:not([data-context])").count()) === 5, "the file tree follows");
     check((await page.locator("[data-thread]").count()) > 0, "Claude's notes on that code still show");
     await shot(page, "commit-1");
 

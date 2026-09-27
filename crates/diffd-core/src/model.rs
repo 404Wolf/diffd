@@ -65,6 +65,8 @@ pub enum FileStatus {
     Deleted,
     Modified,
     Renamed,
+    /// Not part of the diff: a file opened for context.
+    Unchanged,
 }
 
 /// Everything the page needs to render one revision of a review.

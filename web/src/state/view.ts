@@ -232,6 +232,7 @@ export function createView(review: Review) {
     }),
   );
   const hidden = (file: number): boolean => {
+    if (review.isContext(file)) return true;
     const path = review.snapshot().files[file]?.path ?? "";
     return Boolean(flags.collapsed[path] || flags.viewed[path]);
   };

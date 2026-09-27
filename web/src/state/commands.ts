@@ -195,7 +195,9 @@ export function createCommands(review: Review, view: View) {
     if (row < 0) return view.say(`Line ${line} isn't in ${fileName(file)}`);
     remember();
     const m = view.mode();
-    if (m.kind === "file" && m.file !== file) view.setMode({ kind: "diff" });
+    // Files outside the diff only have a file view.
+    if (review.isContext(file)) view.setMode({ kind: "file", file });
+    else if (m.kind === "file" && m.file !== file) view.setMode({ kind: "diff" });
     if (view.mode().kind === "diff") ensureRow(file, row);
     const el = rowEl(file, row);
     if (!el) return;
@@ -221,11 +223,12 @@ export function createCommands(review: Review, view: View) {
     view.setMarks(name, { path: f.path, side: c.side, line: line + 1, text: lineText(c).trim() });
     view.say(`Mark ${name} set`);
   };
-  const jumpToMark = (name: string) => {
+  const jumpToMark = async (name: string) => {
     const m = view.marks[name];
     if (!m) return view.say(`No mark ${name}`);
-    const file = review.paths().indexOf(m.path);
-    if (file < 0) return view.say(`Mark ${name} is in ${m.path}, which isn't in this view`);
+    // A mark on a file outside the diff opens it again.
+    const file = await review.openContext(m.path);
+    if (file === null) return view.say(`Mark ${name} is in ${m.path}, which can't be opened`);
     goTo(file, m.side, m.line);
   };
   const deleteMark = (name: string) =>
@@ -235,9 +238,9 @@ export function createCommands(review: Review, view: View) {
       }),
     );
 
-  const goToThread = (t: Thread) => {
-    const file = review.paths().indexOf(t.anchor.path);
-    if (file >= 0) goTo(file, t.anchor.side, t.anchor.end, { card: t.id });
+  const goToThread = async (t: Thread) => {
+    const file = await review.openContext(t.anchor.path);
+    if (file !== null) goTo(file, t.anchor.side, t.anchor.end, { card: t.id });
   };
 
   const order = () => treeOrder(buildTree(review.paths()));
@@ -245,9 +248,11 @@ export function createCommands(review: Review, view: View) {
     fillAll();
     if (rememberIt) remember();
     const m = view.mode();
-    if (m.kind === "file") {
+    if (m.kind === "file" || review.isContext(file)) {
       view.setMode({ kind: "file", file });
       bufferEl()?.scrollTo({ top: 0 });
+      const first = bufferEl()?.querySelector<HTMLElement>(".row");
+      if (first) place(first, { scroll: false });
       return;
     }
     unhide(file);
@@ -574,7 +579,8 @@ export function createCommands(review: Review, view: View) {
     if (!f || !text) return null;
     const quote = text.lines.slice(start - 1, end).join("\n");
     // On part of the history, the server finds the same code in the whole diff by its text.
-    return { anchor: { path: f.path, side, start, end, text: quote, range: review.range() }, quote };
+    const range = review.isContext(file) ? null : review.range();
+    return { anchor: { path: f.path, side, start, end, text: quote, range }, quote };
   };
   const openComposer = (file: number, side: Side, start: number, end: number) => {
     const a = anchorFrom(file, side, start, end);
@@ -586,8 +592,7 @@ export function createCommands(review: Review, view: View) {
   /** `gcc`, or `gc` in visual mode: comment on the cursor line or selected lines. */
   const comment = () => {
     const c = view.cursor();
-    if (!c || view.mode().kind !== "diff")
-      return view.say("Comments go on diff lines · move the cursor onto one");
+    if (!c) return view.say("Put the cursor on a line first");
     const lineOf = (row: number) => {
       const r = files()[c.file]?.rows[row];
       const l = r ? (c.side === "old" ? r[0] : r[1]) : null;
@@ -643,9 +648,15 @@ export function createCommands(review: Review, view: View) {
 
   // -- The agent pointing at things -----------------------------------------
 
-  const showRequest = (req: ShowRequest) => {
-    const file = review.paths().indexOf(req.path);
-    if (file >= 0) goTo(file, req.side, req.start);
+  const showRequest = async (req: ShowRequest) => {
+    // The agent can show any file in the repository, not only the diff.
+    const file = await review.openContext(req.path);
+    if (file !== null) goTo(file, req.side, req.start);
+  };
+  /** Open a file outside the diff (from the tree) in file view. */
+  const openPath = async (path: string) => {
+    const file = await review.openContext(path);
+    if (file !== null) openFile(file);
   };
   const nudgeDone = (go: boolean) => {
     const req = view.nudge();
@@ -707,6 +718,7 @@ export function createCommands(review: Review, view: View) {
     references,
     outline,
     filePicker,
+    openPath,
     splitPane,
     closePane,
     focusSplit,

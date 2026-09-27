@@ -153,8 +153,10 @@ impl App {
         }
         let (anchor, outdated) = match anchor.range {
             // Written against the whole diff: the lines are ours to check.
+            // The file can be outside the diff: a file opened for context.
             None => {
-                let text = anchor_text(&App::snapshot(&live), &anchor.path, anchor.side, anchor.start, anchor.end)?;
+                let snap = App::snapshot(&live);
+                let text = self.lines_anywhere(id, &snap, &anchor.path, anchor.side, anchor.start, anchor.end).await?;
                 (Anchor { text, ..anchor }, false)
             }
             // Written on one commit: find the same code in the whole diff, if it's still there.
@@ -352,7 +354,9 @@ impl App {
     /// The agent points the user at some code. The page asks before jumping.
     pub async fn show(&self, id: &ReviewId, request: ShowRequest) -> Result<()> {
         let live = self.live(id).await?;
-        anchor_text(&App::snapshot(&live), &request.path, request.side, request.start, request.end)?;
+        // Anything in the repository, not only the diff: the page opens other files for context.
+        let snap = App::snapshot(&live);
+        self.lines_anywhere(id, &snap, &request.path, request.side, request.start, request.end).await?;
         let item = self.store.add_activity(id, self.now(), ActivityKind::Show { request: request.clone() }).await?;
         App::broadcast(&live, ServerMsg::Show { request });
         App::broadcast(&live, ServerMsg::Activity { item });

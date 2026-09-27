@@ -102,6 +102,44 @@ impl RepoSource for GitCli {
         commits.reverse();
         Ok((commits, truncated))
     }
+
+    fn files(&self, repo: &Repo, resolved: &Resolved) -> anyhow::Result<Vec<String>> {
+        let out = match &resolved.to {
+            Some(to) => git(&repo.root, &["ls-tree", "-r", "-z", "--name-only", to])?,
+            None => git(&repo.root, &["ls-files", "-z", "--cached", "--others", "--exclude-standard"])?,
+        };
+        let mut paths: Vec<String> = out.split('\0').filter(|p| !p.is_empty()).map(str::to_owned).collect();
+        paths.sort_by(|a, b| tree_order(a, b));
+        paths.dedup();
+        Ok(paths)
+    }
+
+    fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Vec<u8>>> {
+        if !safe_path(path) {
+            bail!("`{path}` isn't a path inside the repository");
+        }
+        match &resolved.to {
+            Some(to) => CatFile::spawn(&repo.root)?.read(&format!("{to}:{path}")),
+            None => {
+                let full = match repo.root.join(path).canonicalize() {
+                    Ok(full) => full,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                    Err(e) => return Err(e.into()),
+                };
+                // A symlink can point anywhere; only read what's really inside the repository.
+                if !full.starts_with(repo.root.canonicalize()?) || !full.is_file() {
+                    return Ok(None);
+                }
+                Ok(Some(std::fs::read(full)?))
+            }
+        }
+    }
+}
+
+/// A relative path that stays inside the repository: no `..`, no absolute paths, no `.git`.
+fn safe_path(path: &str) -> bool {
+    let p = Path::new(path);
+    !path.is_empty() && p.is_relative() && p.components().all(|c| matches!(c, std::path::Component::Normal(n) if n != ".git"))
 }
 
 fn parse_commit(record: &str) -> Option<Commit> {

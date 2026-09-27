@@ -6,7 +6,7 @@ import { JumpList } from "./jumps";
 import { KeyEngine, keyToken } from "./keymap";
 import { renderMarkdown, resolveRef } from "./markdown";
 import { changeMarks, lineHtml, rowHtml } from "./render";
-import { buildTree, treeOrder } from "./tree";
+import { buildTree, parentDir, treeOrder } from "./tree";
 
 const file = (): FileDiff => ({
   path: "src/a.rs",
@@ -228,5 +228,17 @@ describe("history", () => {
     expect(locate("a\nb", 4, lines)).toBe(4);
     expect(locate("a\nb", 1, lines)).toBe(1);
     expect(locate("q", 1, lines)).toBeNull();
+  });
+});
+
+describe("tree with neighbours", () => {
+  it("lists other files beside the open ones, unopened", () => {
+    const nodes = buildTree(["src/a.rs"], "", ["src/b.rs", "src/a.rs", "docs/x.md"]);
+    const flat = (ns: typeof nodes): string[] =>
+      ns.flatMap((n) => (n.kind === "file" ? [`${n.path}:${n.index}`] : flat(n.children)));
+    expect(flat(nodes)).toEqual(["docs/x.md:-1", "src/a.rs:0", "src/b.rs:-1"]);
+    expect(treeOrder(nodes)).toEqual([0]);
+    expect(parentDir("src/a.rs")).toBe("src/");
+    expect(parentDir("top.md")).toBe("");
   });
 });

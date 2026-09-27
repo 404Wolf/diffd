@@ -1,4 +1,6 @@
-import { createEffect, createMemo, Index, Show } from "solid-js";
+import { createEffect, createMemo, For, Index, Show } from "solid-js";
+import type { Thread } from "../gen/Thread";
+import { rowOf } from "../lib/diffModel";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
 import type { Commands } from "../state/commands";
 import { bufferEl, rowEl } from "../state/dom";
@@ -6,6 +8,7 @@ import type { Review } from "../state/review";
 import type { Pane, View } from "../state/view";
 import { FileSection } from "./FileSection";
 import { Markdown } from "./Markdown";
+import { ThreadCard } from "./ThreadCard";
 
 interface Props {
   review: Review;
@@ -35,7 +38,7 @@ export function Buffer(props: Props) {
     if (!side) return;
     const selection = getSelection();
     if (selection && !selection.isCollapsed) return;
-    if (num && props.pane.mode().kind === "diff") {
+    if (num) {
       // Clicking a line number starts a comment there; shift-click extends from the cursor.
       const line = Number(num.dataset.n);
       const file = Number(row.dataset.f);
@@ -82,7 +85,12 @@ export function Buffer(props: Props) {
             <Summary review={props.review} cmd={props.cmd} />
             {/* Index, not For: sections stay put across revisions and only their contents update. */}
             <Index each={props.review.snapshot().files}>
-              {(_, i) => <FileSection index={i} review={props.review} view={props.view} cmd={props.cmd} />}
+              {(_, i) => (
+                // Files opened for context aren't part of the diff: they only show in file view.
+                <Show when={!props.review.isContext(i)}>
+                  <FileSection index={i} review={props.review} view={props.view} cmd={props.cmd} />
+                </Show>
+              )}
             </Index>
             <Show when={props.review.snapshot().files.length === 0}>
               <p class="p-6 text-center text-muted">No changes between these revisions.</p>
@@ -90,7 +98,7 @@ export function Buffer(props: Props) {
           </>
         }
       >
-        {(file) => <FileView file={file()} review={props.review} />}
+        {(file) => <FileView file={file()} review={props.review} view={props.view} cmd={props.cmd} />}
       </Show>
     </main>
   );
@@ -123,39 +131,90 @@ function Summary(props: { review: Review; cmd: Commands }) {
   );
 }
 
-/** `g enter`: the plain file, with slight marks where it changed. */
-function FileView(props: { file: number; review: Review }) {
+/** `g enter`: the plain file, with slight marks where it changed, and its threads inline. */
+function FileView(props: { file: number; review: Review; view: View; cmd: Commands }) {
   const f = () => props.review.snapshot().files[props.file];
-  const html = createMemo(() => {
+  const side = (): "old" | "new" => (f()?.new ? "new" : "old");
+  const context = () => props.review.isContext(props.file);
+  /** Threads on the side shown, by the row they end on. */
+  const threadsByRow = createMemo(() => {
     const file = f();
-    if (!file) return "";
-    const side = file.new ? "new" : "old";
-    const text = file.new ?? file.old;
-    if (!text) return "";
-    const marks = changeMarks(file, side);
+    const model = props.review.models()[props.file];
+    const byRow = new Map<number, Thread[]>();
+    if (!file || !model) return byRow;
+    for (const t of props.review.threads()) {
+      if (t.anchor.path !== file.path || t.anchor.side !== side()) continue;
+      const row = rowOf(model, t.anchor.side, t.anchor.end);
+      if (row >= 0) byRow.set(row, [...(byRow.get(row) ?? []), t]);
+    }
+    return byRow;
+  });
+  /** The file's rows as runs of HTML, split where threads go. */
+  const blocks = createMemo(() => {
+    const file = f();
+    const text = file ? (side() === "new" ? file.new : file.old) : null;
+    if (!file || !text) return [];
+    const marks = context() ? [] : changeMarks(file, side());
     const refs = props.review.definedNames();
-    let out = "";
+    const out: { html: string; after: Thread[] }[] = [];
+    let html = "";
     file.rows.forEach((row, r) => {
-      const line = side === "new" ? row[1] : row[0];
-      if (line !== null) out += fileViewRowHtml(props.file, r, side, line, text, marks[line] ?? "", refs);
+      const line = side() === "new" ? row[1] : row[0];
+      if (line === null) return;
+      html += fileViewRowHtml(props.file, r, side(), line, text, marks[line] ?? "", refs);
+      const threads = threadsByRow().get(r);
+      if (threads) {
+        out.push({ html, after: threads });
+        html = "";
+      }
     });
+    out.push({ html, after: [] });
     return out;
   });
   return (
     <>
       <div class="mx-2.5 mt-2.5 flex flex-wrap items-center gap-2 rounded-md border border-line-strong bg-bg px-2.5 py-1.5 text-xs text-muted">
         <b class="font-mono font-semibold text-fg">{f()?.path}</b>
-        <span>the file at revision {props.review.meta().revision}, no diff</span>
-        <span class="flex-1" />
-        <Legend color="var(--add-mark)" label="added" />
-        <Legend color="var(--mod-mark)" label="changed" />
-        <Legend color="var(--del-mark)" label="removed" />
+        <Show
+          when={context()}
+          fallback={
+            <>
+              <span>the file at revision {props.review.meta().revision}, no diff</span>
+              <span class="flex-1" />
+              <Legend color="var(--add-mark)" label="added" />
+              <Legend color="var(--mod-mark)" label="changed" />
+              <Legend color="var(--del-mark)" label="removed" />
+            </>
+          }
+        >
+          <span>not changed in this review · opened for context</span>
+          <span class="flex-1" />
+        </Show>
         <span>
-          <kbd>ctrl</kbd> <kbd>o</kbd> back to the diff
+          <kbd>ctrl</kbd> <kbd>o</kbd> back
         </span>
       </div>
       <section class="fv mx-2.5 my-2 overflow-clip rounded-md border border-line-strong bg-bg">
-        <div class="rows" innerHTML={html()} />
+        <div class="rows">
+          <For each={blocks()}>
+            {(b) => (
+              <>
+                <div innerHTML={b.html} />
+                <Show when={b.after.length > 0}>
+                  <div class="border-y border-line bg-inset py-1.5 pl-[51px]">
+                    <For each={b.after}>
+                      {(t) => (
+                        <div class="mr-2.5">
+                          <ThreadCard thread={t} review={props.review} cmd={props.cmd} />
+                        </div>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </>
+            )}
+          </For>
+        </div>
       </section>
     </>
   );

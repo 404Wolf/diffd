@@ -41,6 +41,8 @@ pub fn router(app: Arc<App>, template: &'static str) -> Router {
         .route("/api/reviews", get(list_reviews))
         .route("/api/reviews/{id}", get(review_state).delete(delete_review))
         .route("/api/reviews/{id}/range", get(range))
+        .route("/api/reviews/{id}/files", get(repo_files))
+        .route("/api/reviews/{id}/context", get(context_file))
         .route("/api/reviews/{id}/ws", get(ws))
         .with_state(web)
         .nest_service("/mcp", mcp)
@@ -129,6 +131,27 @@ struct RangeQuery {
 async fn range(State(web): State<Web>, Path(id): Path<String>, Query(q): Query<RangeQuery>) -> Response {
     match web.app.range(&ReviewId(id), &q.from, q.to).await {
         Ok(snap) => axum::Json(&*snap).into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+/// Every file in the review's repository, for browsing beyond the diff.
+async fn repo_files(State(web): State<Web>, Path(id): Path<String>) -> Response {
+    match web.app.repo_files(&ReviewId(id)).await {
+        Ok(paths) => axum::Json(paths).into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ContextQuery {
+    path: String,
+}
+
+/// One file outside the diff, highlighted.
+async fn context_file(State(web): State<Web>, Path(id): Path<String>, Query(q): Query<ContextQuery>) -> Response {
+    match web.app.context_file(&ReviewId(id), &q.path).await {
+        Ok(file) => axum::Json(file).into_response(),
         Err(e) => error_response(e),
     }
 }
