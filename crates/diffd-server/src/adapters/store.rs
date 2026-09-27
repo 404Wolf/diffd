@@ -66,6 +66,27 @@ fn author(s: &str) -> Author {
     if s == "agent" { Author::Agent } else { Author::User }
 }
 
+/// A message as stored.
+struct MessageRow {
+    id: String,
+    author: String,
+    body: String,
+    created_at: i64,
+    delivered_at: Option<i64>,
+}
+
+impl From<MessageRow> for Message {
+    fn from(r: MessageRow) -> Self {
+        Message {
+            id: MessageId(r.id),
+            author: author(&r.author),
+            body: r.body,
+            created_at: r.created_at as Millis,
+            delivered_at: r.delivered_at.map(|d| d as Millis),
+        }
+    }
+}
+
 fn author_str(a: Author) -> &'static str {
     match a {
         Author::User => "user",
@@ -135,7 +156,7 @@ impl Store {
                 from: r.from_rev,
                 to: r.to_rev,
                 revision: r.revision as Revision,
-                status: if r.status == "closed" { ReviewStatus::Closed } else { ReviewStatus::Open },
+                status: ReviewStatus::Open,
                 created_at: r.created_at as Millis,
                 updated_at: r.updated_at as Millis,
             };
@@ -269,22 +290,14 @@ impl Store {
     }
 
     async fn messages(&self, thread: &ThreadId) -> anyhow::Result<Vec<Message>> {
-        let rows = sqlx::query!(
+        let rows = sqlx::query_as!(
+            MessageRow,
             "SELECT id, author, body, created_at, delivered_at FROM messages WHERE thread_id = ? ORDER BY created_at, id",
             thread.0
         )
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows
-            .into_iter()
-            .map(|r| Message {
-                id: MessageId(r.id),
-                author: author(&r.author),
-                body: r.body,
-                created_at: r.created_at as Millis,
-                delivered_at: r.delivered_at.map(|d| d as Millis),
-            })
-            .collect())
+        Ok(rows.into_iter().map(Message::from).collect())
     }
 
     /// `Ok(false)`: a message with this id is already saved (sent twice).
@@ -303,23 +316,15 @@ impl Store {
     }
 
     pub async fn chat(&self, review: &ReviewId) -> anyhow::Result<Vec<Message>> {
-        let rows = sqlx::query!(
+        let rows = sqlx::query_as!(
+            MessageRow,
             "SELECT id, author, body, created_at, delivered_at FROM messages
              WHERE review_id = ? AND thread_id IS NULL ORDER BY created_at, id",
             review.0
         )
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows
-            .into_iter()
-            .map(|r| Message {
-                id: MessageId(r.id),
-                author: author(&r.author),
-                body: r.body,
-                created_at: r.created_at as Millis,
-                delivered_at: r.delivered_at.map(|d| d as Millis),
-            })
-            .collect())
+        Ok(rows.into_iter().map(Message::from).collect())
     }
 
     /// User messages the agent hasn't received, oldest first.

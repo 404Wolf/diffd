@@ -417,7 +417,7 @@ export type ReviewState = {
     };
 };
 
-export type ReviewStatus = 'open' | 'closed';
+export type ReviewStatus = 'open';
 
 /**
  * A review in the recent list on the home page.

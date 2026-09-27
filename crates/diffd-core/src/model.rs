@@ -399,7 +399,6 @@ pub struct ShowRequest {
 #[serde(rename_all = "lowercase")]
 pub enum ReviewStatus {
     Open,
-    Closed,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]

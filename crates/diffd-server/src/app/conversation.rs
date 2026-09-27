@@ -181,11 +181,9 @@ fn locate(snap: &Snapshot, anchor: Anchor) -> Result<(Anchor, bool)> {
 }
 
 impl App {
-    fn message(&self, author: Author, body: &str) -> Result<Message> {
-        self.message_with_id(MessageId(new_id("m")), author, body)
-    }
-
-    fn message_with_id(&self, id: MessageId, author: Author, body: &str) -> Result<Message> {
+    /// A new message, with the page's id for it when it chose one.
+    fn message(&self, id: Option<MessageId>, author: Author, body: &str) -> Result<Message> {
+        let id = id.unwrap_or_else(|| MessageId(new_id("m")));
         let body = body.trim();
         if body.is_empty() {
             return Err(AppError::Invalid("message body is empty".into()));
@@ -194,6 +192,19 @@ impl App {
             return Err(AppError::Invalid("bad message id".into()));
         }
         Ok(Message { id, author, body: body.to_owned(), created_at: self.now(), delivered_at: None })
+    }
+
+    /// Whether a page-chosen message id is saved already: the request is a repeat.
+    async fn repeated(&self, message_id: Option<&MessageId>) -> Result<bool> {
+        Ok(match message_id {
+            Some(m) => self.store.message_exists(m).await?,
+            None => false,
+        })
+    }
+
+    /// A thread and the review it's on.
+    async fn thread(&self, thread_id: &ThreadId) -> Result<(ReviewId, Thread)> {
+        self.store.thread(thread_id).await?.ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))
     }
 
     /// The user touched something: hold feedback until they pause, and wake the agent.
@@ -213,7 +224,7 @@ impl App {
                 return Err(AppError::Invalid("bad thread id".into()));
             }
             if self.store.thread_exists(thread_id).await? {
-                return self.store.thread(thread_id).await?.map(|(_, t)| t).ok_or_else(|| AppError::NotFound("thread".into()));
+                return Ok(self.thread(thread_id).await?.1);
             }
         }
         let (anchor, outdated) = match anchor.range {
@@ -227,10 +238,11 @@ impl App {
             // Written on one commit: find the same code in the whole diff, if it's still there.
             Some(_) => locate(&App::snapshot(&live), anchor)?,
         };
-        let (thread_id, message) = match ids {
-            Some((t, m)) => (t, self.message_with_id(m, Author::User, body)?),
-            None => (ThreadId(new_id("t")), self.message(Author::User, body)?),
+        let (thread_id, message_id) = match ids {
+            Some((t, m)) => (t, Some(m)),
+            None => (ThreadId(new_id("t")), None),
         };
+        let message = self.message(message_id, Author::User, body)?;
         let thread = Thread {
             id: thread_id,
             kind: ThreadKind::Comment,
@@ -243,7 +255,7 @@ impl App {
         };
         if !self.store.insert_thread(id, &thread).await? {
             // The same comment from another tab, a moment earlier.
-            return self.store.thread(&thread.id).await?.map(|(_, t)| t).ok_or_else(|| AppError::NotFound("thread".into()));
+            return Ok(self.thread(&thread.id).await?.1);
         }
         self.store.touch_review(id, self.now()).await?;
         let kind =
@@ -265,18 +277,12 @@ impl App {
         body: &str,
         resolve: Option<bool>,
     ) -> Result<Thread> {
-        let (id, mut thread) =
-            self.store.thread(thread_id).await?.ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))?;
-        if let Some(m) = &message_id
-            && self.store.message_exists(m).await?
-        {
+        let (id, mut thread) = self.thread(thread_id).await?;
+        if self.repeated(message_id.as_ref()).await? {
             return Ok(thread);
         }
         let live = self.live(&id).await?;
-        let msg = match message_id {
-            Some(m) => self.message_with_id(m, author, body)?,
-            None => self.message(author, body)?,
-        };
+        let msg = self.message(message_id, author, body)?;
         if !self.store.insert_message(&id, Some(thread_id), &msg).await? {
             return Ok(thread);
         }
@@ -310,8 +316,7 @@ impl App {
     }
 
     pub async fn resolve(&self, thread_id: &ThreadId, resolved: bool) -> Result<Thread> {
-        let (id, mut thread) =
-            self.store.thread(thread_id).await?.ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))?;
+        let (id, mut thread) = self.thread(thread_id).await?;
         thread.resolved = resolved;
         self.store.update_thread(&thread).await?;
         let live = self.live(&id).await?;
@@ -335,15 +340,10 @@ impl App {
     /// A chat message from the user; a repeated `message_id` is a no-op.
     pub async fn chat_user(&self, id: &ReviewId, message_id: Option<MessageId>, body: &str) -> Result<()> {
         let live = self.live(id).await?;
-        if let Some(m) = &message_id
-            && self.store.message_exists(m).await?
-        {
+        if self.repeated(message_id.as_ref()).await? {
             return Ok(());
         }
-        let msg = match message_id {
-            Some(m) => self.message_with_id(m, Author::User, body)?,
-            None => self.message(Author::User, body)?,
-        };
+        let msg = self.message(message_id, Author::User, body)?;
         if !self.store.insert_message(id, None, &msg).await? {
             return Ok(());
         }
@@ -376,7 +376,7 @@ impl App {
                     resolved: false,
                     changed_in: None,
                     outdated: false,
-                    messages: vec![self.message(Author::Agent, &n.body)?],
+                    messages: vec![self.message(None, Author::Agent, &n.body)?],
                     created_at: self.now(),
                 })
             })
@@ -454,14 +454,13 @@ impl App {
     /// The agent writes in the chat box.
     pub async fn say(&self, id: &ReviewId, body: &str) -> Result<Message> {
         let live = self.live(id).await?;
-        let msg = self.message(Author::Agent, body)?;
+        let msg = self.message(None, Author::Agent, body)?;
         self.store.insert_message(id, None, &msg).await?;
-        let chat = msg;
-        let item = self.store.add_activity(id, self.now(), ActivityKind::AgentSaid { message_id: chat.id.clone() }).await?;
-        App::broadcast(&live, ServerMsg::Chat { message: chat.clone() });
+        let item = self.store.add_activity(id, self.now(), ActivityKind::AgentSaid { message_id: msg.id.clone() }).await?;
+        App::broadcast(&live, ServerMsg::Chat { message: msg.clone() });
         App::broadcast(&live, ServerMsg::Activity { item });
         self.agent_seen(&live);
-        Ok(chat)
+        Ok(msg)
     }
 
     /// The agent points the user at some code. The page asks before jumping.

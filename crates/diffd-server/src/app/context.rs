@@ -22,8 +22,8 @@ impl App {
             source.files(&repo, &resolved)
         })
         .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| AppError::Invalid(format!("{e:#}")))
+        .map_err(anyhow::Error::from)?
+        .map_err(AppError::from)
     }
 
     /// A file as it is on the review's `to` side, highlighted, as an unchanged "diff".
@@ -52,8 +52,7 @@ impl App {
                 source.read(&repo, &resolved, &path)
             })
             .await
-            .map_err(|e| anyhow::anyhow!(e))?
-            .map_err(|e| AppError::Invalid(format!("{e:#}")))?
+            .map_err(anyhow::Error::from)??
         };
         let contents = contents.ok_or_else(|| AppError::NotFound(format!("no file `{path}` in this repository")))?;
         if !external {

@@ -96,6 +96,10 @@ impl SnapshotDelta {
     /// The new snapshot, from `prev` (which must be the base revision).
     /// `None` when `prev` is some other revision, or doesn't have a file the
     /// delta counts on.
+    ///
+    /// The page applies deltas itself (`applyDelta` in `web/src/state/review.ts`).
+    /// This is the reference implementation: the tests check deltas against it,
+    /// and the page's tests check `applyDelta` on the same case.
     pub fn apply(&self, prev: &Snapshot) -> Option<Snapshot> {
         if prev.revision != self.base {
             return None;

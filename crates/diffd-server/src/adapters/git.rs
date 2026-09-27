@@ -89,14 +89,14 @@ impl RepoSource for GitCli {
         for e in entries {
             let old = match &e.old_blob {
                 Some(id) => cat.read_blob(id)?,
-                None => Content::Missing,
+                None => None,
             };
             let new = match (&resolved.to, &e.new_blob) {
                 (Some(_), Some(id)) => cat.read_blob(id)?,
-                (Some(_), None) => Content::Missing,
+                (Some(_), None) => None,
                 // The working tree: read the file itself (for a deleted file, nothing). The id
                 // git prints for it can be a hash of its contents that was never stored.
-                (None, _) if e.status == FileStatus::Deleted || e.submodule => Content::Missing,
+                (None, _) if e.status == FileStatus::Deleted || e.submodule => None,
                 (None, _) => read_worktree(&repo.root.join(&e.path))?,
             };
             inputs.push(to_input(e, old, new));
@@ -132,8 +132,9 @@ impl RepoSource for GitCli {
     }
 
     fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Contents>> {
+        // Like a symlink out of the repository below: there's no such file in it.
         if !safe_path(path) {
-            bail!("`{path}` isn't a path inside the repository");
+            return Ok(None);
         }
         match &resolved.to {
             Some(to) => {
@@ -142,7 +143,7 @@ impl RepoSource for GitCli {
                 let Some(id) = out.split('\0').next().and_then(|rec| rec.split('\t').next()?.split(' ').nth(2)) else {
                     return Ok(None);
                 };
-                Ok(CatFile::spawn(&repo.root)?.read_blob(id)?.into())
+                CatFile::spawn(&repo.root)?.read_blob(id)
             }
             None => {
                 let full = match repo.root.join(path).canonicalize() {
@@ -154,7 +155,7 @@ impl RepoSource for GitCli {
                 if !full.starts_with(repo.root.canonicalize()?) {
                     return Ok(None);
                 }
-                Ok(read_worktree(&full)?.into())
+                read_worktree(&full)
             }
         }
     }
@@ -300,56 +301,39 @@ fn parse_raw(out: &str) -> Vec<Entry> {
     entries
 }
 
-/// One side's contents, read without ever holding more than [`MAX_FILE_BYTES`].
-enum Content {
-    Missing,
-    TooBig,
-    Bytes(Vec<u8>),
-}
-
 /// A file in the working tree, as git sees it: a symlink is its target's path
 /// (never followed out of the repository), a directory (a submodule) has no contents.
-fn read_worktree(path: &Path) -> anyhow::Result<Content> {
+/// Never holds more than [`MAX_FILE_BYTES`].
+fn read_worktree(path: &Path) -> anyhow::Result<Option<Contents>> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(meta) => meta,
         // Deleted since git listed it: nothing to show.
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Content::Missing),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(anyhow::Error::new(e).context(format!("reading {}", path.display()))),
     };
     if meta.is_symlink() {
         let target = std::fs::read_link(path)?;
-        return Ok(Content::Bytes(target.to_string_lossy().into_owned().into_bytes()));
+        return Ok(Some(Contents::Bytes(target.to_string_lossy().into_owned().into_bytes())));
     }
     if !meta.is_file() {
-        return Ok(Content::Missing);
+        return Ok(None);
     }
     if meta.len() > MAX_FILE_BYTES {
-        return Ok(Content::TooBig);
+        return Ok(Some(Contents::TooLarge));
     }
     match std::fs::read(path) {
-        Ok(bytes) => Ok(Content::Bytes(bytes)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Content::Missing),
+        Ok(bytes) => Ok(Some(Contents::Bytes(bytes))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(anyhow::Error::new(e).context(format!("reading {}", path.display()))),
     }
 }
 
-impl From<Content> for Option<Contents> {
-    fn from(c: Content) -> Self {
-        match c {
-            Content::Missing => None,
-            Content::TooBig => Some(Contents::TooLarge),
-            Content::Bytes(b) => Some(Contents::Bytes(b)),
-        }
-    }
-}
-
-fn to_input(e: Entry, old: Content, new: Content) -> FileInput {
-    let too_large = matches!(old, Content::TooBig) || matches!(new, Content::TooBig);
-    let bytes = |c: Content| match c {
-        Content::Bytes(b) => Some(b),
+fn to_input(e: Entry, old: Option<Contents>, new: Option<Contents>) -> FileInput {
+    let too_large = matches!(old, Some(Contents::TooLarge)) || matches!(new, Some(Contents::TooLarge));
+    let bytes = |c: Option<Contents>| match c? {
+        Contents::Bytes(b) => Some(b),
         // Too large: the side exists, but its contents aren't read.
-        Content::TooBig => Some(Vec::new()),
-        Content::Missing => None,
+        Contents::TooLarge => Some(Vec::new()),
     };
     let (old, new) = (bytes(old), bytes(new));
     let omitted = if e.submodule {
@@ -409,25 +393,25 @@ impl CatFile {
 
     /// A blob by id (hex, so no quoting issues). Blobs over [`MAX_FILE_BYTES`]
     /// are skipped over in the stream, never held in memory.
-    fn read_blob(&mut self, id: &str) -> anyhow::Result<Content> {
+    fn read_blob(&mut self, id: &str) -> anyhow::Result<Option<Contents>> {
         writeln!(self.stdin, "{id}")?;
         self.stdin.flush()?;
         let mut header = String::new();
         self.stdout.read_line(&mut header)?;
         let fields: Vec<&str> = header.split_whitespace().collect();
         match fields.as_slice() {
-            [_, "missing"] | [_, "ambiguous"] => Ok(Content::Missing),
+            [_, "missing"] | [_, "ambiguous"] => Ok(None),
             [_, kind, size] => {
                 let size: u64 = size.parse().context("git cat-file size")?;
                 // The object, then a newline.
                 if size > MAX_FILE_BYTES || *kind != "blob" {
                     std::io::copy(&mut (&mut self.stdout).take(size + 1), &mut std::io::sink())?;
-                    return Ok(if *kind == "blob" { Content::TooBig } else { Content::Missing });
+                    return Ok((*kind == "blob").then_some(Contents::TooLarge));
                 }
                 let mut buf = vec![0; size as usize + 1];
                 self.stdout.read_exact(&mut buf)?;
                 buf.pop();
-                Ok(Content::Bytes(buf))
+                Ok(Some(Contents::Bytes(buf)))
             }
             _ => bail!("unexpected git cat-file output: {header:?}"),
         }

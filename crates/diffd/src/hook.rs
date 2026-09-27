@@ -53,11 +53,16 @@ fn read_input() -> HookInput {
     if std::io::stdin().read_to_string(&mut raw).is_err() || raw.trim().is_empty() {
         return HookInput::default();
     }
-    serde_json::from_str(&raw).unwrap_or_default()
+    // Say what was wrong, but carry on as if run by hand: failing would show as an error in the harness.
+    serde_json::from_str(&raw).unwrap_or_else(|e| {
+        eprintln!("diffd hook: ignoring unreadable hook input: {e}");
+        HookInput::default()
+    })
 }
 
-fn cwd_of(input: &HookInput) -> PathBuf {
-    input.cwd.clone().or_else(|| std::env::current_dir().ok()).unwrap_or_else(|| PathBuf::from("."))
+/// The given working directory, or the current one.
+fn cwd_of(cwd: Option<PathBuf>) -> PathBuf {
+    cwd.or_else(|| std::env::current_dir().ok()).unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn base(port: u16) -> String {
@@ -86,7 +91,7 @@ async fn wait(port: u16, cwd: &std::path::Path, waiter: &str) -> anyhow::Result<
 /// `diffd hook claude|codex`: wait, then wake the agent.
 pub async fn wait_and_wake(harness: Harness, port: u16) -> anyhow::Result<ExitCode> {
     let input = read_input();
-    let cwd = cwd_of(&input);
+    let cwd = cwd_of(input.cwd.clone());
     let session = input.session_id.clone().unwrap_or_else(|| "default".into());
     let waiter = format!("{}:{session}", harness.name());
     let Some(notice) = wait(port, &cwd, &waiter).await? else {
@@ -123,7 +128,7 @@ pub async fn end(harness: Harness, port: u16) -> anyhow::Result<ExitCode> {
 
 /// `diffd hook wait`: for any other harness or script.
 pub async fn wait_generic(port: u16, cwd: Option<PathBuf>, session: String, json: bool) -> anyhow::Result<ExitCode> {
-    let cwd = cwd.or_else(|| std::env::current_dir().ok()).unwrap_or_else(|| PathBuf::from("."));
+    let cwd = cwd_of(cwd);
     let Some(notice) = wait(port, &cwd, &format!("wait:{session}")).await? else {
         return Ok(ExitCode::SUCCESS);
     };

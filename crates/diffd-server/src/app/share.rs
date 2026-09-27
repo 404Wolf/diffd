@@ -2,12 +2,13 @@
 
 use std::path::PathBuf;
 
+use diffd_core::build::snapshot;
 use diffd_core::model::{ActivityKind, Group, Label, Layout, ReviewId, ReviewMeta, ReviewStatus};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::conversation::{NoteInput, RegionInput, check_layout, regions_from};
-use super::rebuild::{Built, build_snapshot, read_and_build};
+use super::rebuild::Built;
 use super::{App, AppError, Result, new_id};
 use crate::adapters::store::{CollapseRule, ReviewSpec};
 
@@ -111,15 +112,9 @@ impl App {
             regions: Vec::new(),
             layout: Layout::default(),
         };
-        let (source, engine, spec2) = (self.repo.clone(), self.engine.clone(), spec.clone());
-        let (from, to) = (req.from.clone(), req.to.clone());
-        let Built { repo, resolved, inputs, files, fingerprint: fp } =
-            tokio::task::spawn_blocking(move || read_and_build(source.as_ref(), engine.as_ref(), &repo_path, &from, to.as_deref(), &spec2))
-                .await
-                .map_err(|e| anyhow::anyhow!(e))?
-                .map_err(|e| AppError::Invalid(format!("{e:#}")))?;
+        let Built { repo, resolved, inputs, files, fingerprint: fp } = self.build(&repo_path, &req.from, req.to.as_deref(), &spec).await?;
 
-        let snap = build_snapshot(1, &inputs, files);
+        let snap = snapshot(1, &inputs, files);
         let mut spec = spec;
         spec.base = Some(resolved.base);
         // Check everything the agent sent before saving anything: a failed share leaves no review behind.

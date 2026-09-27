@@ -42,8 +42,11 @@ pub enum AppError {
 
 pub type Result<T> = std::result::Result<T, AppError>;
 
-/// Reviews updated within this long are watched again right after a restart.
-const RESUME_WITHIN_MS: Millis = 7 * 24 * 60 * 60 * 1000;
+/// Reviews updated within this long are watched again right after a restart, and can wake agents.
+const RECENT_MS: Millis = 7 * 24 * 60 * 60 * 1000;
+
+/// What open pages are told when their review is deleted.
+pub const DELETED_MESSAGE: &str = "This review was deleted.";
 
 pub struct App {
     store: Store,
@@ -101,13 +104,7 @@ struct LiveInner {
 }
 
 impl App {
-    pub async fn new(
-        store: Store,
-        repo: Arc<dyn RepoSource>,
-        engine: Arc<dyn DiffEngine>,
-        clock: Arc<dyn Clock>,
-        base_url: String,
-    ) -> Arc<Self> {
+    pub fn new(store: Store, repo: Arc<dyn RepoSource>, engine: Arc<dyn DiffEngine>, clock: Arc<dyn Clock>, base_url: String) -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
             store,
             repo,
@@ -131,19 +128,22 @@ impl App {
     /// Resume following the working tree for reviews touched lately (after a
     /// restart). Older ones resume when someone opens them.
     pub async fn resume_watches(&self) -> Result<()> {
-        let since = self.now().saturating_sub(RESUME_WITHIN_MS);
-        for (meta, _) in self.store.recent(200).await? {
-            if meta.updated_at < since {
-                break;
-            }
+        for meta in self.recent_reviews().await? {
             match self.store.review(&meta.id).await {
-                Ok(Some((meta, spec))) if spec.watch && meta.to.is_none() => self.start_watch(&meta),
+                Ok(Some((meta, spec))) if follows_worktree(&meta, &spec) => self.start_watch(&meta),
                 Ok(_) => {}
                 // One unreadable review mustn't keep the server from starting.
                 Err(e) => tracing::warn!(review = %meta.id, error = %e, "can't resume watching"),
             }
         }
         Ok(())
+    }
+
+    /// Reviews updated within [`RECENT_MS`], newest first.
+    async fn recent_reviews(&self) -> Result<Vec<ReviewMeta>> {
+        let since = self.now().saturating_sub(RECENT_MS);
+        let recent = self.store.recent(200).await?;
+        Ok(recent.into_iter().map(|(meta, _)| meta).take_while(|meta| meta.updated_at >= since).collect())
     }
 
     fn start_watch(&self, meta: &ReviewMeta) {
@@ -169,11 +169,10 @@ impl App {
         if let Some(l) = self.live.lock().expect("live lock").get(id) {
             return Ok(l.clone());
         }
-        let snapshot = self.store.latest_snapshot(id).await?.ok_or_else(|| AppError::NotFound(format!("no review with id `{id}`")))?;
+        let snapshot = self.store.latest_snapshot(id).await?.ok_or_else(|| no_review(id))?;
         // First use since a restart: a review of the working tree follows it again.
         if let Ok((meta, spec)) = self.meta(id).await
-            && spec.watch
-            && meta.to.is_none()
+            && follows_worktree(&meta, &spec)
         {
             self.start_watch(&meta);
         }
@@ -209,6 +208,11 @@ impl App {
                 })
             })
             .clone()
+    }
+
+    /// Every review in memory.
+    fn lives(&self) -> Vec<Arc<Live>> {
+        self.live.lock().expect("live lock").values().cloned().collect()
     }
 
     pub(crate) fn snapshot(live: &Live) -> Arc<Snapshot> {
@@ -251,7 +255,7 @@ impl App {
     }
 
     async fn meta(&self, id: &ReviewId) -> Result<(ReviewMeta, crate::adapters::store::ReviewSpec)> {
-        self.store.review(id).await?.ok_or_else(|| AppError::NotFound(format!("no review with id `{id}`")))
+        self.store.review(id).await?.ok_or_else(|| no_review(id))
     }
 
     fn broadcast(live: &Live, msg: ServerMsg) {
@@ -287,6 +291,20 @@ impl App {
     }
 }
 
+fn no_review(id: &ReviewId) -> AppError {
+    AppError::NotFound(format!("no review with id `{id}`"))
+}
+
+/// Whether a review follows the working tree as it changes.
+fn follows_worktree(meta: &ReviewMeta, spec: &crate::adapters::store::ReviewSpec) -> bool {
+    spec.watch && meta.to.is_none()
+}
+
+/// Whether either path is inside the other (or they're the same).
+fn nested(a: &std::path::Path, b: &std::path::Path) -> bool {
+    a.starts_with(b) || b.starts_with(a)
+}
+
 /// Short random ids like `k3f9x2ab`, readable in URLs.
 pub(crate) fn new_id(prefix: &str) -> String {
     const ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyz23456789";
@@ -308,15 +326,14 @@ impl App {
         let live = self.live.lock().expect("live lock").remove(id);
         // Open pages hear it now, even while something else still holds the review.
         if let Some(live) = live {
-            Self::broadcast(&live, ServerMsg::Gone { message: "This review was deleted.".into() });
+            Self::broadcast(&live, ServerMsg::Gone { message: DELETED_MESSAGE.into() });
         }
         Ok(())
     }
 
     /// Recompute presence for every live review; call periodically so idle agents show as away.
     pub fn tick(&self) {
-        let lives: Vec<Arc<Live>> = self.live.lock().expect("live lock").values().cloned().collect();
-        for live in lives {
+        for live in self.lives() {
             self.update_presence(&live);
         }
     }

@@ -16,7 +16,7 @@ use diffd_core::model::{CodeAnswer, CodeQuery, FileStatus, ReviewId};
 use diffd_core::protocol::ServerMsg;
 use tokio::sync::broadcast::error::RecvError;
 
-use super::{App, Live, Result};
+use super::{App, Live, Result, nested};
 use crate::ports::{CodeIntel, FileDiagnostics};
 
 /// Files opened in language servers per review, for diagnostics.
@@ -107,10 +107,9 @@ impl App {
             (inner.viewers > 0, inner.code_root.clone())
         };
         let Some(root) = root.filter(|_| !viewed) else { return };
-        let lives: Vec<Arc<Live>> = self.live.lock().expect("live lock").values().cloned().collect();
-        let shared = lives.iter().any(|l| {
+        let shared = self.lives().iter().any(|l| {
             let inner = l.inner.lock().expect("live lock");
-            inner.viewers > 0 && inner.code_root.as_ref().is_some_and(|r| r.starts_with(&root) || root.starts_with(r))
+            inner.viewers > 0 && inner.code_root.as_ref().is_some_and(|r| nested(r, &root))
         });
         if !shared {
             intel.release(&root).await;
@@ -181,8 +180,7 @@ impl App {
 
     /// Hand a file's diagnostics to every open review that shows it.
     fn route_diagnostics(&self, d: FileDiagnostics) {
-        let lives: Vec<Arc<Live>> = self.live.lock().expect("live lock").values().cloned().collect();
-        for live in lives {
+        for live in self.lives() {
             let path = {
                 let inner = live.inner.lock().expect("live lock");
                 let Some(rel) = inner.code_root.as_ref().and_then(|root| d.path.strip_prefix(root).ok()) else { continue };

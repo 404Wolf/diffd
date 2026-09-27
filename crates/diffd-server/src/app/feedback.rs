@@ -7,7 +7,8 @@ use diffd_core::protocol::ServerMsg;
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use super::{App, Result};
+use super::{App, Live, Result};
+use crate::adapters::store::Pending;
 
 /// Lines of context shown around a thread's code.
 const CONTEXT_LINES: usize = 3;
@@ -64,49 +65,13 @@ impl App {
     /// Wait until the user leaves feedback (and pauses), or `timeout` passes.
     pub async fn wait_for_feedback(&self, id: &ReviewId, timeout: Duration) -> Result<FeedbackBatch> {
         let live = self.live(id).await?;
-        // Stop counting as a listener however this ends, including when the
-        // client cancels the call and this future is dropped.
-        let _listening = Listening::start(self, &live);
-        let deadline = tokio::time::Instant::now() + timeout;
-        let outcome = async {
-            loop {
-                let notified = live.feedback.notified();
-                tokio::pin!(notified);
-                notified.as_mut().enable();
-                let pending = self.store.undelivered(id).await?;
-                let now = self.now();
-                let (ready, wait) = {
-                    let inner = live.inner.lock().expect("live lock");
-                    let ready = !pending.is_empty() && inner.gate.ready(now);
-                    // A draft closing wakes us; otherwise wait out the quiet period.
-                    let wait = if pending.is_empty() || inner.gate.drafting() { None } else { Some(inner.gate.wait_ms(now).max(100)) };
-                    (ready, wait)
-                };
-                if ready {
-                    // Another wait may have taken these meanwhile: read again while holding the lock,
-                    // and keep holding it until they're marked delivered.
-                    let guard = live.deliver.lock().await;
-                    let pending = self.store.undelivered(id).await?;
-                    if !pending.is_empty() {
-                        return Ok::<_, super::AppError>(Some((pending, guard)));
-                    }
-                }
-                let sleep_until = match wait {
-                    Some(ms) => (tokio::time::Instant::now() + Duration::from_millis(ms)).min(deadline),
-                    None => deadline,
-                };
-                tokio::select! {
-                    _ = &mut notified => {}
-                    _ = tokio::time::sleep_until(sleep_until) => {}
-                }
-                if tokio::time::Instant::now() >= deadline {
-                    return Ok(None);
-                }
-            }
-        }
-        .await;
-        drop(_listening);
-        let Some((pending, _deliver)) = outcome? else {
+        let outcome = {
+            // Stop counting as a listener however this ends, including when the
+            // client cancels the call and this future is dropped.
+            let _listening = Listening::start(self, &live);
+            self.wait_for_pending(id, &live, timeout).await?
+        };
+        let Some((pending, _deliver)) = outcome else {
             return Ok(FeedbackBatch {
                 review_id: id.0.clone(),
                 url: self.url(id),
@@ -120,16 +85,66 @@ impl App {
                 },
             });
         };
+        self.deliver(id, &live, &pending).await
+    }
+
+    /// Wait for undelivered feedback once the user pauses; `None` at `timeout`. Holds the
+    /// review's deliver lock while returning it, so no other wait takes the same messages.
+    async fn wait_for_pending<'a>(
+        &self,
+        id: &ReviewId,
+        live: &'a Live,
+        timeout: Duration,
+    ) -> Result<Option<(Vec<Pending>, tokio::sync::MutexGuard<'a, ()>)>> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = live.feedback.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            let pending = self.store.undelivered(id).await?;
+            let now = self.now();
+            let (ready, wait) = {
+                let inner = live.inner.lock().expect("live lock");
+                let ready = !pending.is_empty() && inner.gate.ready(now);
+                // A draft closing wakes us; otherwise wait out the quiet period.
+                let wait = if pending.is_empty() || inner.gate.drafting() { None } else { Some(inner.gate.wait_ms(now).max(100)) };
+                (ready, wait)
+            };
+            if ready {
+                // Another wait may have taken these meanwhile: read again while holding the lock,
+                // and keep holding it until they're marked delivered.
+                let guard = live.deliver.lock().await;
+                let pending = self.store.undelivered(id).await?;
+                if !pending.is_empty() {
+                    return Ok(Some((pending, guard)));
+                }
+            }
+            let sleep_until = match wait {
+                Some(ms) => (tokio::time::Instant::now() + Duration::from_millis(ms)).min(deadline),
+                None => deadline,
+            };
+            tokio::select! {
+                _ = &mut notified => {}
+                _ = tokio::time::sleep_until(sleep_until) => {}
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Ok(None);
+            }
+        }
+    }
+
+    /// Mark `pending` delivered, tell pages, and describe it for the agent.
+    async fn deliver(&self, id: &ReviewId, live: &Live, pending: &[Pending]) -> Result<FeedbackBatch> {
         let ids: Vec<MessageId> = pending.iter().map(|p| p.message.id.clone()).collect();
 
         // Read everything first: once the messages are marked delivered, nothing may
         // stop this call from returning them (an agent that gave up would lose them).
-        let snap = App::snapshot(&live);
+        let snap = App::snapshot(live);
         let mut threads = self.store.threads(id).await?;
         let mut chat: Vec<_> = self.store.chat(id).await?.into_iter().filter(|c| ids.contains(&c.id)).collect();
         let mut items: Vec<FeedbackItem> = Vec::new();
         let mut touched: Vec<ThreadId> = Vec::new();
-        for p in &pending {
+        for p in pending {
             match &p.thread_id {
                 None => items.push(FeedbackItem::Chat { message_id: p.message.id.0.clone(), body: p.message.body.clone() }),
                 Some(tid) if touched.contains(tid) => {}
@@ -151,11 +166,11 @@ impl App {
         };
         for t in threads.iter_mut().filter(|t| touched.contains(&t.id)) {
             t.messages.iter_mut().for_each(delivered);
-            App::broadcast(&live, ServerMsg::Thread { thread: t.clone() });
+            App::broadcast(live, ServerMsg::Thread { thread: t.clone() });
         }
         for c in &mut chat {
             delivered(c);
-            App::broadcast(&live, ServerMsg::Chat { message: c.clone() });
+            App::broadcast(live, ServerMsg::Chat { message: c.clone() });
         }
 
         let then = if self.hooks_active_for(id).await {

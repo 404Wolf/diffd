@@ -1593,8 +1593,7 @@
       "ReviewStatus": {
         "type": "string",
         "enum": [
-          "open",
-          "closed"
+          "open"
         ]
       },
       "ReviewSummary": {

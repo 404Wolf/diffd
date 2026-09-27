@@ -62,7 +62,7 @@ pub fn engine() -> Arc<dyn DiffEngine> {
 
 pub async fn app() -> Arc<App> {
     let store = Store::open("sqlite::memory:").await.unwrap();
-    App::new(store, Arc::new(GitCli), engine(), Arc::new(SystemClock), "http://localhost:3433".into()).await
+    App::new(store, Arc::new(GitCli), engine(), Arc::new(SystemClock), "http://localhost:3433".into())
 }
 
 pub fn exists(p: &Path) -> bool {

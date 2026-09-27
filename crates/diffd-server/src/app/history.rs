@@ -6,11 +6,12 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+use diffd_core::build::snapshot;
 use diffd_core::model::{History, ReviewId, ReviewMeta, Snapshot};
 use diffd_core::protocol::ServerMsg;
 use tokio::sync::OnceCell;
 
-use super::rebuild::{Built, build_snapshot, read_and_build, resolve};
+use super::rebuild::{Built, resolve};
 use super::{App, AppError, Live, Result};
 use crate::adapters::store::ReviewSpec;
 use crate::ports::RepoSource;
@@ -114,19 +115,10 @@ impl App {
         let cell = live.inner.lock().expect("live lock").ranges.cell(&(from.to_owned(), to.map(str::to_owned)));
         let snap = cell
             .get_or_try_init(|| async {
-                let (source, engine, spec) = (self.repo.clone(), self.engine.clone(), spec.clone());
-                let (path, from, to) = (repo_path.to_owned(), from.to_owned(), to.map(str::to_owned));
-                let snap = tokio::task::spawn_blocking(move || -> Result<Snapshot> {
-                    let started = Instant::now();
-                    let Built { inputs, files, .. } =
-                        read_and_build(source.as_ref(), engine.as_ref(), Path::new(&path), &from, to.as_deref(), &spec)
-                            .map_err(|e| AppError::Invalid(format!("{e:#}")))?;
-                    let snap = build_snapshot(0, &inputs, files);
-                    tracing::debug!(from, to, files = snap.files.len(), ms = started.elapsed().as_millis() as u64, "diffed a range");
-                    Ok(snap)
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!(e))??;
+                let started = Instant::now();
+                let Built { inputs, files, .. } = self.build(Path::new(repo_path), from, to, spec).await?;
+                let snap = tokio::task::spawn_blocking(move || snapshot(0, &inputs, files)).await.map_err(anyhow::Error::from)?;
+                tracing::debug!(from, to, files = snap.files.len(), ms = started.elapsed().as_millis() as u64, "diffed a range");
                 Ok::<_, AppError>(Arc::new(snap))
             })
             .await?;

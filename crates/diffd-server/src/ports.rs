@@ -37,7 +37,8 @@ pub trait RepoSource: Send + Sync {
     fn commits(&self, repo: &Repo, resolved: &Resolved, limit: usize) -> anyhow::Result<(Vec<Commit>, bool)>;
     /// Every file on the `to` side (the working tree: tracked and untracked, minus ignored), tree-ordered.
     fn files(&self, repo: &Repo, resolved: &Resolved) -> anyhow::Result<Vec<String>>;
-    /// One file on the `to` side, or `None` when there's no such file. Paths are repository-relative.
+    /// One file on the `to` side, or `None` when there's no such file (or the path leads out of the
+    /// repository). Paths are repository-relative.
     fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Contents>>;
 }
 

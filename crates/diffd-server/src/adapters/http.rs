@@ -408,7 +408,7 @@ async fn catch_up(
     has: Option<Revision>,
     tx: &mut futures::stream::SplitSink<WebSocket, WsMessage>,
 ) -> anyhow::Result<Revision> {
-    let (snapshot, state) = app.live_state(id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let (snapshot, state) = app.live_state(id).await?;
     let revision = snapshot.revision;
     let msg = if has == Some(revision) {
         ServerMsg::Resume { state: Box::new(state) }
@@ -429,11 +429,11 @@ async fn session(app: Arc<App>, id: ReviewId, has: Option<Revision>, socket: Web
             send(&mut tx, &ServerMsg::Gone { message: e.to_string() }).await?;
             return Ok(());
         }
-        Err(e) => return Err(anyhow::anyhow!("{e}")),
+        Err(e) => return Err(e.into()),
     };
     let mut has = catch_up(&app, &id, has, &mut tx).await?;
     // Language servers run for the review while this page (or another) shows it.
-    let _viewing = app.view(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let _viewing = app.view(&id).await?;
     // Answers for this page only (language server questions), as opposed to review-wide events.
     let (direct, mut answers) = tokio::sync::mpsc::unbounded_channel::<ServerMsg>();
     let mut drafting = false;
@@ -459,7 +459,7 @@ async fn session(app: Arc<App>, id: ReviewId, has: Option<Revision>, socket: Web
                 Err(RecvError::Lagged(_)) => has = catch_up(&app, &id, Some(has), &mut tx).await?,
                 // The review's events end only when it's deleted.
                 Err(RecvError::Closed) => {
-                    send(&mut tx, &ServerMsg::Gone { message: "This review was deleted.".into() }).await?;
+                    send(&mut tx, &ServerMsg::Gone { message: crate::app::DELETED_MESSAGE.into() }).await?;
                     break Ok(());
                 }
             },
@@ -506,8 +506,8 @@ async fn session(app: Arc<App>, id: ReviewId, has: Option<Revision>, socket: Web
             }
         }
     };
-    if drafting {
-        let _ = app.drafting(&id, false).await;
+    if drafting && let Err(e) = app.drafting(&id, false).await {
+        tracing::debug!(review = %id, error = %e, "couldn't end the draft of a page that left");
     }
     result
 }

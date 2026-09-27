@@ -88,12 +88,8 @@ impl Config {
     /// `~/.config/diffd/config.toml` when it exists, else the defaults.
     pub fn load(path: Option<&Path>) -> anyhow::Result<Self> {
         let explicit = path.map(Path::to_path_buf).or_else(|| std::env::var_os("DIFFD_CONFIG").map(PathBuf::from));
-        let file = explicit.clone().or_else(|| {
-            let home = std::env::var_os("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-            Some(home.join("diffd/config.toml")).filter(|p| p.exists())
-        });
+        let file =
+            explicit.clone().or_else(|| Some(xdg_dir("XDG_CONFIG_HOME", ".config")?.join("diffd/config.toml")).filter(|p| p.exists()));
         match file {
             Some(file) => {
                 let text = std::fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
@@ -113,6 +109,11 @@ impl Config {
 }
 
 /// Merge `over` into `base`: tables recursively, anything else replaced.
+/// An XDG base directory: `$var` when set, else `under_home` in the home directory.
+pub fn xdg_dir(var: &str, under_home: &str) -> Option<PathBuf> {
+    std::env::var_os(var).map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(under_home)))
+}
+
 fn merge(base: &mut toml::Table, over: toml::Table) {
     for (key, value) in over {
         match (base.get_mut(&key), value) {

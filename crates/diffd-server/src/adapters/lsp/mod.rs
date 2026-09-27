@@ -19,11 +19,9 @@ use serde_json::{Value, json};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::config::{Config, LanguageServer};
-use crate::ports::{CodeIntel, FileDiagnostics};
+use crate::ports::{CodeIntel, FileDiagnostics, MAX_FILE_BYTES};
 use rpc::{Connection, Incoming};
 
-/// Files larger than this aren't sent to language servers.
-const MAX_FILE_BYTES: u64 = 3 * 1024 * 1024;
 /// How long a server may take to start up.
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(60);
 /// A server that crashes this many times is left off until diffd restarts.
@@ -135,6 +133,7 @@ impl LspPool {
         // Everything the server says that isn't an answer.
         let diagnostics = self.diagnostics.clone();
         let folders = json!([{ "uri": convert::file_uri(root), "name": root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() }]);
+        let init_folders = folders.clone();
         let server_name = name.to_owned();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
@@ -172,7 +171,7 @@ impl LspPool {
             "clientInfo": { "name": "diffd", "version": env!("CARGO_PKG_VERSION") },
             "rootUri": convert::file_uri(root),
             "rootPath": root,
-            "workspaceFolders": [{ "uri": convert::file_uri(root), "name": root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() }],
+            "workspaceFolders": init_folders,
             "initializationOptions": spec.initialization_options.clone().map(toml_to_json),
             "capabilities": {
                 "general": { "positionEncodings": ["utf-16"] },

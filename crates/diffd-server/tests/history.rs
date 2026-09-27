@@ -192,7 +192,6 @@ async fn app_with(engine: Arc<Recording>) -> Arc<diffd_server::App> {
         Arc::new(diffd_server::ports::SystemClock),
         "http://localhost:3433".into(),
     )
-    .await
 }
 
 #[tokio::test]

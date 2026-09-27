@@ -13,15 +13,13 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use diffd_core::model::{Author, Millis, ReviewId, ReviewStatus};
+use diffd_core::model::{Author, Millis, ReviewId};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
 use super::feedback::Listening;
-use super::{App, Live, Result};
+use super::{App, Live, Result, nested};
 
-/// Reviews touched longer ago than this don't wake anyone.
-const RECENT_MS: Millis = 7 * 24 * 60 * 60 * 1000;
 /// How often a waiter looks for reviews shared after it started.
 const RESCAN: Duration = Duration::from_secs(5);
 /// How much of each message the wake notice quotes.
@@ -75,7 +73,7 @@ impl Drop for Registered<'_> {
 
 impl App {
     /// Wait until the user leaves feedback the agent hasn't been told about,
-    /// on an open review of the repository at (or around) `cwd`. `waiter`
+    /// on a review of the repository at (or around) `cwd`. `waiter`
     /// names the harness session: a new wait under the same name ends the
     /// old one (`None`), as does [`App::cancel_wake`]. `None` on timeout too.
     pub async fn wait_for_wake(&self, cwd: &Path, waiter: &str, timeout: Duration) -> Result<Option<WakeNotice>> {
@@ -140,7 +138,7 @@ impl App {
     pub(super) fn hooks_active(&self, repo_path: &Path) -> bool {
         let since = self.now().saturating_sub(HOOKS_FRESH_MS);
         let waiters = self.waiters.lock().expect("waiters lock");
-        waiters.seen.iter().any(|(cwd, at)| *at >= since && (cwd.starts_with(repo_path) || repo_path.starts_with(cwd)))
+        waiters.seen.iter().any(|(cwd, at)| *at >= since && nested(cwd, repo_path))
     }
 
     /// End the wait of `waiter`, if any (its session ended).
@@ -150,16 +148,11 @@ impl App {
         }
     }
 
-    /// Open, recently touched reviews of the repository containing `cwd`, or of repositories inside it.
+    /// Recently touched reviews of the repository containing `cwd`, or of repositories inside it.
     async fn reviews_around(&self, cwd: &Path) -> Result<Vec<(ReviewId, Arc<Live>)>> {
-        let since = self.now().saturating_sub(RECENT_MS);
         let mut out = Vec::new();
-        for (meta, _) in self.store.recent(200).await? {
-            if meta.updated_at < since {
-                break;
-            }
-            let root = Path::new(&meta.repo_path);
-            if meta.status == ReviewStatus::Open && (cwd.starts_with(root) || root.starts_with(cwd)) {
+        for meta in self.recent_reviews().await? {
+            if nested(cwd, Path::new(&meta.repo_path)) {
                 out.push((meta.id.clone(), self.live(&meta.id).await?));
             }
         }

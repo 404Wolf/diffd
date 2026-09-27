@@ -26,19 +26,22 @@ pub(super) struct Built {
     pub fingerprint: u64,
 }
 
-/// Read the repository and build every file's diff (blocking; run off the async runtime).
-pub(super) fn read_and_build(
+/// Read the repository and build every file's diff (blocking; see [`App::build`]).
+/// A path that isn't a repository, revisions that don't resolve and bad collapse
+/// globs are the caller's mistake; failing to read the changes is ours.
+fn read_and_build(
     repo_source: &dyn RepoSource,
     engine: &dyn DiffEngine,
     repo_path: &Path,
     from: &str,
     to: Option<&str>,
     spec: &ReviewSpec,
-) -> anyhow::Result<Built> {
-    let repo = repo_source.open(repo_path)?;
-    let resolved = resolve(repo_source, &repo, from, to, spec)?;
+) -> Result<Built> {
+    let invalid = |e: anyhow::Error| AppError::Invalid(format!("{e:#}"));
+    let repo = repo_source.open(repo_path).map_err(invalid)?;
+    let resolved = resolve(repo_source, &repo, from, to, spec).map_err(invalid)?;
     let mut inputs = repo_source.changes(&repo, &resolved, &spec.paths)?;
-    apply_collapse(&mut inputs, &spec.collapse)?;
+    apply_collapse(&mut inputs, &spec.collapse).map_err(invalid)?;
     let fingerprint = fingerprint(&inputs);
     let files = inputs
         .par_iter()
@@ -88,25 +91,24 @@ fn fingerprint(inputs: &[FileInput]) -> u64 {
     h.finish()
 }
 
-pub(super) fn build_snapshot(revision: Revision, inputs: &[FileInput], files: Vec<FileDiff>) -> Snapshot {
-    snapshot(revision, inputs, files)
-}
-
 impl App {
+    /// Read the repository and build every file's diff, off the async runtime.
+    pub(super) async fn build(&self, repo_path: &Path, from: &str, to: Option<&str>, spec: &ReviewSpec) -> Result<Built> {
+        let (source, engine, spec) = (self.repo.clone(), self.engine.clone(), spec.clone());
+        let (path, from, to) = (repo_path.to_owned(), from.to_owned(), to.map(str::to_owned));
+        tokio::task::spawn_blocking(move || read_and_build(source.as_ref(), engine.as_ref(), &path, &from, to.as_deref(), &spec))
+            .await
+            .map_err(anyhow::Error::from)?
+    }
+
     /// Rebuild a review from the repository. Returns the new revision, or
     /// `None` when nothing changed.
     pub async fn rebuild(&self, id: &ReviewId) -> Result<Option<Revision>> {
         let live = self.live(id).await?;
         let _guard = live.rebuild.lock().await;
         let (mut meta, spec) = self.meta(id).await?;
-        let (repo, engine) = (self.repo.clone(), self.engine.clone());
-        let (path, from, to, spec2) = (meta.repo_path.clone(), meta.from.clone(), meta.to.clone(), spec.clone());
-        let Built { inputs, files, fingerprint: fp, .. } = tokio::task::spawn_blocking(move || {
-            read_and_build(repo.as_ref(), engine.as_ref(), Path::new(&path), &from, to.as_deref(), &spec2)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!(e))?
-        .map_err(|e| AppError::Invalid(format!("{e:#}")))?;
+        let Built { inputs, files, fingerprint: fp, .. } =
+            self.build(Path::new(&meta.repo_path), &meta.from, meta.to.as_deref(), &spec).await?;
 
         live.inner.lock().expect("live lock").ranges.clear_worktree();
         self.refresh_history(&live, &meta, &spec).await;
@@ -189,7 +191,7 @@ fn next_snapshot(prev: &Snapshot, inputs: &[FileInput], mut files: Vec<FileDiff>
     if changed_paths.is_empty() {
         return None;
     }
-    Some((build_snapshot(prev.revision + 1, inputs, files), changed_paths))
+    Some((snapshot(prev.revision + 1, inputs, files), changed_paths))
 }
 
 /// Follow a region's lines into a new snapshot. Whole-file regions need nothing.

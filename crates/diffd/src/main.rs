@@ -18,7 +18,7 @@ use diffd_server::adapters::http;
 use diffd_server::adapters::lsp::LspPool;
 use diffd_server::adapters::store::Store;
 use diffd_server::adapters::watch::Watcher;
-use diffd_server::config::{Config, DEFAULT_CONFIG};
+use diffd_server::config::{Config, DEFAULT_CONFIG, xdg_dir};
 use diffd_server::ports::{DiffEngine, SystemClock};
 use tokio_util::sync::CancellationToken;
 
@@ -127,10 +127,7 @@ struct ServeArgs {
 }
 
 fn default_db() -> anyhow::Result<PathBuf> {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .context("set HOME or DIFFD_DB")?;
+    let base = xdg_dir("XDG_DATA_HOME", ".local/share").context("set HOME or DIFFD_DB")?;
     let dir = base.join("diffd");
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     Ok(dir.join("diffd.db"))
@@ -192,7 +189,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         u if u.trim().is_empty() => local_url.clone(),
         u => u.trim().trim_end_matches('/').to_string(),
     };
-    let app = App::new(store, Arc::new(GitCli), engine, Arc::new(SystemClock), base_url.clone()).await;
+    let app = App::new(store, Arc::new(GitCli), engine, Arc::new(SystemClock), base_url.clone());
     if config.lsp.enabled {
         app.set_code_intel(LspPool::new(config.clone()));
     }
