@@ -11,7 +11,18 @@ export function RightPanel(props: { review: Review; view: View; cmd: Commands })
   const tab = (): RightTab => (props.view.rightTab() === "commits" && hasCommits() ? "commits" : "activity");
   return (
     <div class="flex h-full flex-col">
-      <div role="tablist" class="flex flex-none items-center gap-0.5 border-b border-line px-1.5 pt-1">
+      <div
+        role="tablist"
+        aria-label="Activity and commits"
+        class="flex flex-none items-center gap-0.5 border-b border-line px-1.5 pt-1"
+        onKeyDown={(e) => {
+          // Arrow keys move between tabs, as tablists do.
+          if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && hasCommits()) {
+            props.view.setRightTab(tab() === "activity" ? "commits" : "activity");
+            document.getElementById(`tab-${tab()}`)?.focus();
+          }
+        }}
+      >
         <Tab id="activity" current={tab()} view={props.view}>
           Activity
           <Show when={props.review.unread().length > 0}>
@@ -26,7 +37,12 @@ export function RightPanel(props: { review: Review; view: View; cmd: Commands })
           </Tab>
         </Show>
       </div>
-      <div role="tabpanel" class="min-h-0 flex-1 overflow-auto">
+      <div
+        role="tabpanel"
+        id="tabpanel-right"
+        aria-labelledby={`tab-${tab()}`}
+        class="min-h-0 flex-1 overflow-auto"
+      >
         <Show when={tab() === "commits"} fallback={<Activity review={props.review} cmd={props.cmd} />}>
           <Commits review={props.review} />
         </Show>
@@ -41,7 +57,10 @@ function Tab(props: { id: RightTab; current: RightTab; view: View; children: JSX
     <button
       type="button"
       role="tab"
+      id={`tab-${props.id}`}
+      aria-controls="tabpanel-right"
       aria-selected={props.current === props.id}
+      tabindex={props.current === props.id ? 0 : -1}
       class="-mb-px flex cursor-pointer items-center gap-1 border-b-2 px-2 pb-1 text-[11.5px] font-medium"
       classList={{
         "border-accent text-fg": props.current === props.id,

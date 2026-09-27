@@ -3,17 +3,17 @@
  * to create large amounts of DOM, and the rows never change once built, so
  * the diff body is plain HTML while everything around it is Solid.
  */
+
 import type { FileDiff } from "../gen/FileDiff";
 import type { Row } from "../gen/Row";
 import type { SideText } from "../gen/SideText";
 import { SYNTAX_CLASSES } from "../gen/syntaxClasses";
+import { IDENT } from "./code";
 
 export type Range = readonly [start: number, end: number];
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 export const escapeHtml = (s: string): string => s.replace(/[&<>"]/g, (c) => ESCAPES[c] ?? c);
-
-const IDENT = /[A-Za-z_$][\w$]*/g;
 
 export interface LineOptions {
   /** Class for novel tokens (`nv-add` / `nv-del`), or null to ignore novelty. */
@@ -117,7 +117,7 @@ function cell(
   marks: RowMarks,
 ): string {
   if (text === null || line === null) return '<div class="num empty"></div><div class="code empty"></div>';
-  const novel = side === "old" ? text.novel[line] : text.novel[line];
+  const novel = text.novel[line];
   const changed = otherMissing || (novel?.length ?? 0) > 0;
   const n = line + 1;
   let cls = `num ${side}`;
@@ -129,7 +129,7 @@ function cell(
     refs: marks.refs,
   });
   const mark = marks.named?.get(`${side}:${n}`);
-  const markHtml = mark ? `<i class="mk">${mark}</i>` : "";
+  const markHtml = mark ? `<i class="mk">${escapeHtml(mark)}</i>` : "";
   return `<div class="${cls}" data-n="${n}" data-side="${side}">${markHtml}</div><div class="code" data-side="${side}">${body}</div>`;
 }
 

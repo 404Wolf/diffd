@@ -20,8 +20,8 @@ let idle = false;
 
 /** How far outside the viewport chunks are filled in ahead of scrolling. */
 const AHEAD = "1500px 0px";
-/** Fired on `document` after placeholders are filled in, for painters that decorate rows. */
-export const lazyFilledEvent = "diffd:rows-filled";
+/** Fired on `document` after rows are (re)rendered or filled in, for painters that decorate rows. */
+export const rowsRenderedEvent = "diffd:rows-rendered";
 /** Background work per idle slice. */
 const SLICE_MS = 12;
 
@@ -31,7 +31,13 @@ export function placeholderHtml(start: number, end: number, text: string): strin
 }
 
 /** Register the placeholders inside `root`; `render(el)` gives each one's real rows. */
-export function lazyChunks(root: HTMLElement, render: (el: HTMLElement) => Render): void {
+export function lazyChunks(root: HTMLElement, render: (el: HTMLElement) => Render, tries = 0): void {
+  // Rows are often rendered just before their block is put in the page; the
+  // observer needs the pane's buffer (its scroll root), so wait until it's there.
+  if (!root.isConnected) {
+    if (tries < 5) queueMicrotask(() => lazyChunks(root, render, tries + 1));
+    return;
+  }
   const buf = root.closest<HTMLElement>(".buffer");
   let observer = buf ? observers.get(buf) : undefined;
   if (!observer) {
@@ -74,15 +80,15 @@ function fill(el: HTMLElement, measure: boolean): void {
   const before = measure ? el.getBoundingClientRect().height : 0;
   el.innerHTML = render();
   el.classList.remove("lazy");
-  announceFill();
+  announceRows();
   if (measure && buf) buf.scrollTop += el.getBoundingClientRect().height - before;
 }
 
 let announced = 0;
-/** Tell painters once per frame, however many chunks were filled. */
-function announceFill(): void {
+/** Tell painters once per frame, however many rows were rendered. */
+export function announceRows(): void {
   cancelAnimationFrame(announced);
-  announced = requestAnimationFrame(() => document.dispatchEvent(new Event(lazyFilledEvent)));
+  announced = requestAnimationFrame(() => document.dispatchEvent(new Event(rowsRenderedEvent)));
 }
 
 /**

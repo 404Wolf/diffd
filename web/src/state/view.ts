@@ -4,6 +4,7 @@
  */
 import { type Accessor, createEffect, createSignal, on, onCleanup, type Setter } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import { match } from "ts-pattern";
 import type { Anchor } from "../gen/Anchor";
 import type { Diagnostic } from "../gen/Diagnostic";
 import type { ShowRequest } from "../gen/ShowRequest";
@@ -172,12 +173,13 @@ export function createView(review: Review) {
       const model = review.models()[i];
       const pinned = pinnedRows(i);
       const saved = prev === null && review.span() === null ? persist.session.visibility[f.path] : undefined;
-      const initial =
-        keep.get(f.path) ??
-        (saved ? fromRuns(saved, f.rows.length) : null) ??
-        (model
-          ? applyFolds(initialVisible(model, CONTEXT, pinned), foldsFor(i, false), new Set(pinned))
-          : new Uint8Array());
+      const fresh = model
+        ? applyFolds(initialVisible(model, CONTEXT, pinned), foldsFor(i, false), new Set(pinned))
+        : new Uint8Array();
+      // Expanded lines carry over, but on top of the fresh view: an edit that
+      // keeps the row count can still change which rows differ, and those must show.
+      const kept = keep.get(f.path) ?? (saved ? fromRuns(saved, f.rows.length) : null);
+      const initial = kept && kept.length === fresh.length ? fresh.map((v, r) => v | (kept[r] ?? 0)) : fresh;
       visibleSignals.push(createSignal(initial));
     });
   };
@@ -204,6 +206,7 @@ export function createView(review: Review) {
       if (prev) {
         resetVisibility(prev, next);
         bumpVisibility((v) => v + 1);
+        followFiles(prev, next);
       }
     }),
   );
@@ -291,6 +294,53 @@ export function createView(review: Review) {
     if (next) focusPane(next.id);
     return true;
   };
+  /**
+   * Files are referred to by index; a new revision (or another part of the
+   * history) can add, drop or reorder them. Point every pane's cursor, mode,
+   * selection and jump list at the same files again, by path.
+   */
+  const followFiles = (prev: Snapshot, next: Snapshot) => {
+    const byPath = new Map(next.files.map((f, i) => [f.path, i]));
+    const moved = (file: number): number | null => byPath.get(prev.files[file]?.path ?? "") ?? null;
+    const rowIn = (file: number, row: number) =>
+      Math.max(0, Math.min(row, (next.files[file]?.rows.length ?? 1) - 1));
+    const place = (p: Place): Place | null => {
+      const mode: Mode | null = match(p.mode)
+        .with({ kind: "diff" }, (m) => m)
+        .with({ kind: "file" }, (m) => {
+          const file = moved(m.file);
+          return file === null ? null : { kind: "file" as const, file };
+        })
+        .exhaustive();
+      const cursorFile = p.cursor ? moved(p.cursor.file) : null;
+      const topFile = p.top ? moved(p.top.file) : null;
+      if (mode === null) return null;
+      return {
+        mode,
+        cursor:
+          p.cursor && cursorFile !== null
+            ? { ...p.cursor, file: cursorFile, row: rowIn(cursorFile, p.cursor.row) }
+            : null,
+        top: p.top && topFile !== null ? { ...p.top, file: topFile, row: rowIn(topFile, p.top.row) } : null,
+      };
+    };
+    for (const pane of panes()) {
+      const c = pane.cursor();
+      const cf = c ? moved(c.file) : null;
+      pane.setCursor(c && cf !== null ? { ...c, file: cf, row: rowIn(cf, c.row), word: null } : null);
+      const m = pane.mode();
+      if (m.kind === "file") {
+        const f = moved(m.file);
+        pane.setMode(f === null ? { kind: "diff" } : { kind: "file", file: f });
+      }
+      const v = pane.visual();
+      const vf = v ? moved(v.file) : null;
+      pane.setVisual(v && vf !== null ? { file: vf, row: rowIn(vf, v.row) } : null);
+      pane.jumps.remap(place);
+      pane.syncJumps();
+    }
+  };
+
   const cursor = () => focused().cursor();
   const setCursor = (c: Cursor | null) => focused().setCursor(c);
   const visual = () => focused().visual();

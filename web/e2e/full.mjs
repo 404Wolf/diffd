@@ -103,7 +103,7 @@ const viewport = (page) =>
   });
 async function cursorTo(page, fileName, line, side = "new", pane = ".buffer.focused") {
   // Click the code cell of that line, like a user would.
-  const cell = page.locator(`${pane} section:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`).first();
+  const cell = page.locator(`${pane} [data-file-section]:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`).first();
   await cell.scrollIntoViewIfNeeded();
   await cell.click({ position: { x: 4, y: 4 } });
   await sleep(80);
@@ -206,9 +206,9 @@ try {
   });
 
   await section("Folds, expanding context, tests", async () => {
-    await page.locator('section:has([data-path="web/src/badge.css"])').scrollIntoViewIfNeeded();
+    await page.locator('[data-file-section]:has([data-path="web/src/badge.css"])').scrollIntoViewIfNeeded();
     check(await page.getByText("Adds a .low style (amber)").isVisible(), "Claude's fold shows its summary");
-    const routes = page.locator('section:has([data-path="src/routes.rs"])');
+    const routes = page.locator('[data-file-section]:has([data-path="src/routes.rs"])');
     const hiddenBefore = await routes.locator(".gap-body").evaluateAll((els) => els.reduce((n, e) => n + e.querySelectorAll(".row").length, 0));
     await cursorTo(page, "src/routes.rs", 23);
     const vp = await viewport(page);
@@ -218,10 +218,10 @@ try {
     const vp2 = await viewport(page);
     check(vp.key === vp2.key && Math.abs(vp.y - vp2.y) < 3, "without moving the page");
     check((await page.locator(".gap-body[hidden='until-found']").count()) > 0, "folded lines stay findable with Ctrl+F (hidden=until-found)");
-    check((await page.locator('section:has([data-path="src/lib.rs"]) .row.test').count()) >= 20, "test code is marked along its side");
-    await page.locator('section:has([data-path="tests/limiter.rs"])').scrollIntoViewIfNeeded();
-    check(await page.locator('section:has([data-path="tests/limiter.rs"])').getByText("test file").isVisible(), "whole test files get a chip");
-    await page.locator('section:has([data-path="tests/limiter.rs"]) .row.test').first().scrollIntoViewIfNeeded();
+    check((await page.locator('[data-file-section]:has([data-path="src/lib.rs"]) .row.test').count()) >= 20, "test code is marked along its side");
+    await page.locator('[data-file-section]:has([data-path="tests/limiter.rs"])').scrollIntoViewIfNeeded();
+    check(await page.locator('[data-file-section]:has([data-path="tests/limiter.rs"])').getByText("test file").isVisible(), "whole test files get a chip");
+    await page.locator('[data-file-section]:has([data-path="tests/limiter.rs"]) .row.test').first().scrollIntoViewIfNeeded();
     await shot(page, "tests");
   });
 
@@ -246,10 +246,10 @@ try {
     await page.keyboard.type("Five seconds is long for a probe; make it a flag?");
     await keys(page, "Control+Enter");
 
-    const cell = page.locator('section:has([data-path="db/schema.sql"]) .row[data-nl="4"] .code[data-side="new"]');
+    const cell = page.locator('[data-file-section]:has([data-path="db/schema.sql"]) .row[data-nl="4"] .code[data-side="new"]');
     await cell.scrollIntoViewIfNeeded();
     const box = await cell.boundingBox();
-    const end = await page.locator('section:has([data-path="db/schema.sql"]) .row[data-nl="5"] .code[data-side="new"]').boundingBox();
+    const end = await page.locator('[data-file-section]:has([data-path="db/schema.sql"]) .row[data-nl="5"] .code[data-side="new"]').boundingBox();
     await page.mouse.move(box.x + 5, box.y + 8);
     await page.mouse.down();
     await page.mouse.move(end.x + 120, end.y + 8, { steps: 8 });
@@ -371,9 +371,9 @@ try {
     await shot(page, "drawer-closed");
     await handle.click();
     check(await page.locator("nav[aria-label='Changed files']").isVisible(), "clicking the handle brings it back");
-    const viewed = page.locator('section:has([data-path="db/schema.sql"]) input[type=checkbox]');
+    const viewed = page.locator('[data-file-section]:has([data-path="db/schema.sql"]) input[type=checkbox]');
     await viewed.check();
-    check((await page.locator('section:has([data-path="db/schema.sql"]) .row').count()) === 0, "marking a file viewed collapses it");
+    check((await page.locator('[data-file-section]:has([data-path="db/schema.sql"]) .row').count()) === 0, "marking a file viewed collapses it");
     await page.locator("[data-thread] button", { hasText: "Resolve" }).first().click();
     await page.waitForFunction(() => document.body.innerText.includes("RESOLVED") || document.body.innerText.toLowerCase().includes("resolved"));
     check(true, "resolving a thread marks it resolved");
@@ -604,10 +604,10 @@ try {
     await keys(page, "g", "c", "c");
     await page.keyboard.type("Half-written thought");
     const before = await at(page);
-    const shownRows = () => page.locator("section:has([data-path='src/routes.rs']) .row:not(.gap-body[hidden] .row)").count();
+    const shownRows = () => page.locator("[data-file-section]:has([data-path='src/routes.rs']) .row:not(.gap-body[hidden] .row)").count();
     const routesBefore = await shownRows();
     const rowTop = () =>
-      page.evaluate(() => document.querySelector("section:has([data-path='cmd/probe/main.go']) .row[data-nl='12']")?.getBoundingClientRect().top ?? -1);
+      page.evaluate(() => document.querySelector("[data-file-section]:has([data-path='cmd/probe/main.go']) .row[data-nl='12']")?.getBoundingClientRect().top ?? -1);
     const topBefore = await rowTop();
     await sleep(600);
     await page.reload();
@@ -812,7 +812,7 @@ try {
     await cursorTo(page, "web/src/api.ts", apiLine + 2);
     await page.waitForSelector("[data-line-diagnostic]");
     check((await page.locator("[data-line-diagnostic]").innerText()).includes("not assignable"), "the status bar shows the error on the cursor's line");
-    const word = page.locator('section:has([data-path="web/src/api.ts"]) .row[data-nl="' + (apiLine + 2) + '"] .code[data-side="new"]');
+    const word = page.locator('[data-file-section]:has([data-path="web/src/api.ts"]) .row[data-nl="' + (apiLine + 2) + '"] .code[data-side="new"]');
     const at = await word.evaluate((el) => {
       const text = el.firstChild ? el.textContent : "";
       const i = text.indexOf("broken");

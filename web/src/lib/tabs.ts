@@ -40,11 +40,11 @@ async function claim(): Promise<string> {
   }
   for (let attempt = 0; attempt < 3; attempt++) {
     const got = await new Promise<boolean>((resolve) => {
-      void l.request(lockName(id), { ifAvailable: true }, (lock) => {
+      l.request(lockName(id), { ifAvailable: true }, (lock) => {
         resolve(lock !== null);
         // Hold it until the tab goes away.
         return lock === null ? undefined : new Promise<void>(() => {});
-      });
+      }).catch(() => resolve(false)); // Locks unavailable here (e.g. an opaque origin).
     });
     if (got) break;
     id = randomId();
@@ -57,7 +57,7 @@ async function claim(): Promise<string> {
 export async function liveTabs(): Promise<Set<string> | null> {
   const l = locks();
   if (!l) return null;
-  const { held = [] } = await l.query();
+  const { held = [] } = await l.query().catch(() => ({ held: undefined }));
   return new Set(
     held.flatMap((h) => (h.name?.startsWith("diffd-tab:") ? [h.name.slice("diffd-tab:".length)] : [])),
   );

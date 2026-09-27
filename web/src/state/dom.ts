@@ -1,5 +1,7 @@
 /** Finding rows in the rendered diff, and changing the DOM without moving the reader. */
 
+import { createSignal } from "solid-js";
+
 let focusedPane = 0;
 /** Which split keys and commands act on (see `View.focusPane`). */
 export const setFocusedPane = (id: number): void => {
@@ -32,6 +34,23 @@ interface RowIndex {
   readonly hunks: HTMLElement[];
 }
 
+/**
+ * Bumped (at most twice a second) when rows are added, removed or folded, for
+ * things that summarize them, like the status line's hunk count.
+ */
+const [rowsVersion, setRowsVersion] = createSignal(0);
+
+export { rowsVersion };
+
+let bumping: ReturnType<typeof setTimeout> | undefined;
+const rowsChanged = () => {
+  if (bumping !== undefined) return;
+  bumping = setTimeout(() => {
+    bumping = undefined;
+    setRowsVersion((v) => v + 1);
+  }, 500);
+};
+
 /** One index per pane's buffer, dropped when the buffer's DOM changes. */
 const indexes = new WeakMap<HTMLElement, { observer: MutationObserver; index: RowIndex | null }>();
 
@@ -45,7 +64,10 @@ function rowIndex(buf: HTMLElement | null = bufferEl()): RowIndex | null {
   if (!watching) {
     const observer = new MutationObserver((records) => {
       const w = indexes.get(buf);
-      if (w && structural(records)) w.index = null;
+      if (w && structural(records)) {
+        w.index = null;
+        rowsChanged();
+      }
     });
     observer.observe(buf, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
     watching = { observer, index: null };
@@ -115,8 +137,9 @@ export function topVisibleRow(buf: HTMLElement | null = bufferEl()): HTMLElement
  * Run a DOM-changing update and keep the row at the top of the screen exactly
  * where it was. Every structural change in the diff goes through this.
  */
-export function keepViewport(update: () => void): void {
+export function keepViewport(update: () => void, except: HTMLElement | null = null): void {
   const held = allBuffers().flatMap((buf) => {
+    if (buf === except) return [];
     const anchor = topVisibleRow(buf);
     return anchor
       ? [{ buf, f: anchor.dataset.f, r: anchor.dataset.r, before: anchor.getBoundingClientRect().top }]

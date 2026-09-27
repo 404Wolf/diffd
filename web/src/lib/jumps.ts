@@ -29,6 +29,20 @@ export class JumpList<T> {
     return this.list[this.at] ?? null;
   }
 
+  /** Rewrite every entry (e.g. when files moved); entries mapped to null are dropped. */
+  remap(f: (entry: T) => T | null): void {
+    const before = this.list
+      .slice(0, this.at)
+      .map(f)
+      .filter((e): e is T => e !== null);
+    const after = this.list
+      .slice(this.at)
+      .map(f)
+      .filter((e): e is T => e !== null);
+    this.list = [...before, ...after];
+    this.at = before.length;
+  }
+
   get position(): { at: number; length: number } {
     return { at: this.at, length: this.list.length };
   }

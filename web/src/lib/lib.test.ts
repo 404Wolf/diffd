@@ -138,6 +138,12 @@ describe("keymap", () => {
     const k = { ctrlKey: false, metaKey: false, altKey: false, shiftKey: false };
     expect(keyToken({ ...k, key: " " })).toBe("space");
     expect(keyToken({ ...k, key: "o", ctrlKey: true })).toBe("ctrl-o");
+    // AltGr (Ctrl+Alt on Windows) and Option on a Mac type brackets on many layouts.
+    expect(keyToken({ ...k, key: "]", ctrlKey: true, altKey: true })).toBe("]");
+    expect(keyToken({ ...k, key: "{", altKey: true })).toBe("{");
+    expect(keyToken({ ...k, key: "f", altKey: true })).toBeNull();
+    expect(keyToken({ ...k, key: "ß", altKey: true })).toBeNull();
+    expect(keyToken({ ...k, key: "c", metaKey: true })).toBeNull();
     expect(keyToken({ ...k, key: "Enter", shiftKey: true })).toBe("shift-enter");
     expect(keyToken({ ...k, key: "c", metaKey: true })).toBeNull();
   });
@@ -174,7 +180,10 @@ describe("markdown", () => {
   });
   it("links references, drops raw HTML", () => {
     const html = renderMarkdown("See `x` in feedback.rs:38 <img src=x onerror=alert(1)>", paths);
-    expect(html).toContain('<a data-go="0:38">feedback.rs:38</a>');
+    expect(html).toContain('<a href="#" data-go="crates/diffd-core/src/feedback.rs:38">feedback.rs:38</a>');
+    expect(renderMarkdown("[docs](https://example.com)", paths)).toContain(
+      'target="_blank" rel="noopener noreferrer"',
+    );
     expect(html).not.toContain("<img");
   });
 });
@@ -348,5 +357,17 @@ describe("remembered folds", () => {
     expect(fromRuns({ rows: 8, runs }, 8)).toEqual(v);
     expect(fromRuns({ rows: 8, runs }, 9)).toBeNull();
     expect(toRuns(new Uint8Array())).toEqual([]);
+  });
+});
+
+describe("jump list remapping", () => {
+  it("rewrites entries, drops missing ones, and keeps the position", () => {
+    const j = new JumpList<number>();
+    for (const n of [1, 2, 3, 4]) j.push(n);
+    j.back(5);
+    j.back(5);
+    j.remap((n) => (n === 2 ? null : n * 10));
+    expect(j.position).toEqual({ at: 1, length: 4 }); // still at what was 3, now 30
+    expect(j.forward()).toBe(40);
   });
 });

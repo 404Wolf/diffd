@@ -2,7 +2,7 @@ import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid
 import { match } from "ts-pattern";
 import type { ReviewState } from "../gen/ReviewState";
 import { spanLabel } from "../lib/history";
-import { KeyEngine, keyToken, type Mode } from "../lib/keymap";
+import { composing, KeyEngine, keyToken, type Mode } from "../lib/keymap";
 import { fillAll } from "../lib/lazyRows";
 import { BINDINGS, type Ctx } from "../state/bindings";
 import { createCommands } from "../state/commands";
@@ -54,6 +54,7 @@ export function ReviewPage(props: { state: ReviewState }) {
   const ctx: Ctx = { cmd, view: v };
   const engine = new KeyEngine<Ctx>(BINDINGS);
   let container: HTMLDivElement | undefined;
+  let root: HTMLDivElement | undefined;
 
   const [focusInput, setFocusInput] = createSignal(false);
   const mode = (): Mode => {
@@ -127,8 +128,19 @@ export function ReviewPage(props: { state: ReviewState }) {
     return readAt !== null || cursorAt !== null;
   };
 
+  /** `path:line` links in any Markdown (threads, chat, hover cards, notes) jump to the code. */
+  const followLink = (e: MouseEvent) => {
+    const link = (e.target as HTMLElement).closest<HTMLElement>("[data-go]");
+    const go = link?.dataset.go;
+    if (!go) return;
+    e.preventDefault();
+    const at = go.lastIndexOf(":");
+    void cmd.openPathAt(go.slice(0, at), Number(go.slice(at + 1)));
+  };
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   const onKeyDown = (e: KeyboardEvent) => {
+    if (composing(e)) return;
     if (e.key === "Control" || e.key === "Meta") v.setSymKey(true);
     const target = e.target as HTMLElement;
     if (target.closest("input, textarea, select, [contenteditable]") || v.picker() || v.help()) return;
@@ -169,6 +181,7 @@ export function ReviewPage(props: { state: ReviewState }) {
   const onFocus = () => setFocusInput(document.activeElement?.matches("input, textarea") ?? false);
 
   onMount(() => {
+    root?.addEventListener("click", followLink);
     review.start();
     // Layout can change without scrolling (threads arriving): take the reading position fresh on the way out.
     const leaving = () => {
@@ -204,14 +217,14 @@ export function ReviewPage(props: { state: ReviewState }) {
   });
 
   return (
-    <div class="flex h-full flex-col bg-bg">
+    <div ref={root} class="flex h-full flex-col bg-bg">
       <TopBar review={review} />
       <div ref={container} class="relative flex min-h-0 flex-1">
         <Drawer side="left" label="Files" state={v.drawers.left} onChange={(s) => v.setDrawers("left", s)}>
           <FileTree review={review} view={v} cmd={cmd} current={currentFile} />
         </Drawer>
         <div class="flex min-w-0 flex-1 flex-col">
-          <div id="panes" class="flex min-h-0 flex-1">
+          <main id="panes" class="flex min-h-0 flex-1">
             <For each={v.panes()}>
               {(pane, i) => (
                 <>
@@ -222,7 +235,7 @@ export function ReviewPage(props: { state: ReviewState }) {
                 </>
               )}
             </For>
-          </div>
+          </main>
           <Chat review={review} view={v} />
         </div>
         <Drawer

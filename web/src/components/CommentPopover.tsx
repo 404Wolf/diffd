@@ -1,5 +1,6 @@
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show, untrack } from "solid-js";
 import { match } from "ts-pattern";
+import { composing } from "../lib/keymap";
 import type { Commands } from "../state/commands";
 import { bufferEl, rowEl } from "../state/dom";
 import type { Review } from "../state/review";
@@ -21,6 +22,8 @@ export function CommentPopover(props: {
   const [pos, setPos] = createSignal({ top: 0, left: 0 });
   const [armed, setArmed] = createSignal(false);
 
+  /** The split the composer was opened in: it stays with that code even if another split gets focus. */
+  let pane = props.view.focused().id;
   const anchor = (): HTMLElement | null => {
     const c = props.view.composer();
     if (!c) return null;
@@ -28,14 +31,16 @@ export function CommentPopover(props: {
       .with(
         { kind: "reply" },
         ({ threadId }) =>
-          bufferEl()?.querySelector<HTMLElement>(`[data-thread="${threadId}"] > div:last-child`) ?? null,
+          bufferEl(pane)?.querySelector<HTMLElement>(`[data-thread="${threadId}"] > div:last-child`) ?? null,
       )
       .with({ kind: "new" }, ({ anchor: a }) => {
         const file = props.review.paths().indexOf(a.path);
         const model = props.review.models()[file];
         const map = a.side === "old" ? model?.oldRow : model?.newRow;
         const row = map?.[a.end - 1] ?? -1;
-        return rowEl(file, row)?.querySelector<HTMLElement>(`.code[data-side="${a.side}"]`) ?? null;
+        return (
+          rowEl(file, row, bufferEl(pane))?.querySelector<HTMLElement>(`.code[data-side="${a.side}"]`) ?? null
+        );
       })
       .exhaustive();
   };
@@ -43,7 +48,7 @@ export function CommentPopover(props: {
   const place = () => {
     const a = anchor();
     const box = props.container()?.getBoundingClientRect();
-    const buf = bufferEl()?.getBoundingClientRect();
+    const buf = bufferEl(pane)?.getBoundingClientRect();
     if (!a || !box || !buf || !el) return;
     const r = a.getBoundingClientRect();
     const h = el.offsetHeight;
@@ -55,17 +60,19 @@ export function CommentPopover(props: {
   };
 
   onMount(() => {
-    const buf = bufferEl();
-    buf?.addEventListener("scroll", place, { passive: true });
+    // Scrolling any split (scroll events don't bubble, but they can be captured).
+    const container = props.container();
+    container?.addEventListener("scroll", place, { passive: true, capture: true });
     window.addEventListener("resize", place);
     onCleanup(() => {
-      buf?.removeEventListener("scroll", place);
+      container?.removeEventListener("scroll", place, { capture: true });
       window.removeEventListener("resize", place);
     });
   });
   createEffect(() => {
     const c = props.view.composer();
     if (c) {
+      pane = untrack(() => props.view.focused().id);
       setArmed(false);
       queueMicrotask(() => {
         // A comment you were writing before a reload comes back as you left it.
@@ -90,6 +97,7 @@ export function CommentPopover(props: {
   };
 
   const onKey = (e: KeyboardEvent) => {
+    if (composing(e)) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       props.cmd.sendComposer(input?.value ?? "");

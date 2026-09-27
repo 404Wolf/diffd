@@ -41,7 +41,7 @@ import {
   rowEl,
   rowPosition,
 } from "./dom";
-import { fromAgent, type Review } from "./review";
+import type { Review } from "./review";
 import { CONTEXT, type Cursor, EXPAND_STEP, type PickerItem, type Place, type View, type Word } from "./view";
 
 /** Fill in every lazily rendered row, keeping the reader where they are. */
@@ -288,10 +288,8 @@ export function createCommands(review: Review, view: View) {
   const fileJump = (dir: 1 | -1) => {
     completeRows();
     const list = order();
-    const current =
-      view.mode().kind === "file"
-        ? (view.mode() as { file: number }).file
-        : (view.cursor()?.file ?? list[0] ?? 0);
+    const mode = view.mode();
+    const current = mode.kind === "file" ? mode.file : (view.cursor()?.file ?? list[0] ?? 0);
     let at = list.indexOf(current);
     for (;;) {
       at += dir;
@@ -358,30 +356,34 @@ export function createCommands(review: Review, view: View) {
     expand(c.file, gap.start, gap.end, gap.dir);
   };
 
-  const toggleFold = (file: number) => {
-    const path = files()[file]?.path;
-    if (!path) return;
-    const header = () => bufferEl()?.querySelector(`[data-file-section="${file}"] [data-file-head]`);
-    const before = header()?.getBoundingClientRect().top ?? 0;
-    const open = view.hidden(file);
-    batch(() => {
-      view.setFlags("collapsed", path, !open);
-      if (open) view.setFlags("viewed", path, false);
-    });
+  /**
+   * Collapse or expand a file without moving anyone: in this split its header
+   * stays put (the rows under it come or go); other splits keep their place.
+   */
+  const keepFileHeader = (file: number, update: () => void) => {
     const buf = bufferEl();
+    const header = () => buf?.querySelector(`[data-file-section="${file}"] [data-file-head]`);
+    const before = header()?.getBoundingClientRect().top ?? 0;
+    keepViewport(update, buf);
     const after = header()?.getBoundingClientRect().top;
     if (buf && after !== undefined) buf.scrollTop += after - before;
   };
 
-  const setViewed = (file: number, viewed: boolean) => {
+  const toggleFold = (file: number) => {
     const path = files()[file]?.path;
     if (!path) return;
-    const header = () => bufferEl()?.querySelector(`[data-file-section="${file}"] [data-file-head]`);
-    const before = header()?.getBoundingClientRect().top ?? 0;
-    view.setFlags("viewed", path, viewed);
-    const buf = bufferEl();
-    const after = header()?.getBoundingClientRect().top;
-    if (buf && after !== undefined) buf.scrollTop += after - before;
+    const open = view.hidden(file);
+    keepFileHeader(file, () =>
+      batch(() => {
+        view.setFlags("collapsed", path, !open);
+        if (open) view.setFlags("viewed", path, false);
+      }),
+    );
+  };
+
+  const setViewed = (file: number, viewed: boolean) => {
+    const path = files()[file]?.path;
+    if (path) keepFileHeader(file, () => view.setFlags("viewed", path, viewed));
   };
 
   const expandAll = () =>
@@ -829,6 +831,11 @@ export function createCommands(review: Review, view: View) {
     const file = await review.openContext(req.path);
     if (file !== null) goTo(file, req.side, req.start);
   };
+  /** Go to a line of any file, by path (links in Markdown). */
+  const openPathAt = async (path: string, line: number) => {
+    const file = await review.openContext(path);
+    if (file !== null) goTo(file, "new", line);
+  };
   /** Open a file outside the diff (from the tree) in file view. */
   const openPath = async (path: string) => {
     const file = await review.openContext(path);
@@ -844,7 +851,8 @@ export function createCommands(review: Review, view: View) {
 
   const toggleDrawer = (side: "left" | "right") => view.setDrawers(side, "collapsed", (c) => !c);
   const markViewedAndNext = () => {
-    const file = view.mode().kind === "file" ? (view.mode() as { file: number }).file : view.cursor()?.file;
+    const mode = view.mode();
+    const file = mode.kind === "file" ? mode.file : view.cursor()?.file;
     if (file === undefined) return;
     const path = files()[file]?.path ?? "";
     const viewed = !view.flags.viewed[path];
@@ -898,6 +906,7 @@ export function createCommands(review: Review, view: View) {
     typeDefinition,
     hoverAtCursor,
     openPath,
+    openPathAt,
     splitPane,
     closePane,
     focusSplit,
@@ -923,7 +932,6 @@ export function createCommands(review: Review, view: View) {
     markViewedAndNext,
     escapeAll,
     startVisual,
-    fromAgent,
   };
 }
 

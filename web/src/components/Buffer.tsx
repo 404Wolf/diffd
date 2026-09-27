@@ -1,6 +1,8 @@
-import { createEffect, createMemo, For, Index, Show } from "solid-js";
+import { createEffect, createMemo, For, Index, onCleanup, onMount, Show } from "solid-js";
+import { match } from "ts-pattern";
 import type { Thread } from "../gen/Thread";
 import { rowOf } from "../lib/diffModel";
+import { rowsRenderedEvent } from "../lib/lazyRows";
 import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
 import type { Commands } from "../state/commands";
 import { bufferEl, rowEl } from "../state/dom";
@@ -27,12 +29,8 @@ export function Buffer(props: Props) {
 
   const onClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
-    const link = target.closest<HTMLElement>("[data-go]");
-    if (link?.dataset.go) {
-      const [file, line] = link.dataset.go.split(":").map(Number);
-      if (file !== undefined && line !== undefined) props.cmd.goTo(file, "new", line);
-      return;
-    }
+    // `path:line` links are handled for the whole page (ReviewPage).
+    if (target.closest("[data-go]")) return;
     const row = target.closest<HTMLElement>(".row");
     if (!row) return;
     const num = target.closest<HTMLElement>(".num[data-n]");
@@ -71,8 +69,11 @@ export function Buffer(props: Props) {
   return (
     // Clicks are delegated from static rows; every click action also has a key binding.
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard equivalents live in state/bindings.ts
-    <main
+    <section
       ref={main}
+      aria-label={
+        props.view.panes().length > 1 ? `Split ${props.view.panes().indexOf(props.pane) + 1}` : "The diff"
+      }
       id={`buffer-${props.pane.id}`}
       data-pane={props.pane.id}
       tabindex="-1"
@@ -83,7 +84,10 @@ export function Buffer(props: Props) {
       onClick={onClick}
     >
       <Show
-        when={props.pane.mode().kind === "file" ? (props.pane.mode() as { file: number }).file : null}
+        // An object, not the index: `Show` treats file 0 as false.
+        when={match(props.pane.mode())
+          .with({ kind: "file" }, (m) => m)
+          .otherwise(() => null)}
         fallback={
           <>
             <Summary review={props.review} cmd={props.cmd} />
@@ -102,9 +106,9 @@ export function Buffer(props: Props) {
           </>
         }
       >
-        {(file) => <FileView file={file()} review={props.review} view={props.view} cmd={props.cmd} />}
+        {(m) => <FileView file={m().file} review={props.review} view={props.view} cmd={props.cmd} />}
       </Show>
-    </main>
+    </section>
   );
 }
 
@@ -246,6 +250,7 @@ function usePaintCursor(props: Props) {
     rows: [],
     word: null,
   };
+  let repaint = () => {};
   createEffect(() => {
     const cursor = props.pane.cursor();
     const visual = props.pane.visual();
@@ -254,7 +259,7 @@ function usePaintCursor(props: Props) {
     props.review.snapshot();
     props.review.threads().length;
     for (let i = 0; i < props.review.snapshot().files.length; i++) props.view.visible(i);
-    queueMicrotask(() => {
+    repaint = () => {
       for (const el of painted.rows) el.classList.remove("cur", "vsel");
       painted.caret?.classList.remove("caret");
       if (painted.word?.el.isConnected) painted.word.el.innerHTML = painted.word.html;
@@ -300,6 +305,13 @@ function usePaintCursor(props: Props) {
           }
         }
       }
-    });
+    };
+    queueMicrotask(repaint);
+  });
+  // Rows can be rebuilt from HTML for other reasons (marks, notes, lazy fills): paint again.
+  onMount(() => {
+    const again = () => repaint();
+    document.addEventListener(rowsRenderedEvent, again);
+    onCleanup(() => document.removeEventListener(rowsRenderedEvent, again));
   });
 }

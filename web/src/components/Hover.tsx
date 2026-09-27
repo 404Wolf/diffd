@@ -1,7 +1,8 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { match } from "ts-pattern";
 import type { Diagnostic } from "../gen/Diagnostic";
 import { columnAtPoint, diagnosticSpan, diagnosticsOn, rank, textRange, wordAt } from "../lib/code";
-import { lazyFilledEvent } from "../lib/lazyRows";
+import { rowsRenderedEvent } from "../lib/lazyRows";
 import { allBuffers, rowEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
@@ -151,7 +152,11 @@ export function useMouseHover(props: { review: Review; view: View }, buffer: () 
 const HIGHLIGHTS = ["diag-error", "diag-warning", "diag-info"] as const;
 type HighlightName = (typeof HIGHLIGHTS)[number];
 const highlightFor = (s: Diagnostic["severity"]): HighlightName =>
-  s === "error" ? "diag-error" : s === "warning" ? "diag-warning" : "diag-info";
+  match(s)
+    .with("error", () => "diag-error" as const)
+    .with("warning", () => "diag-warning" as const)
+    .with("info", "hint", () => "diag-info" as const)
+    .exhaustive();
 
 /**
  * Paint diagnostics onto the static rows of every split: wavy underlines via
@@ -221,7 +226,7 @@ export function usePaintDiagnostics(props: { review: Review; view: View }) {
     paint();
   });
   onMount(() => {
-    document.addEventListener(lazyFilledEvent, paint);
-    onCleanup(() => document.removeEventListener(lazyFilledEvent, paint));
+    document.addEventListener(rowsRenderedEvent, paint);
+    onCleanup(() => document.removeEventListener(rowsRenderedEvent, paint));
   });
 }

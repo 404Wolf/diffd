@@ -189,7 +189,11 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   ]),
   // Splits
   { keys: "ctrl-\\", run: ({ cmd }) => cmd.splitPane(), help: ["Splits", "Split to the right"] },
+  // Also space s: ctrl-\ is hard to type on AltGr layouts.
+  { keys: "space s", run: ({ cmd }) => cmd.splitPane() },
   { keys: "ctrl-esc", run: ({ cmd }) => cmd.closePane(), help: ["Splits", "Close this split"] },
+  // Also space x: some systems take ctrl-esc (Windows' Start menu).
+  { keys: "space x", run: ({ cmd }) => cmd.closePane() },
   {
     keys: "ctrl-h",
     run: ({ cmd }) => cmd.focusSplit(-1),

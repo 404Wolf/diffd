@@ -1,19 +1,11 @@
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { FileDiff } from "../gen/FileDiff";
-import type { FileStatus } from "../gen/FileStatus";
+import { STATUS } from "../lib/status";
 import { buildTree, parentDir, type TreeNode } from "../lib/tree";
 import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
-
-const STATUS = {
-  added: ["A", "text-add"],
-  deleted: ["D", "text-del"],
-  modified: ["M", "text-warn"],
-  renamed: ["R", "text-accent"],
-  unchanged: ["·", "text-subtle"],
-} as const satisfies Record<FileStatus, readonly [string, string]>;
 
 /** GitHub-style changed-files tree: compact folders, status, a five-block +/− bar. */
 export function FileTree(props: { review: Review; view: View; cmd: Commands; current: () => number | null }) {
@@ -113,7 +105,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
       <Match when={p.node.kind === "file" && p.node}>
         {(f) => {
           const file = () => props.review.snapshot().files[f().index] as FileDiff;
-          const [letter, color] = STATUS[file().status];
+          const { letter, color } = STATUS[file().status];
           return (
             <li>
               <button

@@ -8,6 +8,14 @@ import MarkdownIt from "markdown-it";
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
+// Links the agent writes open in a new tab, never in place of the review.
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.tagName === "A" && node.getAttribute("href")) {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+});
+
 export interface CodeLink {
   readonly file: number;
   readonly line: number;
@@ -45,8 +53,10 @@ export function renderMarkdown(text: string, paths: readonly string[]): string {
       const link = resolveRef(m[0], paths);
       if (!link) continue;
       frag.append(value.slice(last, m.index));
+      // By path (file indexes change between revisions); the page handles the click.
       const a = document.createElement("a");
-      a.dataset.go = `${link.file}:${link.line}`;
+      a.href = "#";
+      a.dataset.go = `${paths[link.file]}:${link.line}`;
       a.textContent = m[0];
       frag.append(a);
       last = m.index + m[0].length;

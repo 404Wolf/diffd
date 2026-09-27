@@ -1,10 +1,10 @@
 import { createMemo, createRenderEffect, For, Match, Show, Switch } from "solid-js";
 import type { FileDiff } from "../gen/FileDiff";
-import type { FileStatus } from "../gen/FileStatus";
 import type { Thread } from "../gen/Thread";
 import { type Block, blocks, gapContext, regionRows, rowOf } from "../lib/diffModel";
-import { lazyChunks, placeholderHtml } from "../lib/lazyRows";
+import { announceRows, lazyChunks, placeholderHtml } from "../lib/lazyRows";
 import { escapeHtml, type RowMarks, rowHtml } from "../lib/render";
+import { STATUS } from "../lib/status";
 import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
@@ -19,21 +19,6 @@ interface Props {
   view: View;
   cmd: Commands;
 }
-
-const STATUS_LETTER: Record<FileStatus, string> = {
-  added: "A",
-  deleted: "D",
-  modified: "M",
-  renamed: "R",
-  unchanged: "·",
-};
-const STATUS_COLOR: Record<FileStatus, string> = {
-  added: "text-add",
-  deleted: "text-del",
-  modified: "text-warn",
-  renamed: "text-accent",
-  unchanged: "text-subtle",
-};
 
 /** Rows per lazily laid-out chunk in long runs of rows. */
 const CHUNK_ROWS = 80;
@@ -59,12 +44,16 @@ export function FileSection(props: Props) {
   });
 
   const regions = createMemo(() => props.review.regions().filter((r) => r.path === file().path));
-  const testRows = createMemo(() => {
-    const m = model();
-    const rows = new Set<number>();
-    if (m) for (const r of regions()) if (r.kind === "test") for (const i of regionRows(m, r)) rows.add(i);
-    return rows;
-  });
+  const testRows = createMemo(
+    () => {
+      const m = model();
+      const rows = new Set<number>();
+      if (m) for (const r of regions()) if (r.kind === "test") for (const i of regionRows(m, r)) rows.add(i);
+      return rows;
+    },
+    undefined,
+    { equals: sameSet },
+  );
   const wholeFileTest = () => regions().some((r) => r.kind === "test" && r.lines === null);
   /** The agent's summary for a folded gap, when the gap is (mostly) one of its folds. */
   const foldSummary = (start: number, end: number): string | null => {
@@ -78,23 +67,36 @@ export function FileSection(props: Props) {
     return null;
   };
 
-  const marks = createMemo<RowMarks>(() => {
-    const noted = new Set<number>();
-    for (const t of props.review.notes()) {
-      if (t.anchor.path === file().path && t.anchor.side === "new")
-        for (let l = t.anchor.start; l <= t.anchor.end; l++) noted.add(l);
-    }
-    const named = new Map<string, string>();
-    for (const [name, m] of Object.entries(props.view.marks))
-      if (m.path === file().path) named.set(`${m.side}:${m.line}`, name);
-    return {
-      noted,
-      since: new Set(file().since),
-      refs: props.review.definedNames(),
-      tests: testRows(),
-      named,
-    };
-  });
+  // What decorates this file's rows. Each part only changes when its contents
+  // change for this file: rows are rebuilt from HTML whenever `marks` changes.
+  const noted = createMemo(
+    () => {
+      const lines = new Set<number>();
+      for (const t of props.review.notes())
+        if (t.anchor.path === file().path && t.anchor.side === "new")
+          for (let l = t.anchor.start; l <= t.anchor.end; l++) lines.add(l);
+      return lines;
+    },
+    undefined,
+    { equals: sameSet },
+  );
+  const named = createMemo(
+    () => {
+      const byLine = new Map<string, string>();
+      for (const [name, m] of Object.entries(props.view.marks))
+        if (m.path === file().path) byLine.set(`${m.side}:${m.line}`, name);
+      return byLine;
+    },
+    undefined,
+    { equals: (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v) },
+  );
+  const marks = createMemo<RowMarks>(() => ({
+    noted: noted(),
+    since: new Set(file().since),
+    refs: props.review.definedNames(),
+    tests: testRows(),
+    named: named(),
+  }));
 
   // Keep block identities stable across recomputation, so only changed blocks re-render.
   let cache = new Map<string, Block>();
@@ -140,6 +142,7 @@ export function FileSection(props: Props) {
   /** Put rows into `el`, and have its placeholders filled in as they come near the screen. */
   const setRows = (el: HTMLElement, html: string) => {
     el.innerHTML = html;
+    announceRows();
     lazyChunks(el, (chunk) => () => realRows(Number(chunk.dataset.a), Number(chunk.dataset.b)));
   };
 
@@ -167,8 +170,8 @@ export function FileSection(props: Props) {
         >
           ▼
         </button>
-        <span class={`w-3 text-center font-mono text-[10px] font-semibold ${STATUS_COLOR[file().status]}`}>
-          {STATUS_LETTER[file().status]}
+        <span class={`w-3 text-center font-mono text-[10px] font-semibold ${STATUS[file().status].color}`}>
+          {STATUS[file().status].letter}
         </span>
         <span
           class="min-w-0 flex-1 truncate font-mono text-xs font-medium"
@@ -382,4 +385,8 @@ function plainRows(f: FileDiff, start: number, end: number): string {
     out += `${escapeHtml(old)}\t${escapeHtml(neu)}\n`;
   }
   return out;
+}
+
+function sameSet<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+  return a.size === b.size && [...a].every((x) => b.has(x));
 }

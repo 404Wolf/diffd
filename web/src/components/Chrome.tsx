@@ -3,9 +3,10 @@ import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { match } from "ts-pattern";
 import { diagnosticsOn } from "../lib/code";
 import { spanLabel } from "../lib/history";
+import { composing } from "../lib/keymap";
 import { helpEntries } from "../state/bindings";
 import type { Commands } from "../state/commands";
-import { bufferEl, hunkStarts, rowEl, rowPosition } from "../state/dom";
+import { bufferEl, hunkStarts, rowEl, rowPosition, rowsVersion } from "../state/dom";
 import type { Review } from "../state/review";
 import type { PickerItem, View } from "../state/view";
 import { AGENT } from "./ThreadCard";
@@ -101,6 +102,7 @@ export function StatusLine(props: { review: Review; view: View; mode: () => stri
   });
   const hunk = createMemo(() => {
     props.view.cursor();
+    rowsVersion();
     if (props.view.mode().kind !== "diff") return "";
     const starts = hunkStarts();
     const c = props.view.cursor();
@@ -230,6 +232,7 @@ export function Picker(props: { view: View }) {
     it?.run();
   };
   const onKey = (e: KeyboardEvent) => {
+    if (composing(e)) return;
     const n = items().length;
     if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
       e.preventDefault();

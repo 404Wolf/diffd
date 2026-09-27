@@ -21,10 +21,22 @@ export type Feed =
   | { readonly kind: "unbound" };
 
 /** Normalize a keyboard event to a token, or null for keys we never bind. */
+/** An input method (Japanese, Chinese, …) is composing text: its keys aren't ours. */
+export function composing(e: Pick<KeyboardEvent, "isComposing" | "keyCode">): boolean {
+  // keyCode 229 is how some browsers mark the key that starts a composition.
+  return e.isComposing || e.keyCode === 229;
+}
+
 export function keyToken(
   e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">,
 ): string | null {
-  if (e.metaKey || e.altKey) return null;
+  if (e.metaKey) return null;
+  if (e.altKey) {
+    // AltGr (which Windows reports as Ctrl+Alt) and macOS Option type `[ ] { } \`
+    // on many keyboard layouts: take the character they typed. Alt with a
+    // letter or digit is a browser or OS shortcut, not ours.
+    return e.key.length === 1 && !/[\p{L}\p{N}]/u.test(e.key) ? e.key : null;
+  }
   switch (e.key) {
     case " ":
       return e.ctrlKey ? null : "space";

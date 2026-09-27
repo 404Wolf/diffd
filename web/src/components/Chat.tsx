@@ -1,4 +1,5 @@
 import { createEffect, For, Show } from "solid-js";
+import { composing } from "../lib/keymap";
 import { bufferEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
@@ -58,6 +59,7 @@ export function Chat(props: { review: Review; view: View }) {
           aria-label={`Message ${AGENT}`}
           class="h-6 min-w-0 flex-1 rounded-md border border-line-strong bg-bg px-2.5 text-[12.5px] focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
           onKeyDown={(e) => {
+            if (composing(e)) return;
             if (e.key === "Escape") {
               e.currentTarget.blur();
               bufferEl()?.focus({ preventScroll: true });
