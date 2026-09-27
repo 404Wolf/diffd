@@ -2,6 +2,7 @@
 
 use crate::difft::EngineDiff;
 use crate::highlight::highlight;
+use crate::kinds;
 use crate::lang::Lang;
 use crate::linediff;
 use crate::model::{FileDiff, FileStatus, Omitted, Revision, Row, SideText, Snapshot};
@@ -30,6 +31,12 @@ const PLAIN_TEXT: &str = "Text";
 /// Build a file's diff. `engine` is difftastic's result for modified files;
 /// without it (or when it has no alignment) a line diff is used.
 pub fn build_file(input: &FileInput, engine: Option<EngineDiff>) -> FileDiff {
+    let generated = kinds::generated(&input.path, input.new.as_deref().or(input.old.as_deref()));
+    let labels = [(kinds::is_test(&input.path), kinds::TEST), (generated.is_some(), kinds::GENERATED)]
+        .into_iter()
+        .filter(|(is, _)| *is)
+        .map(|(_, label)| label.to_owned())
+        .collect();
     let mut file = FileDiff {
         path: input.path.clone(),
         old_path: input.old_path.clone(),
@@ -37,7 +44,9 @@ pub fn build_file(input: &FileInput, engine: Option<EngineDiff>) -> FileDiff {
         language: None,
         omitted: input.omitted,
         details: input.details.clone(),
-        collapsed: input.collapsed.clone(),
+        // The agent's reason first: it knows why better than a guess.
+        collapsed: input.collapsed.clone().or_else(|| generated.map(str::to_owned)),
+        labels,
         added: 0,
         removed: 0,
         old: None,

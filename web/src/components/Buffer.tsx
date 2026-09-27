@@ -119,12 +119,26 @@ export function Buffer(props: Props) {
               {(_, i) => (
                 // Files opened for context aren't part of the diff: they only show in file view.
                 <Show when={!props.review.isContext(i)}>
+                  <Show when={props.review.groupAt(props.review.paths()[i] ?? "")}>
+                    {(g) => (
+                      <header class="mx-2.5 mt-4 mb-1 first:mt-2" data-group={g().title}>
+                        <h2 class="text-[13px] font-semibold text-fg">{g().title}</h2>
+                        <Show when={g().summary}>
+                          <p class="text-xs text-muted">{g().summary}</p>
+                        </Show>
+                      </header>
+                    )}
+                  </Show>
                   <FileSection index={i} review={props.review} view={props.view} cmd={props.cmd} />
                 </Show>
               )}
             </Index>
-            <Show when={props.review.snapshot().files.length === 0}>
-              <p class="p-6 text-center text-muted">No changes between these revisions.</p>
+            <Show when={props.review.diffCount() === 0}>
+              <p class="p-6 text-center text-muted">
+                {props.review.hiddenCount() > 0
+                  ? `All ${props.review.hiddenCount()} files are hidden by labels; show them from the files drawer.`
+                  : "No changes between these revisions."}
+              </p>
             </Show>
           </>
         }

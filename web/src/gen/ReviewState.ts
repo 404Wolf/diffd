@@ -2,6 +2,7 @@
 import type { ActivityItem } from "./ActivityItem";
 import type { Diagnostic } from "./Diagnostic";
 import type { History } from "./History";
+import type { Layout } from "./Layout";
 import type { Message } from "./Message";
 import type { Presence } from "./Presence";
 import type { Region } from "./Region";
@@ -18,6 +19,10 @@ export type ReviewState = { review: ReviewMeta, snapshot: Snapshot, threads: Arr
  * Tests and folds the agent marked.
  */
 regions: Array<Region>, 
+/**
+ * Who the agent is, and how it grouped and labelled the files.
+ */
+layout: Layout, 
 /**
  * The commits in the review's range.
  */

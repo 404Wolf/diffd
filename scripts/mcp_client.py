@@ -14,7 +14,8 @@ import urllib.request
 
 
 class Mcp:
-    def __init__(self, url: str = "http://localhost:3433/mcp") -> None:
+    def __init__(self, url: str = "http://localhost:3433/mcp", client: str = "claude-code") -> None:
+        """`client` is the name the MCP client gives: the page names the agent after it."""
         self.url = url
         self.session: str | None = None
         self.next_id = 0
@@ -22,7 +23,7 @@ class Mcp:
         init = self._rpc("initialize", {
             "protocolVersion": self.protocol,
             "capabilities": {},
-            "clientInfo": {"name": "diffd-test-agent", "version": "0"},
+            "clientInfo": {"name": client, "version": "0"},
         })
         self.protocol = init.get("protocolVersion", self.protocol)
         self.instructions = init.get("instructions", "")

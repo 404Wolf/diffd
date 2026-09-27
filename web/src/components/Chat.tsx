@@ -1,10 +1,10 @@
 import { createEffect, For, Show } from "solid-js";
+import { agentName } from "../lib/agent";
 import { composing } from "../lib/keymap";
 import { bufferEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
 import { Markdown } from "./Markdown";
-import { AGENT } from "./ThreadCard";
 
 /** A simple place to ask the agent anything that isn't about specific lines. */
 export function Chat(props: { review: Review; view: View }) {
@@ -24,7 +24,7 @@ export function Chat(props: { review: Review; view: View }) {
   return (
     // A fixed share of the side panel, whatever the conversation's length.
     <section
-      aria-label={`Chat with ${AGENT}`}
+      aria-label={`Chat with ${agentName()}`}
       class="flex h-[30%] min-h-28 flex-none flex-col border-t border-line bg-panel"
     >
       <div ref={log} class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto px-3 pt-1.5">
@@ -32,7 +32,7 @@ export function Chat(props: { review: Review; view: View }) {
           when={props.review.chat().length > 0}
           fallback={
             <p class="m-auto px-2 text-center text-[12px] text-subtle">
-              Anything not about particular lines: ask {AGENT} here.
+              Anything not about particular lines: ask {agentName()} here.
             </p>
           }
         >
@@ -66,8 +66,8 @@ export function Chat(props: { review: Review; view: View }) {
           ref={input}
           id="chat-input"
           autocomplete="off"
-          placeholder={`Ask ${AGENT} about this diff`}
-          aria-label={`Message ${AGENT}`}
+          placeholder={`Ask ${agentName()} about this diff`}
+          aria-label={`Message ${agentName()}`}
           class="h-6 w-full min-w-0 rounded-md border border-line-strong bg-bg px-2.5 text-[12.5px] focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
           onKeyDown={(e) => {
             if (composing(e)) return;

@@ -9,8 +9,8 @@ use ts_rs::TS;
 use std::collections::BTreeMap;
 
 use crate::model::{
-    ActivityItem, Anchor, CodeAnswer, CodeQuery, Diagnostic, History, Message, MessageId, Presence, Region, ReviewMeta, ShowRequest,
-    Snapshot, Thread, ThreadId,
+    ActivityItem, Anchor, CodeAnswer, CodeQuery, Diagnostic, History, Layout, Message, MessageId, Presence, Region, ReviewMeta,
+    ShowRequest, Snapshot, Thread, ThreadId,
 };
 
 /// Everything the page needs to render a review. It's embedded in the HTML so
@@ -24,6 +24,8 @@ pub struct ReviewState {
     pub threads: Vec<Thread>,
     /// Tests and folds the agent marked.
     pub regions: Vec<Region>,
+    /// Who the agent is, and how it grouped and labelled the files.
+    pub layout: Layout,
     /// The commits in the review's range.
     pub history: History,
     pub chat: Vec<Message>,
@@ -52,6 +54,10 @@ pub enum ServerMsg {
     /// The agent's region labels changed.
     Regions {
         regions: Vec<Region>,
+    },
+    /// The agent regrouped or relabelled the files.
+    Layout {
+        layout: Layout,
     },
     /// A thread was created or changed.
     Thread {

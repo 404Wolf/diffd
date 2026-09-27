@@ -74,7 +74,10 @@ impl App {
             details: Vec::new(),
             collapsed: None,
         };
-        Ok(tokio::task::spawn_blocking(move || build_file(&input, None)).await.map_err(|e| anyhow::anyhow!(e))?)
+        let mut file = tokio::task::spawn_blocking(move || build_file(&input, None)).await.map_err(|e| anyhow::anyhow!(e))?;
+        // The user asked to see it: generated or not, don't fold it away.
+        file.collapsed = None;
+        Ok(file)
     }
 
     /// The lines `start..=end` (1-based) of a file on one side: from the diff

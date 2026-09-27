@@ -13,6 +13,7 @@ import {
 } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { FileDiff } from "../gen/FileDiff";
+import type { FileGroup } from "../lib/kinds";
 import { STATUS } from "../lib/status";
 import { buildTree, parentDir, type TreeDir, type TreeFile, type TreeNode } from "../lib/tree";
 import type { Commands } from "../state/commands";
@@ -24,14 +25,24 @@ const ROW = 20;
 const OVERSCAN = 12;
 
 interface Row {
-  readonly node: TreeNode;
+  readonly node: TreeNode | GroupNode;
   readonly depth: number;
+}
+
+/** A group of related changes, in the Groups tab. */
+interface GroupNode {
+  readonly kind: "group";
+  readonly group: FileGroup;
+  /** How many of its files are shown (some may be hidden by labels). */
+  readonly count: number;
 }
 
 /**
  * The files drawer. "Diff": the changed files, GitHub style (compact folders,
  * status, a five-block +/− bar), and on request the other files in their
  * folders. "Project": every file in the repository, changes marked.
+ * "Groups": the changed files in the agent's groups of related changes, in
+ * the order the buffer shows them when reading by group.
  */
 export function FileTree(props: { review: Review; view: View; cmd: Commands; current: () => number | null }) {
   const [filter, setFilter] = createSignal("");
@@ -60,7 +71,24 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
   });
   const isOpen = (dir: TreeDir) =>
     filter() !== "" || props.view.folderOpen(mode(), dir.path, changedDirs().has(dir.path));
+  const groupRows = (): Row[] => {
+    const q = filter().toLowerCase();
+    const index = new Map(props.review.paths().map((p, i) => [p, i]));
+    return props.review.groups().flatMap((group) => {
+      const files = group.paths.flatMap((path) => {
+        const i = index.get(path);
+        return i === undefined || (q && !path.toLowerCase().includes(q))
+          ? []
+          : [{ node: { kind: "file", name: path, path, index: i } as TreeFile, depth: 1 }];
+      });
+      if (files.length === 0) return [];
+      const header: Row = { node: { kind: "group", group, count: files.length }, depth: 0 };
+      return isGroupOpen(group) ? [header, ...files] : [header];
+    });
+  };
+  const isGroupOpen = (g: FileGroup) => filter() !== "" || props.view.folderOpen("groups", g.title, true);
   const rows = createMemo(() => {
+    if (mode() === "groups") return groupRows();
     const out: Row[] = [];
     const walk = (nodes: readonly TreeNode[], depth: number) => {
       for (const node of nodes) {
@@ -152,6 +180,30 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     </div>
   );
 
+  /** A group's title: opens or closes it; its summary is the tooltip. */
+  const GroupHeader = (p: { node: GroupNode }) => {
+    const open = () => isGroupOpen(p.node.group);
+    return (
+      <button
+        type="button"
+        class="flex h-5 w-full cursor-pointer items-center gap-1 rounded px-1 text-left text-[12.5px] font-semibold whitespace-nowrap text-fg hover:bg-hover"
+        aria-expanded={open()}
+        data-tree-group={p.node.group.title}
+        title={p.node.group.summary ?? p.node.group.title}
+        onClick={() => props.view.setFolderOpen("groups", p.node.group.title, !open())}
+      >
+        <span
+          class="w-3 flex-none text-center text-[8px] text-subtle transition-transform"
+          classList={{ "-rotate-90": !open() }}
+        >
+          ▼
+        </span>
+        <span class="min-w-0 flex-1 truncate">{p.node.group.title}</span>
+        <span class="font-mono text-[10.5px] font-normal text-subtle">{p.node.count}</span>
+      </button>
+    );
+  };
+
   /** A file that isn't in the diff: opening it fetches it. */
   const Other = (p: { file: TreeFile }) => (
     <button
@@ -180,7 +232,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         title={`${p.file.path}${file().collapsed ? ` · collapsed: ${file().collapsed}` : ""}`}
         onClick={() => {
           const dir = parentDir(p.file.path);
-          if (mode() === "project") return props.cmd.openFile(p.file.index);
+          if (mode() !== "diff") return props.cmd.openFile(p.file.index);
           // Clicking the file you're on again hides its folder's other files.
           if (props.current() === p.file.index && neighbours[dir]) return showNeighbours(dir, false);
           props.cmd.openFile(p.file.index);
@@ -194,7 +246,10 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
           {props.view.flags.viewed[p.file.path] ? "✓" : STATUS[file().status].letter}
         </span>
         <span class="min-w-0 flex-1 truncate" classList={{ "text-subtle": props.view.hidden(p.file.index) }}>
-          {p.file.name}
+          <Show when={mode() === "groups"} fallback={p.file.name}>
+            <span class="text-subtle">{parentDir(p.file.path)}</span>
+            {p.file.path.slice(parentDir(p.file.path).length)}
+          </Show>
         </span>
         <span class="flex items-center gap-1.5 font-mono text-[10.5px] text-subtle">
           <Show when={unreadFiles().has(p.file.path)}>
@@ -241,7 +296,12 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     "grid size-5 cursor-pointer place-items-center rounded text-[12px] text-muted hover:bg-hover hover:text-fg";
 
   return (
-    <nav aria-label={mode() === "diff" ? "Changed files" : "Project files"} class="flex h-full flex-col">
+    <nav
+      aria-label={
+        mode() === "diff" ? "Changed files" : mode() === "groups" ? "Groups of changes" : "Project files"
+      }
+      class="flex h-full flex-col"
+    >
       <div class="flex-none px-2 pt-1.5 pb-1">
         <div
           class="mb-1.5 flex items-center gap-1 border-b border-line"
@@ -250,6 +310,12 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         >
           <Tab value="diff">
             Diff <span class="font-medium tracking-normal text-subtle">{props.review.diffCount()}</span>
+          </Tab>
+          <Tab value="groups">
+            Groups
+            <Show when={props.review.groups().length > 0}>
+              <span class="font-medium tracking-normal text-subtle"> {props.review.groups().length}</span>
+            </Show>
           </Tab>
           <Tab value="project">
             Project
@@ -286,6 +352,12 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
           class="h-6 w-full rounded border border-line bg-bg px-2 text-xs"
           onInput={(e) => setFilter(e.currentTarget.value)}
         />
+        <Labels review={props.review} />
+        <Show when={mode() === "groups" && props.review.groups().length === 0}>
+          <p class="px-1 pt-1.5 text-[11.5px] text-subtle">
+            The agent hasn't grouped these files. Ask it to group the review's changes (it can with annotate).
+          </p>
+        </Show>
         <Show when={mode() === "project" && props.review.repoFiles() === null}>
           <p class="px-1 pt-1.5 text-[11.5px] text-subtle">Listing the project's files…</p>
         </Show>
@@ -301,6 +373,9 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
               {(row) => (
                 <li style={{ "padding-left": `${row.depth * 10}px` }} class="h-5">
                   <Switch>
+                    <Match when={row.node.kind === "group" && row.node}>
+                      {(g) => <GroupHeader node={g()} />}
+                    </Match>
                     <Match when={row.node.kind === "dir" && row.node}>
                       {(dir) => <Folder dir={dir()} />}
                     </Match>
@@ -316,6 +391,37 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
         </div>
       </div>
     </nav>
+  );
+}
+
+/** Toggles that hide every file with a label: tests, generated code, the agent's own (frontend, …). */
+function Labels(props: { review: Review }) {
+  return (
+    <Show when={props.review.labelCounts().length > 0}>
+      <fieldset class="m-0 mb-1.5 flex flex-wrap gap-1 border-0 p-0" aria-label="Show or hide files by label">
+        <For each={props.review.labelCounts()}>
+          {([label, count]) => {
+            const hidden = () => props.review.hiddenLabels().includes(label);
+            return (
+              <button
+                type="button"
+                class="cursor-pointer rounded-full border px-1.5 text-[11px] leading-[18px]"
+                classList={{
+                  "border-line bg-bg text-muted hover:text-fg": !hidden(),
+                  "border-line-strong bg-inset text-subtle line-through": hidden(),
+                }}
+                aria-pressed={!hidden()}
+                data-label={label}
+                title={hidden() ? `Show the ${count} ${label} files` : `Hide the ${count} ${label} files`}
+                onClick={() => props.review.toggleLabel(label)}
+              >
+                {label} <span class="font-mono text-[10px] text-subtle">{count}</span>
+              </button>
+            );
+          }}
+        </For>
+      </fieldset>
+    </Show>
   );
 }
 

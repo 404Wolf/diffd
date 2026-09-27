@@ -125,6 +125,8 @@
   --color-add-bg: var(--add-bg);
   --color-del: var(--del);
   --color-del-bg: var(--del-bg);
+  --color-add-mark: var(--add-mark);
+  --color-del-mark: var(--del-mark);
   --color-warn: var(--warn);
   --color-live: var(--live);
   --font-sans: "IBM Plex Sans", "Inter var", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -219,6 +221,25 @@
     color: var(--add);
     background: var(--add-gutter);
     font-weight: 600;
+  }
+  /*
+   * A new (or deleted) file: one column of ordinary code, as wide as the new
+   * side of a split and centred, with a coloured line along its gutter.
+   */
+  .rows.solo {
+    --cols: 44px minmax(0, 1fr);
+    width: max(50%, min(100%, 640px));
+    margin-inline: auto;
+    border-inline: 1px solid var(--line);
+  }
+  .rows.solo .num.new {
+    border-left: 0;
+  }
+  .rows.solo-new .num.add {
+    box-shadow: inset -2px 0 var(--add-mark);
+  }
+  .rows.solo-old .num.del {
+    box-shadow: inset -2px 0 var(--del-mark);
   }
   .code {
     min-width: 0;

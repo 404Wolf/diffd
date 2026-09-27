@@ -17,9 +17,12 @@ the agent hears each comment once you pause.
 - **Talk about the code where it is.** Select lines, comment, and get a reply
   in the thread. A chat box covers everything else, and the agent can point
   you at code (it asks first; your scroll never jumps).
-- **Agent-made structure.** Notes on tricky code, generated files and
-  lockfiles collapsed, test code marked along the side, and uninteresting
-  hunks folded behind a one-line summary.
+- **Agent-made structure.** Notes on tricky code, test code marked along the
+  side, and uninteresting hunks folded behind a one-line summary. Lockfiles
+  and generated code (`.sqlx`, `@generated`, minified bundles) start folded
+  by themselves. The agent can group the files into related changes ("The
+  API", "Database") to read one group at a time, and label them (`frontend`)
+  so you can hide tests, generated code or a whole side of the stack at once.
 - **Walk the history.** A review that spans commits can be read one commit
   at a time, or across any run of them.
 - **Beyond the diff.** Open any file in the repository, comment on it, or
@@ -79,11 +82,11 @@ would do.
 
 | Tool | What it's for |
 | --- | --- |
-| `share_diff` | Start a review: `from`/`to` revisions (default: the working tree), a title and summary, notes on tricky code, files to collapse, test regions and folds. |
+| `share_diff` | Start a review: `from`/`to` revisions (default: the working tree), a title and summary, notes on tricky code, files to collapse, test regions and folds, groups of related changes and labels. |
 | `wait_for_feedback` | Wait (up to 50 s) for your comments and chat messages, batched once you pause. |
 | `reply` | Answer in a thread, where the code is. |
 | `say` | Answer in the chat. |
-| `annotate` | Add notes, test marks or folds later. |
+| `annotate` | Add notes, test marks, folds, groups or labels later. |
 | `show` | Point you at some code, in the diff or anywhere in the repository. |
 | `refresh` | Rebuild the review now (it also follows file changes by itself). |
 | `get_review` | Everything about a review, for picking a conversation back up. |
@@ -94,7 +97,7 @@ would do.
 | --- | --- |
 | `j` `k`, `]c` `[c`, `]f` `[f` | lines, hunks, files |
 | `gcc`, `V` … `gc` | comment on a line, on selected lines |
-| `r`, `space i` | reply to a thread, ask Claude anything |
+| `r`, `space i` | reply to a thread, ask the agent anything |
 | `gd`, `gt`, `K`, `grr` | definition, type definition, docs, references |
 | `w` `b` | step through symbols on the line |
 | `ctrl-o` `ctrl-i` | jump back and forward |
@@ -104,7 +107,7 @@ would do.
 | `]r` `[r`, `space c` | walk the commits |
 | `ma`, `'a` | set a mark, jump to it |
 | `vip`, `vaf`, `vi{`, `vat` | select a paragraph, function, block, tag |
-| `]a`, `]n`, `]t` | Claude's notes, unread activity, threads |
+| `]a`, `]n`, `]t` | the agent's notes, unread activity, threads |
 | `space f`, `/`, `?` | go to file, search every line, all keys |
 
 ## Configure

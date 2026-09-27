@@ -84,7 +84,8 @@ export interface Mark {
 export type RightTab = "activity" | "commits";
 
 /** The files drawer lists the diff's files, or the whole project. */
-export type TreeMode = "diff" | "project";
+/** The files drawer: the diff's tree, the whole project, or the agent's groups of related changes. */
+export type TreeMode = "diff" | "project" | "groups";
 
 /** Which folders are open in one tree mode: per folder, else `all`, else that mode's default. */
 export interface Folders {
@@ -388,13 +389,16 @@ export function createView(review: Review) {
   const [folders, setFolders] = createStore<Record<TreeMode, Folders>>({
     diff: { all: null, open: {} },
     project: { all: null, open: {} },
+    groups: { all: null, open: {} },
   });
+  // Reading by group puts the files in the agent's order.
+  createEffect(() => review.setGrouped(treeMode() === "groups"));
   /**
    * Whether a folder is open. The diff's tree starts open; the project's
    * starts with only the folders holding changes open (`hasChanges`).
    */
   const folderOpen = (mode: TreeMode, path: string, hasChanges: boolean): boolean =>
-    folders[mode].open[path] ?? folders[mode].all ?? (mode === "diff" || hasChanges);
+    folders[mode].open[path] ?? folders[mode].all ?? (mode !== "project" || hasChanges);
   const setFolderOpen = (mode: TreeMode, path: string, open: boolean) => setFolders(mode, "open", path, open);
   /** Open or close every folder of the current tree. */
   const setAllFolders = (open: boolean) => setFolders(treeMode(), { all: open, open: {} });

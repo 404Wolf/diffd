@@ -113,6 +113,8 @@ function cell(
   line: number | null,
   otherMissing: boolean,
   marks: RowMarks,
+  /** Emphasise changed tokens (not in a file that's all new or all deleted). */
+  novelty: boolean,
 ): string {
   if (text === null || line === null) return '<div class="num empty"></div><div class="code empty"></div>';
   const novel = text.novel[line];
@@ -123,12 +125,23 @@ function cell(
   if (side === "new" && marks.noted.has(n)) cls += " noted";
   if (side === "new" && marks.since.has(n)) cls += " since";
   const body = lineHtml(text.lines[line] ?? "", text.syntax[line], novel, {
-    novelClass: side === "old" ? "nv-del" : "nv-add",
+    novelClass: novelty ? (side === "old" ? "nv-del" : "nv-add") : null,
     refs: marks.refs,
   });
   const mark = marks.named?.get(`${side}:${n}`);
   const markHtml = mark ? `<i class="mk">${escapeHtml(mark)}</i>` : "";
   return `<div class="${cls}" data-n="${n}" data-side="${side}">${markHtml}</div><div class="code" data-side="${side}">${body}</div>`;
+}
+
+/**
+ * The only side a file has, when it has one: a new file (`new`) or a deleted
+ * one (`old`). It's shown as one column of ordinary code with a coloured
+ * gutter, not as a split view with an empty half and every token highlighted.
+ */
+export function soloSide(file: FileDiff): "old" | "new" | null {
+  if (file.old === null && file.new !== null) return "new";
+  if (file.new === null && file.old !== null) return "old";
+  return null;
 }
 
 /** One aligned row of the split view. */
@@ -137,11 +150,13 @@ export function rowHtml(fileIndex: number, rowIndex: number, file: FileDiff, mar
   if (!row) return "";
   const [o, n] = row;
   const chg = rowChanged(file, row) ? 1 : 0;
+  // A new or deleted file is one column of ordinary code (see `soloSide`).
+  const solo = soloSide(file);
   return (
     `<div class="row${marks.tests.has(rowIndex) ? " test" : ""}" data-f="${fileIndex}" data-r="${rowIndex}" data-ol="${o === null ? "" : o + 1}" ` +
     `data-nl="${n === null ? "" : n + 1}" data-chg="${chg}">` +
-    cell("old", file.old, o, n === null, marks) +
-    cell("new", file.new, n, o === null, marks) +
+    (solo === "new" ? "" : cell("old", file.old, o, n === null, marks, solo === null)) +
+    (solo === "old" ? "" : cell("new", file.new, n, o === null, marks, solo === null)) +
     "</div>"
   );
 }

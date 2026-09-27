@@ -22,6 +22,7 @@ fn shared(repo: &common::Repo) -> ShareRequest {
         annotations: vec![],
         collapse: vec![],
         regions: vec![],
+        ..Default::default()
     }
 }
 

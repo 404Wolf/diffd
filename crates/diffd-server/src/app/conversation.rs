@@ -1,9 +1,10 @@
 //! Threads, notes, chat and "show me": everything said about a review.
 
 use diffd_core::anchor::{Reanchor, reanchor};
+use diffd_core::kinds;
 use diffd_core::model::{
-    ActivityKind, Anchor, Author, Message, MessageId, NoteKind, Region, RegionKind, ReviewId, ShowRequest, Side, Snapshot, Thread,
-    ThreadId, ThreadKind,
+    ActivityKind, Anchor, Author, Group, Label, Message, MessageId, NoteKind, Region, RegionKind, ReviewId, ShowRequest, Side, Snapshot,
+    Thread, ThreadId, ThreadKind,
 };
 use diffd_core::protocol::ServerMsg;
 use schemars::JsonSchema;
@@ -27,6 +28,15 @@ pub struct NoteInput {
     pub kind: Option<NoteKind>,
 }
 
+/// New groups and labels for `annotate`.
+#[derive(Debug, Clone, Default)]
+pub struct LayoutInput {
+    /// Replace the groups (when not empty).
+    pub groups: Vec<Group>,
+    /// Add labels, replacing any of the same name.
+    pub labels: Vec<Label>,
+}
+
 /// A region the agent labels, as passed to `share_diff` or `annotate`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -46,6 +56,44 @@ pub struct RegionInput {
     #[serde(default)]
     pub summary: Option<String>,
 }
+
+/// Check the agent's groups and labels against the files in the diff: a
+/// pattern that names nothing is a typo. Returns the labels, names normalised.
+pub(super) fn check_layout(snap: &Snapshot, groups: &[Group], labels: Vec<Label>) -> Result<Vec<Label>> {
+    let check = |pattern: &str, owner: &str| {
+        if snap.files.iter().any(|f| kinds::matches(pattern, &f.path)) {
+            Ok(())
+        } else {
+            Err(AppError::Invalid(format!(
+                "`{pattern}` in {owner} names no file in the diff; use paths, directories or globs like `web/**`"
+            )))
+        }
+    };
+    for g in groups {
+        if g.title.trim().is_empty() {
+            return Err(AppError::Invalid("every group needs a title".into()));
+        }
+        for p in &g.files {
+            check(p, &format!("group \"{}\"", g.title))?;
+        }
+    }
+    labels
+        .into_iter()
+        .map(|l| {
+            let name = l.name.trim().to_lowercase();
+            if name.is_empty() || name.chars().count() > MAX_LABEL_CHARS {
+                return Err(AppError::Invalid(format!("label `{}`: use a short name like `frontend`", l.name)));
+            }
+            for p in &l.files {
+                check(p, &format!("label `{name}`"))?;
+            }
+            Ok(Label { name, files: l.files })
+        })
+        .collect()
+}
+
+/// Labels are toggles on a button: a word or two.
+const MAX_LABEL_CHARS: usize = 24;
 
 /// Validate region inputs against a snapshot and turn them into regions.
 pub(super) fn regions_from(snap: &Snapshot, inputs: Vec<RegionInput>) -> Result<Vec<Region>> {
@@ -353,7 +401,13 @@ impl App {
     /// The agent adds notes, test regions and folds to a review. All of it is
     /// checked first: a bad entry fails the call and nothing is saved, so a
     /// retry doesn't duplicate anything.
-    pub async fn annotate(&self, id: &ReviewId, notes: Vec<NoteInput>, regions: Vec<RegionInput>) -> Result<(usize, usize)> {
+    pub async fn annotate(
+        &self,
+        id: &ReviewId,
+        notes: Vec<NoteInput>,
+        regions: Vec<RegionInput>,
+        layout: LayoutInput,
+    ) -> Result<(usize, usize)> {
         let live = self.live(id).await?;
         // A rebuild moves regions and writes them back; don't let it overwrite these.
         let _rebuild = live.rebuild.lock().await;
@@ -371,12 +425,27 @@ impl App {
             .unwrap_or(0);
         let notes = self.prepare_notes(&snap, notes, next_order)?;
         let regions = regions_from(&snap, regions)?;
+        let labels = check_layout(&snap, &layout.groups, layout.labels)?;
+        let relayout = !layout.groups.is_empty() || !labels.is_empty();
         let (n, r) = (self.save_notes(id, &live, notes, true).await?, regions.len());
-        if r > 0 {
+        if r > 0 || relayout {
             let (_, mut spec) = self.meta(id).await?;
             spec.regions.extend(regions);
+            // New groups replace the old arrangement; a label replaces the one of its name.
+            if !layout.groups.is_empty() {
+                spec.layout.groups = layout.groups;
+            }
+            for label in labels {
+                spec.layout.labels.retain(|l| l.name != label.name);
+                spec.layout.labels.push(label);
+            }
             self.store.set_spec(id, &spec).await?;
-            App::broadcast(&live, ServerMsg::Regions { regions: spec.regions });
+            if r > 0 {
+                App::broadcast(&live, ServerMsg::Regions { regions: spec.regions });
+            }
+            if relayout {
+                App::broadcast(&live, ServerMsg::Layout { layout: spec.layout });
+            }
         }
         self.agent_seen(&live);
         Ok((n, r))

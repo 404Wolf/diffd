@@ -15,6 +15,7 @@ import type { CommitRange } from "../gen/CommitRange";
 import type { Diagnostic } from "../gen/Diagnostic";
 import type { FileDiff } from "../gen/FileDiff";
 import type { History } from "../gen/History";
+import type { Layout } from "../gen/Layout";
 import type { Message } from "../gen/Message";
 import type { MessageId } from "../gen/MessageId";
 import type { Presence } from "../gen/Presence";
@@ -26,8 +27,10 @@ import type { ShowRequest } from "../gen/ShowRequest";
 import type { Snapshot } from "../gen/Snapshot";
 import type { Thread } from "../gen/Thread";
 import type { ThreadId } from "../gen/ThreadId";
+import { setAgentName } from "../lib/agent";
 import { type FileModel, fileModel } from "../lib/diffModel";
 import { carrySpan, rangeOf, relocate, type Span } from "../lib/history";
+import { type FileGroup, labelsOf, resolveGroups } from "../lib/kinds";
 import { type Connection, connect, type Socket } from "../lib/socket";
 
 interface Conversation {
@@ -122,8 +125,59 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     });
     events.onSpan?.();
   };
-  /** The diff on screen: the whole review, or the part of its history being walked. */
+  /** The diff: the whole review, or the part of its history being walked. */
   const diff = createMemo<Snapshot>(() => spanSnapshot() ?? whole());
+
+  // -- The agent's arrangement ---------------------------------------------------------
+  // Files can be read group by group, and files with some labels (tests, say) hidden.
+  const [layout, setLayout] = createSignal<Layout>(initial.layout);
+  createEffect(() => setAgentName(layout().agent));
+  const arrangeKey = `diffd:hidden-labels:${initial.review.id}`;
+  const [hiddenLabels, setHiddenLabels] = createSignal<readonly string[]>(loadJson<string[]>(arrangeKey, []));
+  createEffect(() => saveJson(arrangeKey, hiddenLabels()));
+  const [grouped, setGrouped] = createSignal(false);
+  const labelsFor = (f: FileDiff): string[] => labelsOf(f, layout(), conv.regions);
+  /** Every label on the diff's files, with how many files carry it. */
+  const labelCounts = createMemo<[string, number][]>(() => {
+    const counts = new Map<string, number>();
+    for (const f of diff().files) for (const l of labelsFor(f)) counts.set(l, (counts.get(l) ?? 0) + 1);
+    return [...counts].sort(([a], [b]) => a.localeCompare(b));
+  });
+  const groups = createMemo<FileGroup[]>(() =>
+    resolveGroups(
+      layout(),
+      diff().files.map((f) => f.path),
+    ),
+  );
+  let arrangedFrom: Snapshot | null = null;
+  /** The diff as it's read: in the agent's groups when reading by group, without hidden files. */
+  const arranged = createMemo<Snapshot>((prev) => {
+    const base = diff();
+    const hide = new Set(hiddenLabels());
+    let files =
+      hide.size === 0 ? base.files : base.files.filter((f) => !labelsFor(f).some((l) => hide.has(l)));
+    if (grouped() && groups().length > 0) {
+      const byPath = new Map(files.map((f) => [f.path, f]));
+      files = groups().flatMap((g) => g.paths.flatMap((p) => byPath.get(p) ?? []));
+    }
+    // The same files in the same order: keep the old value, so nothing re-renders.
+    const same =
+      prev !== undefined &&
+      arrangedFrom === base &&
+      prev.files.length === files.length &&
+      prev.files.every((f, i) => f === files[i]);
+    arrangedFrom = base;
+    if (same) return prev;
+    return files.length === base.files.length && files.every((f, i) => f === base.files[i])
+      ? base
+      : { ...base, files };
+  });
+  /** The group starting at each path, when reading by group. */
+  const groupStarts = createMemo(() => {
+    const starts = new Map<string, FileGroup>();
+    if (grouped()) for (const g of groups()) if (g.paths[0]) starts.set(g.paths[0], g);
+    return starts;
+  });
 
   // -- Files outside the diff --------------------------------------------------------
   // Opened for context (from the tree, by the agent's `show`, or because a thread is
@@ -147,6 +201,14 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   const openContext = async (path: string): Promise<number | null> => {
     const at = snapshot().files.findIndex((f) => f.path === path);
     if (at >= 0) return at;
+    // In the diff but hidden by a label: going to it shows that label's files again.
+    const hiddenFile = diff().files.find((f) => f.path === path);
+    if (hiddenFile) {
+      const mine = labelsFor(hiddenFile);
+      setHiddenLabels((h) => h.filter((l) => !mine.includes(l)));
+      const shown = snapshot().files.findIndex((f) => f.path === path);
+      if (shown >= 0) return shown;
+    }
     let pending = loadingContext.get(path);
     if (!pending) {
       pending = fetchContext(path);
@@ -181,7 +243,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
 
   /** What's on screen: the diff, then any files opened for context. */
   const snapshot = createMemo<Snapshot>(() => {
-    const base = diff();
+    const base = arranged();
     const inDiff = new Set(base.files.map((f) => f.path));
     const extra = context().filter((f) => !inDiff.has(f.path));
     return extra.length === 0 ? base : { ...base, files: [...base.files, ...extra] };
@@ -199,7 +261,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     }
   });
   /** Files in the diff come first in `snapshot().files`; files opened for context follow. */
-  const diffCount = () => diff().files.length;
+  const diffCount = () => arranged().files.length;
   const range = createMemo(() => rangeOf(history(), span()));
 
   /** The server's threads with anything still in the outbox folded in, so nothing written disappears. */
@@ -246,10 +308,22 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       return anchor ? [{ ...t, anchor }] : [];
     });
   });
+  /** Tests are hidden: their line ranges fold away too. */
+  const withTestFolds = createMemo<Region[]>(() =>
+    hiddenLabels().includes("test")
+      ? [
+          ...conv.regions,
+          ...conv.regions.flatMap((r) =>
+            r.kind === "test" && r.lines !== null ? [{ ...r, kind: "fold" as const, summary: "Tests" }] : [],
+          ),
+        ]
+      : conv.regions,
+  );
   const regions = createMemo<Region[]>(() => {
     const snap = spanSnapshot();
-    if (!snap) return conv.regions;
-    return conv.regions.flatMap((r) => {
+    const all = withTestFolds();
+    if (!snap) return all;
+    return all.flatMap((r) => {
       if (!snap.files.some((f) => f.path === r.path)) return [];
       if (r.lines === null) return [r];
       const [start, end] = r.lines;
@@ -265,7 +339,17 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     return queued.length === 0 ? conv.chat : [...conv.chat, ...queued];
   });
 
-  const models = createMemo<FileModel[]>(() => snapshot().files.map(fileModel));
+  // By file, so rearranging the files doesn't rebuild every model.
+  const modelCache = new WeakMap<FileDiff, FileModel>();
+  const modelOf = (f: FileDiff): FileModel => {
+    let m = modelCache.get(f);
+    if (!m) {
+      m = fileModel(f);
+      modelCache.set(f, m);
+    }
+    return m;
+  };
+  const models = createMemo<FileModel[]>(() => snapshot().files.map(modelOf));
   const paths = createMemo(() => snapshot().files.map((f) => f.path));
   const definedNames = createMemo(() => new Set(snapshot().symbols.map((s) => s.name)));
   const notes = createMemo(() =>
@@ -288,7 +372,11 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   /** Messages that move content around go through `layout`, so the reader's place is kept. */
   const apply = (msg: ServerMsg) => {
     const moves =
-      msg.type === "state" || msg.type === "revision" || msg.type === "thread" || msg.type === "regions";
+      msg.type === "state" ||
+      msg.type === "revision" ||
+      msg.type === "thread" ||
+      msg.type === "regions" ||
+      msg.type === "layout";
     if (moves && events.layout) events.layout(() => applyNow(msg));
     else applyNow(msg);
   };
@@ -304,6 +392,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
             refreshWorktreeSpan();
           }
           followHistory(state.history);
+          if (!sameJson(layout(), state.layout)) setLayout(state.layout);
           setConv({
             diagnostics: reconcile(state.diagnostics)(conv.diagnostics),
             threads: reconcile(state.threads, { key: "id" })(conv.threads),
@@ -329,6 +418,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       .with({ type: "history" }, ({ history: next }) => followHistory(next))
       .with({ type: "thread" }, ({ thread }) => upsertThread(thread))
       .with({ type: "regions" }, ({ regions }) => setConv("regions", regions))
+      .with({ type: "layout" }, ({ layout: next }) => setLayout(next))
       .with({ type: "chat" }, ({ message }) =>
         setConv(
           "chat",
@@ -416,6 +506,20 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     loadingSpan,
     showSpan,
     regions,
+    layout,
+    groups,
+    /** The group that starts at this path, when reading by group. */
+    groupAt: (path: string): FileGroup | undefined => groupStarts().get(path),
+    grouped,
+    setGrouped,
+    labelsFor,
+    labelCounts,
+    hiddenLabels,
+    /** Show or hide the files with a label. */
+    toggleLabel: (label: string) =>
+      setHiddenLabels((h) => (h.includes(label) ? h.filter((l) => l !== label) : [...h, label])),
+    /** How many of the diff's files are hidden by labels. */
+    hiddenCount: () => diff().files.length - arranged().files.length,
     conv,
     connection,
     error,
@@ -483,3 +587,20 @@ async function fetchRange(reviewId: string, range: CommitRange): Promise<Snapsho
 }
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Unavailable storage just means the choice doesn't persist.
+  }
+}

@@ -298,7 +298,9 @@ export function createCommands(review: Review, view: View) {
     }
   };
 
-  const order = () => treeOrder(buildTree(review.paths()));
+  /** The order `]f` walks: the tree's, or the buffer's when reading by group. */
+  const order = () =>
+    review.grouped() ? review.paths().map((_, i) => i) : treeOrder(buildTree(review.paths()));
   /**
    * The last file `]f` scrolled to that has no rows to put the cursor on (a
    * binary file), with the file the cursor stayed in, so the next `]f` goes on

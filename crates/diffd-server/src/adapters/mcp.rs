@@ -6,7 +6,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use diffd_core::model::{Author, ReviewId, ShowRequest, Side, ThreadId, ThreadKind};
+use diffd_core::model::{Author, Group, Label, ReviewId, ShowRequest, Side, ThreadId, ThreadKind};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::service::RequestContext;
@@ -14,13 +14,14 @@ use rmcp::{ErrorData, RoleServer, ServerHandler, tool, tool_handler, tool_router
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::app::{App, AppError, NoteInput, RegionInput, ShareRequest};
+use crate::app::{App, AppError, LayoutInput, NoteInput, RegionInput, ShareRequest};
 
 const INSTRUCTIONS: &str = "\
 diffd shows your code changes to the user as a live review in their browser, and lets you talk about them there.
 
 When you've made a meaningful change, or the user asks to review something, call share_diff and give the user the url.
 Annotate the parts a reviewer would trip over, in plain language. Mark generated files, lockfiles and vendored code to collapse.
+For a larger diff, group the files into related changes and label the ones a reviewer may want to hide (e.g. `frontend`).
 When your work spans several commits, share the whole range (e.g. from `main`): the user can step through it one commit at a
 time. Write commit messages a reviewer can follow. Comments made on one commit tell you which (`commented_on`).
 
@@ -31,6 +32,29 @@ it can open any file in the repository. Comments can be on those files too.
 Keep calling wait_for_feedback while you're in a review conversation. When you finish your turn instead, diffd can still reach
 you: with its hooks set up (`diffd setup claude` / `diffd setup codex`), a message saying \"New feedback on your diffd review\"
 arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.";
+
+/// What the page calls the agent, from the name its MCP client gives
+/// (`claude-code`, `codex-mcp-client`, …).
+fn agent_name(client: &str) -> Option<String> {
+    let lower = client.to_lowercase();
+    let known = [
+        ("claude", "Claude"),
+        ("codex", "Codex"),
+        ("gemini", "Gemini"),
+        ("cursor", "Cursor"),
+        ("opencode", "opencode"),
+        ("goose", "Goose"),
+    ];
+    if let Some((_, name)) = known.iter().find(|(key, _)| lower.contains(key)) {
+        return Some((*name).to_owned());
+    }
+    // Something else: its own name, tidied ("my-agent" → "My agent").
+    let words = client.split(['-', '_']).filter(|w| !w.is_empty() && !["mcp", "client", "cli", "rs"].contains(&w.to_lowercase().as_str()));
+    let name = words.collect::<Vec<_>>().join(" ");
+    let mut chars = name.chars();
+    let first = chars.next()?;
+    Some(first.to_uppercase().chain(chars).take(24).collect())
+}
 
 /// The longest `wait_for_feedback` waits. Agents give up on a tool call after
 /// their own timeout (60 s in Claude Code and Codex by default); feedback
@@ -131,6 +155,12 @@ pub struct AnnotateParams {
     /// Test and fold regions, as in share_diff.
     #[serde(default)]
     pub regions: Vec<RegionInput>,
+    /// Regroup the files, as in share_diff: replaces the groups given before.
+    #[serde(default)]
+    pub groups: Vec<Group>,
+    /// Label files, as in share_diff: replaces an earlier label of the same name.
+    #[serde(default)]
+    pub labels: Vec<Label>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -207,8 +237,17 @@ you're unsure about. Skip the obvious. 1-4 plain sentences each, tight line rang
 Collapse generated code, lockfiles, snapshots and vendored files with `collapse` so the user doesn't scroll past them. \
 Use `regions` to mark test code (`kind: \"test\"`, whole files or line ranges; the page shows a line along them) and to \
 fold mechanical changes such as renames, moved code or reformatting (`kind: \"fold\"`, with a one-sentence `summary` \
-of what changed there), so the user reads the interesting parts first.")]
-    async fn share_diff(&self, Parameters(req): Parameters<ShareRequest>) -> Result<CallToolResult, ErrorData> {
+of what changed there), so the user reads the interesting parts first. \
+When the diff has more than a handful of files, `groups` them by what they're for (\"The API\", \"Database\", \"Tests\"), \
+in the order to read them, and `labels` the files a reviewer may want to hide, e.g. `frontend` for web client code. \
+Tests, lockfiles and generated code (`.sqlx`, `@generated`, minified) are recognised by themselves; mark others \
+with `collapse` or the `generated` label.")]
+    async fn share_diff(
+        &self,
+        Parameters(mut req): Parameters<ShareRequest>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        req.agent = context.peer.peer_info().and_then(|info| agent_name(&info.client_info.name));
         let result = try_app!(self.app.share(req).await);
         self.remember(&ReviewId(result.review_id.clone()));
         ok(&result)
@@ -242,10 +281,12 @@ Keep it short; if you changed code because of the comment, say what you changed.
     }
 
     #[tool(description = "Add notes to the review, anchored to lines: explanations of tricky code, the reason for a \
-decision, risks, or questions for the user. Same rules as share_diff's annotations. Can also add test and fold `regions`.")]
+decision, risks, or questions for the user. Same rules as share_diff's annotations. Can also add test and fold `regions`, \
+regroup the files (`groups`) and label them (`labels`).")]
     async fn annotate(&self, Parameters(p): Parameters<AnnotateParams>) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
-        let (n, r) = try_app!(self.app.annotate(&id, p.annotations, p.regions).await);
+        let layout = LayoutInput { groups: p.groups, labels: p.labels };
+        let (n, r) = try_app!(self.app.annotate(&id, p.annotations, p.regions, layout).await);
         ok(&serde_json::json!({ "notes_added": n, "regions_added": r }))
     }
 
@@ -258,7 +299,7 @@ user's chat messages, or telling them what you're doing. Refer to code as `path:
     }
 
     #[tool(description = "Point the user at some code. The page shows a small prompt \
-(\"Claude wants to show you something\") and jumps there only if they accept. Use it when the user asks where \
+(\"… wants to show you something\") and jumps there only if they accept. Use it when the user asks where \
 something is, or to bring in code that explains the change. Any file in the repository works, not only files in the \
 diff: others open as plain files the user can read and comment on.")]
     async fn show(&self, Parameters(p): Parameters<ShowParams>) -> Result<CallToolResult, ErrorData> {

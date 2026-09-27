@@ -2,16 +2,16 @@
 
 use std::path::PathBuf;
 
-use diffd_core::model::{ActivityKind, ReviewId, ReviewMeta, ReviewStatus};
+use diffd_core::model::{ActivityKind, Group, Label, Layout, ReviewId, ReviewMeta, ReviewStatus};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::conversation::{NoteInput, RegionInput, regions_from};
+use super::conversation::{NoteInput, RegionInput, check_layout, regions_from};
 use super::rebuild::{Built, build_snapshot, read_and_build};
 use super::{App, AppError, Result, new_id};
 use crate::adapters::store::{CollapseRule, ReviewSpec};
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ShareRequest {
     /// Absolute path of the repository or worktree (normally your working directory).
@@ -47,6 +47,19 @@ pub struct ShareRequest {
     /// mechanical or uninteresting changes behind a one-sentence summary.
     #[serde(default)]
     pub regions: Vec<RegionInput>,
+    /// For a diff of more than a handful of files: group them by what they're for, in the order to read
+    /// them, e.g. "The limiter API", "Storage", "Tests". Every file belongs to the first group naming it;
+    /// the rest go under "Other changes". The user can read the review group by group.
+    #[serde(default)]
+    pub groups: Vec<Group>,
+    /// Labels the user can hide files by, e.g. `frontend` for the web client or `docs`. Tests and generated
+    /// files are recognised by themselves; label any the paths don't give away (`test`, `generated`).
+    #[serde(default)]
+    pub labels: Vec<Label>,
+    /// The agent's name, from its MCP client (not a tool argument).
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -92,6 +105,7 @@ impl App {
             collapse: req.collapse.clone(),
             watch: req.to.is_none(),
             regions: Vec::new(),
+            layout: Layout::default(),
         };
         let (source, engine, spec2) = (self.repo.clone(), self.engine.clone(), spec.clone());
         let (from, to) = (req.from.clone(), req.to.clone());
@@ -106,6 +120,8 @@ impl App {
         spec.base = Some(resolved.base);
         // Check everything the agent sent before saving anything: a failed share leaves no review behind.
         spec.regions = regions_from(&snap, req.regions)?;
+        let labels = check_layout(&snap, &req.groups, req.labels)?;
+        spec.layout = Layout { agent: req.agent, groups: req.groups, labels };
         let notes = self.prepare_notes(&snap, req.annotations, 0)?;
         let id = ReviewId(new_id(""));
         let now = self.now();

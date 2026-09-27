@@ -26,6 +26,9 @@ pub struct ReviewSpec {
     /// Tests and folds the agent marked, following their lines across revisions.
     #[serde(default)]
     pub regions: Vec<diffd_core::model::Region>,
+    /// Who the agent is, and how it grouped and labelled the files.
+    #[serde(default)]
+    pub layout: diffd_core::model::Layout,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

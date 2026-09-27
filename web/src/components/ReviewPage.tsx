@@ -23,6 +23,7 @@ import { Drawer } from "./Drawer";
 import { FileTree } from "./FileTree";
 import { HoverCard, usePaintDiagnostics } from "./Hover";
 import { RightPanel } from "./RightPanel";
+import { ReplyToasts } from "./Toasts";
 
 /** Wait this long for the rest of a key sequence (`g` → `g d`). */
 const SEQUENCE_TIMEOUT_MS = 1000;
@@ -223,7 +224,8 @@ export function ReviewPage(props: { state: ReviewState }) {
         <Drawer side="left" label="Files" state={v.drawers.left} onChange={(s) => v.setDrawers("left", s)}>
           <FileTree review={review} view={v} cmd={cmd} current={currentFile} />
         </Drawer>
-        <div class="flex min-w-0 flex-1 flex-col">
+        <div class="relative flex min-w-0 flex-1 flex-col">
+          <ReplyToasts review={review} cmd={cmd} />
           <main id="panes" class="flex min-h-0 flex-1">
             <For each={v.panes()}>
               {(pane, i) => (

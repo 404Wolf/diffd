@@ -2,12 +2,11 @@ import { For, Show } from "solid-js";
 import { match } from "ts-pattern";
 import type { Message } from "../gen/Message";
 import type { Thread } from "../gen/Thread";
+import { agentName } from "../lib/agent";
 import { ago } from "../lib/time";
 import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";
 import { Markdown } from "./Markdown";
-
-export const AGENT = "Claude";
 
 const range = (t: Thread) =>
   t.anchor.start === t.anchor.end ? `L${t.anchor.start}` : `L${t.anchor.start}–${t.anchor.end}`;
@@ -16,8 +15,8 @@ const range = (t: Thread) =>
 function delivery(msg: Message, thread: Thread, review: Review): string {
   if (review.isPending(msg.id)) return review.connection() === "live" ? "Sending…" : "Queued offline";
   const later = thread.messages.slice(thread.messages.indexOf(msg) + 1);
-  if (later.some((m) => m.author === "agent")) return `${AGENT} replied`;
-  return msg.deliveredAt === null ? "Sent" : `Seen by ${AGENT}`;
+  if (later.some((m) => m.author === "agent")) return `${agentName()} replied`;
+  return msg.deliveredAt === null ? "Sent" : `Seen by ${agentName()}`;
 }
 
 function Avatar(props: { agent: boolean }) {
@@ -85,7 +84,7 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
           >
             <Avatar agent={m.author === "agent"} />
             <div class="flex flex-wrap items-baseline gap-x-2 text-xs">
-              <b class="font-semibold">{m.author === "agent" ? AGENT : "You"}</b>
+              <b class="font-semibold">{m.author === "agent" ? agentName() : "You"}</b>
               <span class="text-[11px] text-subtle">{ago(m.createdAt)}</span>
               <Show when={m.author === "user"}>
                 <span

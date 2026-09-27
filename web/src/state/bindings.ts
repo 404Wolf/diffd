@@ -87,7 +87,7 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     help: ["Review", "Next / previous file, skipping collapsed"],
   },
   { keys: "[ f", run: ({ cmd }) => cmd.fileJump(-1) },
-  { keys: "] a", run: ({ cmd }) => cmd.noteJump(1), help: ["Review", "Claude's notes, in order"] },
+  { keys: "] a", run: ({ cmd }) => cmd.noteJump(1), help: ["Review", "The agent's notes, in order"] },
   { keys: "[ a", run: ({ cmd }) => cmd.noteJump(-1) },
   { keys: "] t", run: ({ cmd }) => cmd.threadJump(1), help: ["Review", "Next / previous thread"] },
   { keys: "[ t", run: ({ cmd }) => cmd.threadJump(-1) },
@@ -167,7 +167,7 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   {
     keys: "space i",
     run: ({ cmd }) => cmd.focusChat(),
-    help: ["Talk", "Ask Claude anything"],
+    help: ["Talk", "Ask the agent anything"],
   },
   // Text objects, in visual mode: i = inside, a = around (vip, vaf, vi{, …).
   ...TEXT_OBJECTS.flatMap(([key, object], n): Binding<Ctx>[] =>

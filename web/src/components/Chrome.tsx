@@ -1,6 +1,7 @@
 import { Dialog } from "@kobalte/core/dialog";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { match } from "ts-pattern";
+import { agentName } from "../lib/agent";
 import { diagnosticsOn } from "../lib/code";
 import { spanLabel } from "../lib/history";
 import { composing } from "../lib/keymap";
@@ -9,7 +10,6 @@ import type { Commands } from "../state/commands";
 import { bufferEl, hunkStarts, rowEl, rowPosition, rowsVersion } from "../state/dom";
 import type { Review } from "../state/review";
 import type { PickerItem, View } from "../state/view";
-import { AGENT } from "./ThreadCard";
 
 export function TopBar(props: { review: Review }) {
   const meta = () => props.review.meta();
@@ -36,9 +36,9 @@ export function TopBar(props: { review: Review }) {
         dot: "bg-subtle",
         text: `Connecting…${queued()}`,
       }))
-      .with(["live", "listening"], () => ({ dot: "bg-live", text: `${AGENT} is listening` }))
-      .with(["live", "working"], () => ({ dot: "bg-warn animate-pulse", text: `${AGENT} is working` }))
-      .with(["live", "away"], () => ({ dot: "bg-subtle", text: `${AGENT} hasn't checked in` }))
+      .with(["live", "listening"], () => ({ dot: "bg-live", text: `${agentName()} is listening` }))
+      .with(["live", "working"], () => ({ dot: "bg-warn animate-pulse", text: `${agentName()} is working` }))
+      .with(["live", "away"], () => ({ dot: "bg-subtle", text: `${agentName()} hasn't checked in` }))
       .exhaustive();
   return (
     <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-panel px-2.5 py-1">
@@ -181,7 +181,7 @@ export function Nudge(props: { view: View; cmd: Commands }) {
       {(req) => (
         <div class="absolute top-2.5 left-1/2 z-[15] flex w-[min(520px,calc(100%-24px))] -translate-x-1/2 flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-lg border border-accent-line bg-bg py-1.5 pr-2 pl-3 text-[12.5px] shadow-pop">
           <div class="min-w-0 flex-[1_1_240px]">
-            <b class="font-semibold">✦ {AGENT} wants to show you something</b>
+            <b class="font-semibold">✦ {agentName()} wants to show you something</b>
             <div class="truncate font-mono text-[11px] text-muted">
               {req().path.split("/").pop()}:{req().start} · {req().message}
             </div>

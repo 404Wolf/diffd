@@ -17,7 +17,7 @@ use diffd_core::model::{History, Millis, Presence, ReviewId, ReviewMeta, Snapsho
 use diffd_core::protocol::{ReviewState, ServerMsg};
 use tokio::sync::{Notify, broadcast};
 
-pub use conversation::{NoteInput, RegionInput};
+pub use conversation::{LayoutInput, NoteInput, RegionInput};
 pub use feedback::{FeedbackBatch, FeedbackItem, ThreadMessage};
 pub use history::RangeEnd;
 pub use share::{ShareRequest, ShareResult};
@@ -226,6 +226,7 @@ impl App {
             snapshot: (*Self::snapshot(&live)).clone(),
             threads: self.store.threads(id).await?,
             regions: spec.regions,
+            layout: spec.layout,
             history,
             chat: self.store.chat(id).await?,
             activity: self.store.activity(id).await?,

@@ -15,7 +15,7 @@ import { carrySpan, locate, points, rangeOf, spanLabel, step, steps } from "./hi
 import { JumpList } from "./jumps";
 import { KeyEngine, keyToken } from "./keymap";
 import { renderMarkdown, resolveRef } from "./markdown";
-import { changeMarks, lineHtml, rowHtml } from "./render";
+import { changeMarks, lineHtml, rowHtml, soloSide } from "./render";
 import { CLASS_KINDS, definition, FUNCTION_KINDS, pair, paragraph, tag } from "./textObjects";
 import { buildTree, parentDir, treeOrder } from "./tree";
 
@@ -27,6 +27,7 @@ const file = (): FileDiff => ({
   omitted: null,
   details: [],
   collapsed: null,
+  labels: [],
   added: 2,
   removed: 1,
   old: { lines: ["a", "let x = 1;", "c"], syntax: [[], [0, 3, 0], []], novel: [[], [8, 9], []] },
@@ -81,6 +82,31 @@ describe("rows", () => {
     );
     expect(html).toContain('class="num old del" data-n="2"');
     expect(html).toContain('class="num new add noted" data-n="2"');
+  });
+  it("shows a new file as one column of ordinary code", () => {
+    const added: FileDiff = {
+      ...file(),
+      status: "added",
+      old: null,
+      rows: [
+        [null, 0],
+        [null, 1],
+        [null, 2],
+        [null, 3],
+      ],
+    };
+    expect(soloSide(added)).toBe("new");
+    expect(soloSide(file())).toBe(null);
+    const html = rowHtml(0, 1, added, {
+      noted: new Set(),
+      since: new Set(),
+      refs: new Set(),
+      tests: new Set(),
+    });
+    expect(html).not.toContain('data-side="old"');
+    expect(html).not.toContain("empty");
+    expect(html).not.toContain("nv-add");
+    expect(html).toContain('class="num new add" data-n="2"');
   });
   it("marks changes for file view", () => {
     expect(changeMarks(file(), "new")).toEqual(["", "mod", "add", ""]);

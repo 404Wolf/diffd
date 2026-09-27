@@ -1,17 +1,17 @@
 import { For, Show } from "solid-js";
 import { match } from "ts-pattern";
 import type { ActivityItem } from "../gen/ActivityItem";
+import { agentName } from "../lib/agent";
 import { ago } from "../lib/time";
 import type { Commands } from "../state/commands";
 import { fromAgent, type Review } from "../state/review";
-import { AGENT } from "./ThreadCard";
 
 const base = (path: string) => path.split("/").pop() ?? path;
 
 function describe(item: ActivityItem): { what: string; where: string } {
   return match(item.kind)
     .with({ type: "opened" }, ({ notes, collapsed }) => ({
-      what: `${AGENT} opened the review`,
+      what: `${agentName()} opened the review`,
       where: [notes ? `${notes} notes` : "", collapsed ? `${collapsed} collapsed` : ""]
         .filter(Boolean)
         .join(" · "),
@@ -21,20 +21,20 @@ function describe(item: ActivityItem): { what: string; where: string } {
       where: `${base(path)}:${line}`,
     }))
     .with({ type: "agentReplied" }, ({ path, line }) => ({
-      what: `${AGENT} replied`,
+      what: `${agentName()} replied`,
       where: `${base(path)}:${line}`,
     }))
     .with({ type: "agentNoted" }, ({ path, line }) => ({
-      what: `${AGENT} added a note`,
+      what: `${agentName()} added a note`,
       where: `${base(path)}:${line}`,
     }))
     .with({ type: "revision" }, ({ revision, paths }) => ({
       what: `Revision ${revision} · ${paths.length} file${paths.length === 1 ? "" : "s"}`,
       where: paths.map(base).slice(0, 3).join(" · "),
     }))
-    .with({ type: "agentSaid" }, () => ({ what: `${AGENT} wrote in the chat`, where: "" }))
+    .with({ type: "agentSaid" }, () => ({ what: `${agentName()} wrote in the chat`, where: "" }))
     .with({ type: "show" }, ({ request }) => ({
-      what: `${AGENT} wants to show you something`,
+      what: `${agentName()} wants to show you something`,
       where: `${base(request.path)}:${request.start}`,
     }))
     .exhaustive();

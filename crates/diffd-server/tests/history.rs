@@ -20,6 +20,7 @@ fn request(repo: &common::Repo, from: &str, to: Option<&str>) -> ShareRequest {
         annotations: vec![],
         collapse: vec![],
         regions: vec![],
+        ..Default::default()
     }
 }
 

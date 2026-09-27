@@ -20,8 +20,10 @@ mkdirSync(shots, { recursive: true });
 
 // -- A minimal MCP client (Streamable HTTP) playing the agent ------------------
 class Agent {
-  constructor(url) {
+  /** `client` is the MCP client's name, which the page names the agent after. */
+  constructor(url, client = "claude-code") {
     this.url = url;
+    this.client = client;
     this.id = 0;
     this.session = null;
   }
@@ -39,7 +41,7 @@ class Agent {
     return JSON.parse(text);
   }
   async init() {
-    await this.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e-agent", version: "0" } });
+    await this.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: this.client, version: "0" } });
     await this.post({ jsonrpc: "2.0", method: "notifications/initialized" });
   }
   async rpc(method, params) {
@@ -975,6 +977,119 @@ try {
       check(onScreen, "clicking “Claude replied” shows the reply");
     }
     await page.locator(".buffer.focused").focus();
+  });
+
+  await section("Codex: groups of related changes, labels, generated files, reply toasts", async () => {
+    // Another agent shares the same changes, grouped and labelled.
+    const codex = new Agent(`${base}/mcp`, "codex-mcp-client");
+    await codex.init();
+    const shared = await codex.call("share_diff", {
+      repo_path: repo,
+      from: "main",
+      title: "Burst capacity, grouped",
+      groups: [
+        { title: "The limiter", summary: "Burst capacity and how long to wait.", files: ["src/lib.rs", "src/bucket.rs"] },
+        { title: "The web badge", files: ["web/**"] },
+        { title: "Storage", files: ["db"] },
+      ],
+      labels: [{ name: "frontend", files: ["web"] }],
+    });
+    check(shared.collapsed.includes("Cargo.lock"), "a lockfile starts collapsed without being asked");
+    await page.goto(shared.url);
+    await page.waitForSelector(".buffer.focused [data-file-section]");
+    check((await page.getByRole("region", { name: "Chat with Codex" }).count()) === 1, "the page calls the agent Codex");
+    check(!(await page.locator("body").innerText()).includes("Claude"), "and never Claude");
+
+    // New and deleted files: one column of ordinary code, centred, with a coloured header.
+    const solo = await page.evaluate(() => {
+      const secs = [...document.querySelectorAll(".buffer.focused [data-file-section]")];
+      const added = secs.find((s) => s.querySelector("[data-file-head]").textContent.includes("New file"));
+      const deleted = secs.find((s) => s.querySelector('[data-path="src/legacy.rs"]'));
+      const rows = added?.querySelector(".rows");
+      const sec = added?.getBoundingClientRect();
+      const r = rows?.getBoundingClientRect();
+      return {
+        path: added?.querySelector("[data-path]").dataset.path,
+        solo: rows?.classList.contains("solo-new"),
+        oldCells: added?.querySelectorAll('[data-side="old"], .empty').length,
+        novel: added?.querySelectorAll(".nv-add").length,
+        centred: r && Math.abs(r.left - sec.left - (sec.right - r.right)) < 4 && r.width < sec.width * 0.7,
+        deleted: deleted?.querySelector("[data-file-head]").textContent.includes("Deleted"),
+      };
+    });
+    check(solo.path && solo.solo && solo.oldCells === 0, `a new file (${solo.path}) is one column, without an empty old side`);
+    check(solo.novel === 0, "its code is highlighted as code, not all green");
+    check(solo.centred, "centred, as wide as the new side of a split");
+    check(solo.deleted, "a deleted file says so in its header");
+
+    // Labels: tests (found by path), generated (found by path) and the agent's frontend.
+    const chip = (label) => page.locator(`[data-label="${label}"]`);
+    check((await chip("test").innerText()).includes("2"), "a test toggle counts the two test files");
+    check((await chip("frontend").count()) === 1 && (await chip("generated").count()) === 1, "with frontend and generated toggles");
+    const sections = () => page.locator(".buffer.focused [data-file-section] [data-path]").evaluateAll((els) => els.map((e) => e.dataset.path));
+    const all = await sections();
+    await chip("test").click();
+    let now = await sections();
+    check(!now.includes("tests/limiter.rs") && !now.includes("web/src/api.test.ts") && now.length === all.length - 2, "hiding tests takes their files out of the buffer");
+    check((await page.locator('[data-tree-file="tests/limiter.rs"]').count()) === 0, "and out of the tree");
+    await chip("frontend").click();
+    now = await sections();
+    check(!now.some((p) => p.startsWith("web/")), "hiding frontend takes out the web files");
+    await chip("frontend").click();
+    await chip("test").click();
+    check((await sections()).length === all.length, "showing them again brings everything back");
+
+    // Groups: the buffer reads group by group, with headers, and ]f follows.
+    await page.getByRole("tab", { name: /^Groups/ }).click();
+    const groups = await page.locator("[data-tree-group]").evaluateAll((els) => els.map((e) => e.dataset.treeGroup));
+    check(JSON.stringify(groups) === JSON.stringify(["The limiter", "The web badge", "Storage", "Other changes"]), `the Groups tab lists the agent's groups, then the rest (${groups.join(", ")})`);
+    const headers = await page.locator(".buffer.focused header[data-group]").evaluateAll((els) => els.map((e) => e.dataset.group));
+    check(headers.length === 4 && headers[0] === "The limiter", "the buffer has a header per group");
+    const order = await sections();
+    check(order[0] === "src/lib.rs" && order[1] === "src/bucket.rs" && order[2].startsWith("web/"), `files follow the groups (${order.slice(0, 3).join(", ")})`);
+    check(order.indexOf("db/schema.sql") < order.indexOf("Cargo.lock"), "ungrouped files come last");
+    await page.locator(".buffer.focused").focus();
+    await page.locator(".buffer.focused").evaluate((b) => b.scrollTo({ top: 0 }));
+    await keys(page, "g", "g");
+    await keys(page, "]", "f");
+    check((await status(page)).includes("bucket.rs"), "]f goes to the next file in the group");
+    await keys(page, "]", "f");
+    const next = await status(page);
+    check(/quota\.ts|QuotaBadge\.tsx|api\.ts|badge\.css/.test(next), `and on into the next group (${next.slice(0, 40)})`);
+    await page.getByRole("tab", { name: /^Diff/ }).click();
+    check((await page.locator(".buffer.focused header[data-group]").count()) === 0, "the Diff tab reads in tree order again");
+
+    // Codex answers a comment: a toast in the corner, which goes to the reply.
+    await cursorTo(page, "src/bucket.rs", 1);
+    await keys(page, "g", "c", "c");
+    await page.keyboard.type("Is the burst per client?");
+    await page.keyboard.press("Control+Enter");
+    const got = await codex.call("wait_for_feedback", { review_id: shared.review_id, timeout_seconds: 20 });
+    check(got.items.length === 1, "Codex receives the comment");
+    await page.locator(".buffer.focused").evaluate((b) => b.scrollTo({ top: 0 }));
+    await codex.call("reply", { thread_id: got.items[0].thread_id, body: "Yes: each client has its own bucket, burst included." });
+    const toast = page.locator("[data-toast]").first();
+    await toast.waitFor({ timeout: 5000 });
+    check((await toast.innerText()).includes("Codex replied"), "a toast says Codex replied");
+    check((await toast.innerText()).includes("each client has its own bucket"), "with the start of the reply");
+    const box = await toast.boundingBox();
+    const vp = page.viewportSize();
+    check(box.x + box.width > vp.width * 0.5 && box.y + box.height > vp.height * 0.6, "in the bottom right");
+    await shot(page, "reply-toast");
+    await toast.getByRole("button", { name: /Go to the reply|Codex replied/ }).first().click();
+    await sleep(600);
+    const onScreen = await page.evaluate(() => {
+      const buf = document.querySelector(".buffer.focused").getBoundingClientRect();
+      return [...document.querySelectorAll("[data-thread] [data-message]")].some((m) => {
+        const r = m.getBoundingClientRect();
+        return m.textContent.includes("each client has its own bucket") && r.top >= buf.top && r.bottom <= buf.bottom;
+      });
+    });
+    check(onScreen, "clicking the toast shows the reply");
+    check((await page.locator("[data-toast]").count()) === 0, "and the toast goes");
+    await codex.call("say", { review_id: shared.review_id, body: "I'll add a test for it." });
+    await page.locator('[data-toast="agentSaid"]').waitFor({ timeout: 5000 });
+    check((await page.locator('[data-toast="agentSaid"]').innerText()).includes("in the chat"), "chat answers get a toast too");
   });
 
   await section("Home page", async () => {

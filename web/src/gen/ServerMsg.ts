@@ -3,6 +3,7 @@ import type { ActivityItem } from "./ActivityItem";
 import type { CodeAnswer } from "./CodeAnswer";
 import type { Diagnostic } from "./Diagnostic";
 import type { History } from "./History";
+import type { Layout } from "./Layout";
 import type { Message } from "./Message";
 import type { MessageId } from "./MessageId";
 import type { Presence } from "./Presence";
@@ -13,4 +14,4 @@ import type { ShowRequest } from "./ShowRequest";
 import type { Snapshot } from "./Snapshot";
 import type { Thread } from "./Thread";
 
-export type ServerMsg = { "type": "state", state: ReviewState, } | { "type": "revision", review: ReviewMeta, snapshot: Snapshot, } | { "type": "regions", regions: Array<Region>, } | { "type": "thread", thread: Thread, } | { "type": "chat", message: Message, } | { "type": "activity", item: ActivityItem, } | { "type": "presence", presence: Presence, } | { "type": "diagnostics", path: string, diagnostics: Array<Diagnostic>, } | { "type": "code", requestId: number, answer: CodeAnswer, } | { "type": "history", history: History, } | { "type": "show", request: ShowRequest, } | { "type": "ack", id: MessageId, } | { "type": "error", message: string, } | { "type": "gone", message: string, };
+export type ServerMsg = { "type": "state", state: ReviewState, } | { "type": "revision", review: ReviewMeta, snapshot: Snapshot, } | { "type": "regions", regions: Array<Region>, } | { "type": "layout", layout: Layout, } | { "type": "thread", thread: Thread, } | { "type": "chat", message: Message, } | { "type": "activity", item: ActivityItem, } | { "type": "presence", presence: Presence, } | { "type": "diagnostics", path: string, diagnostics: Array<Diagnostic>, } | { "type": "code", requestId: number, answer: CodeAnswer, } | { "type": "history", history: History, } | { "type": "show", request: ShowRequest, } | { "type": "ack", id: MessageId, } | { "type": "error", message: string, } | { "type": "gone", message: string, };

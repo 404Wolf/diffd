@@ -7,6 +7,7 @@ pub mod build;
 pub mod difft;
 pub mod feedback;
 pub mod highlight;
+pub mod kinds;
 pub mod lang;
 pub mod linediff;
 pub mod model;

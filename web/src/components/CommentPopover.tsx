@@ -1,11 +1,11 @@
 import { createEffect, createSignal, onCleanup, onMount, Show, untrack } from "solid-js";
 import { match } from "ts-pattern";
+import { agentName } from "../lib/agent";
 import { composing } from "../lib/keymap";
 import type { Commands } from "../state/commands";
 import { bufferEl, rowEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
-import { AGENT } from "./ThreadCard";
 
 /**
  * The comment composer: a small popover right under what you selected. It
@@ -144,13 +144,13 @@ export function CommentPopover(props: {
           <textarea
             ref={input}
             aria-label="Comment"
-            placeholder={`What should ${AGENT} know about this code?`}
+            placeholder={`What should ${agentName()} know about this code?`}
             class="block min-h-16 w-full resize-y rounded-md border border-line-strong bg-bg px-2 py-1.5 text-[12.5px] leading-normal focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
             onKeyDown={onKey}
             onInput={saveDraft}
           />
           <div class="mt-1.5 flex items-center gap-1.5 text-[11px] text-subtle">
-            <span>{AGENT} sees it once you pause</span>
+            <span>{agentName()} sees it once you pause</span>
             <span class="flex-1" />
             <button
               type="button"

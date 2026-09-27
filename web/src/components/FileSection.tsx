@@ -4,7 +4,7 @@ import type { Omitted } from "../gen/Omitted";
 import type { Thread } from "../gen/Thread";
 import { type Block, blocks, gapContext, regionRows, rowOf } from "../lib/diffModel";
 import { announceRows, lazyChunks, placeholderHtml } from "../lib/lazyRows";
-import { escapeHtml, type RowMarks, rowHtml } from "../lib/render";
+import { escapeHtml, type RowMarks, rowHtml, soloSide } from "../lib/render";
 import { STATUS } from "../lib/status";
 import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";
@@ -35,6 +35,7 @@ export function FileSection(props: Props) {
   const model = () => props.review.models()[props.index];
   const dir = () => (file().path.includes("/") ? file().path.slice(0, file().path.lastIndexOf("/") + 1) : "");
   const name = () => file().path.slice(dir().length);
+  const solo = () => soloSide(file());
 
   /** Threads ending at each row, where they're shown. */
   const threadsByRow = createMemo(() => {
@@ -161,12 +162,22 @@ export function FileSection(props: Props) {
   return (
     <section
       data-file-section={props.index}
-      class="mx-2 my-1.5 overflow-clip rounded-md border border-line-strong bg-bg"
+      class="mx-2 my-1.5 overflow-clip rounded-md border bg-bg"
+      classList={{
+        "border-line-strong": file().status !== "added" && file().status !== "deleted",
+        "border-add-mark": file().status === "added",
+        "border-del-mark": file().status === "deleted",
+      }}
     >
       <div
         data-file-head
-        class="sticky top-0 z-[3] flex h-[26px] items-center gap-2 border-line bg-panel px-2 text-xs"
-        classList={{ "border-b": !props.view.hidden(props.index) }}
+        class="sticky top-0 z-[3] flex h-[26px] items-center gap-2 border-line px-2 text-xs"
+        classList={{
+          "border-b": !props.view.hidden(props.index),
+          "bg-panel": file().status !== "added" && file().status !== "deleted",
+          "bg-add-bg": file().status === "added",
+          "bg-del-bg": file().status === "deleted",
+        }}
       >
         <button
           type="button"
@@ -189,6 +200,14 @@ export function FileSection(props: Props) {
           <span class="font-normal text-muted">{dir()}</span>
           {name()}
         </span>
+        <Show when={file().status === "added" || file().status === "deleted"}>
+          <span
+            class="rounded px-1.5 text-[11px] font-semibold text-bg"
+            classList={{ "bg-add": file().status === "added", "bg-del": file().status === "deleted" }}
+          >
+            {file().status === "added" ? "New file" : "Deleted"}
+          </span>
+        </Show>
         <Show when={file().collapsed}>
           {(reason) => (
             <span
@@ -251,7 +270,7 @@ export function FileSection(props: Props) {
             <div class="bg-panel px-3 py-2 text-xs text-muted">{OMITTED[file().omitted ?? "binary"]}</div>
           }
         >
-          <div class="rows">
+          <div class="rows" classList={{ solo: solo() !== null, [`solo-${solo()}`]: solo() !== null }}>
             <For each={layout()}>
               {(b) => (
                 <Switch>
@@ -283,8 +302,8 @@ export function FileSection(props: Props) {
                             <div
                               class="mr-2.5"
                               classList={{
-                                "col-[2/3]": t.anchor.side === "old",
-                                "col-[4/5]": t.anchor.side === "new",
+                                "col-[2/3]": t.anchor.side === "old" || solo() !== null,
+                                "col-[4/5]": t.anchor.side === "new" && solo() === null,
                               }}
                             >
                               <ThreadCard
