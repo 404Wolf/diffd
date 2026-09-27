@@ -451,6 +451,8 @@ pub enum CodeQuery {
     Definition,
     TypeDefinition,
     Hover,
+    /// Every use of the symbol, its declaration included.
+    References,
 }
 
 /// Where a language server points: a file in the repository (a relative

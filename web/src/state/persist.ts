@@ -2,9 +2,11 @@
  * What the page remembers between reloads, per review and per tab (in
  * sessionStorage, so tabs don't trample each other), with the latest copy
  * also in localStorage to start new tabs from:
- * which lines are expanded, where you were reading, the cursor, and a comment
- * you were in the middle of writing. (Sent-but-unconfirmed messages live in
- * the socket's outbox; viewed files and marks in the view state.)
+ * which lines are expanded, every split (what it shows, where you were
+ * reading in it, its cursor) and which had focus, the commits you were
+ * looking at, and a comment you were in the middle of writing.
+ * (Sent-but-unconfirmed messages live in the socket's outbox; viewed files and
+ * marks in the view state.)
  *
  * Everything is keyed by file path and checked against the file's current
  * shape before use, so a new revision never restores nonsense.
@@ -26,22 +28,50 @@ export interface SavedPlace {
   readonly side: Side;
 }
 
+/** One split: the diff or a file's view, where you were reading in it, and its cursor. */
+export interface SavedPane {
+  readonly file: string | null;
+  readonly reading: SavedPlace | null;
+  readonly cursor: SavedPlace | null;
+}
+
 export interface Session {
   visibility: Record<string, SavedVisibility>;
   collapsed: Record<string, boolean>;
-  reading: SavedPlace | null;
-  cursor: SavedPlace | null;
+  /** The splits, left to right. */
+  panes: SavedPane[];
+  focused: number;
+  /** The commits being looked at, by hash (`to: null`: the working tree); null for the whole review. */
+  range: { from: string; to: string | null } | null;
   draft: { composer: Composer; text: string } | null;
 }
 
-const empty = (): Session => ({ visibility: {}, collapsed: {}, reading: null, cursor: null, draft: null });
+const empty = (): Session => ({
+  visibility: {},
+  collapsed: {},
+  panes: [],
+  focused: 0,
+  range: null,
+  draft: null,
+});
 
 export function loadSession(reviewId: string): Session {
   const key = `diffd:session:${reviewId}`;
   for (const storage of [() => sessionStorage, () => localStorage]) {
     try {
       const raw = storage().getItem(key);
-      if (raw) return { ...empty(), ...(JSON.parse(raw) as Partial<Session>) };
+      if (!raw) continue;
+      const saved = JSON.parse(raw) as Partial<Session> & {
+        reading?: SavedPlace | null;
+        cursor?: SavedPlace | null;
+      };
+      // Before splits were saved, one pane's reading position and cursor were.
+      const panes =
+        saved.panes ??
+        (saved.reading || saved.cursor
+          ? [{ file: null, reading: saved.reading ?? null, cursor: saved.cursor ?? null }]
+          : []);
+      return { ...empty(), ...saved, panes };
     } catch {
       // Unavailable or not ours: try the next one.
     }

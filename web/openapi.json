@@ -914,7 +914,8 @@
         "enum": [
           "definition",
           "typeDefinition",
-          "hover"
+          "hover",
+          "references"
         ]
       },
       "Commit": {

@@ -63,6 +63,26 @@ export interface Search {
   readonly file?: number | undefined;
 }
 
+/** One place in the quickfix list. */
+export interface QuickItem {
+  /** Where, e.g. `lib.rs:45`. */
+  readonly label: string;
+  /** The line there, or the path. */
+  readonly detail: string;
+  readonly go: () => void | Promise<void>;
+}
+
+/**
+ * Places to step through without a popup in the way (vim's quickfix list):
+ * references, several definitions. `]q` / `[q` go to the next / previous.
+ */
+export interface Quickfix {
+  readonly title: string;
+  readonly items: readonly QuickItem[];
+  /** The item last gone to, or -1. */
+  readonly index: number;
+}
+
 /** The find bar (Ctrl+F): searching the cursor's file, or every file. */
 export interface Find {
   readonly scope: "file" | "all";
@@ -417,6 +437,7 @@ export function createView(review: Review) {
   const [picker, setPicker] = createSignal<Picker | null>(null);
   const [search, setSearch] = createSignal<Search | null>(null);
   const [find, setFind] = createSignal<Find | null>(null);
+  const [quickfix, setQuickfix] = createSignal<Quickfix | null>(null);
   const [help, setHelp] = createSignal(false);
   const [pending, setPending] = createSignal("");
   const [message, setMessageRaw] = createSignal("");
@@ -491,6 +512,8 @@ export function createView(review: Review) {
     setSearch,
     find,
     setFind,
+    quickfix,
+    setQuickfix,
     help,
     setHelp,
     pending,

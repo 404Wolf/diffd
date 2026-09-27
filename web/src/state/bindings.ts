@@ -65,6 +65,38 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     help: ["Move", "Scroll a line down / up"],
   },
   { keys: "ctrl-y", run: ({ cmd }, n) => cmd.scrollLines(-n) },
+  {
+    keys: "}",
+    run: ({ cmd }, n) => cmd.paragraphJump(1, n),
+    help: ["Move", "Next / previous blank line (paragraph)"],
+  },
+  { keys: "{", run: ({ cmd }, n) => cmd.paragraphJump(-1, n) },
+  { keys: "+", run: ({ cmd }, n) => cmd.move(n), help: ["Move", "Next / previous line (+ -)"] },
+  { keys: "-", run: ({ cmd }, n) => cmd.move(-n) },
+  {
+    keys: "_",
+    run: ({ cmd }) => cmd.wordOnLine("first"),
+    help: ["Move", "First / last word on the line (_ ^ $), back to the line (0)"],
+  },
+  { keys: "^", run: ({ cmd }) => cmd.wordOnLine("first") },
+  { keys: "$", run: ({ cmd }) => cmd.wordOnLine("last") },
+  { keys: "0", run: ({ cmd }) => cmd.wordOnLine("none") },
+  { keys: "%", run: ({ cmd }) => cmd.matchBracket(), help: ["Move", "The matching bracket's line"] },
+  {
+    keys: "*",
+    run: ({ cmd }) => cmd.searchWord(1),
+    help: ["Move", "Search this file for the word here, forward / back"],
+  },
+  { keys: "#", run: ({ cmd }) => cmd.searchWord(-1) },
+  { keys: "g v", run: ({ cmd }) => cmd.reselect(), help: ["Talk", "Select the last selection again"] },
+  {
+    keys: "] q",
+    run: ({ cmd }) => cmd.quickfixStep(1),
+    help: ["Symbols", "Next / previous in the list (references…)"],
+  },
+  { keys: "[ q", run: ({ cmd }) => cmd.quickfixStep(-1) },
+  { keys: "space q", run: ({ view }) => view.setQuickfix(null), help: ["Symbols", "Close the list"] },
+  { keys: "o", modes: ["visual"], run: ({ cmd }) => cmd.otherEnd() },
   { keys: "ctrl-d", run: ({ cmd }) => cmd.move(cmd.halfPage()), help: ["Move", "Half a page down / up"] },
   { keys: "ctrl-u", run: ({ cmd }) => cmd.move(-cmd.halfPage()) },
   {
@@ -242,10 +274,10 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "space x", run: ({ cmd }) => cmd.closePane() },
   {
     keys: "ctrl-h",
-    run: ({ cmd }) => cmd.focusSplit(-1),
-    help: ["Splits", "Focus the split to the left / right"],
+    run: ({ cmd }) => cmd.focusAcross(-1, "panes"),
+    help: ["Splits", "Move left / right: files, splits, activity"],
   },
-  { keys: "ctrl-l", run: ({ cmd }) => cmd.focusSplit(1) },
+  { keys: "ctrl-l", run: ({ cmd }) => cmd.focusAcross(1, "panes") },
   // Panels
   { keys: "space e", run: ({ cmd }) => cmd.toggleDrawer("left"), help: ["Panels", "Files drawer"] },
   {

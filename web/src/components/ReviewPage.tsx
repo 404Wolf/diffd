@@ -1,14 +1,15 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
 import { match } from "ts-pattern";
-import type { ReviewState } from "../api";
-import { spanLabel } from "../lib/history";
+import type { ReviewState, Side } from "../api";
+import { rangeOf, spanLabel, spanOf } from "../lib/history";
 import { composing, KeyEngine, keyToken, type Mode } from "../lib/keymap";
 import { BINDINGS, type Ctx } from "../state/bindings";
 import { createCommands } from "../state/commands";
 import { bufferEl, keepViewport, readingPosition, restoreReadingPosition } from "../state/dom";
 import { createLayout } from "../state/layout";
+import type { SavedPane, SavedPlace } from "../state/persist";
 import { createReview } from "../state/review";
-import { createView, type View } from "../state/view";
+import { createView, type Pane, type View } from "../state/view";
 import { Buffer } from "./Buffer";
 import { Help, Nudge, Picker, StatusLine, TopBar } from "./Chrome";
 import { CommentPopover, SelectionBubble } from "./CommentPopover";
@@ -16,6 +17,7 @@ import { Drawer } from "./Drawer";
 import { FileTree } from "./FileTree";
 import { FindBar } from "./FindBar";
 import { HoverCard, usePaintDiagnostics } from "./Hover";
+import { QuickfixList } from "./Quickfix";
 import { RightPanel } from "./RightPanel";
 import { usePaintSearch } from "./SearchHighlights";
 import { ReplyToasts } from "./Toasts";
@@ -29,7 +31,9 @@ export function ReviewPage(props: { state: ReviewState }) {
     layout: keepViewport,
     onRevision: (_, next) => view?.say(`Revision ${next.revision} arrived`),
     onShow: (request) => view?.setNudge(request),
-    onSpan: () => requestAnimationFrame(() => showSpanStart()),
+    onSpan: () => {
+      if (!restoring) requestAnimationFrame(() => showSpanStart());
+    },
   });
   const v = createView(review);
   view = v;
@@ -66,41 +70,95 @@ export function ReviewPage(props: { state: ReviewState }) {
     const m = v.mode();
     if (m.kind === "file") return setCurrentFile(m.file);
     setCurrentFile(readingPosition()?.file ?? null);
-    rememberReading();
+    saveSession();
   };
 
   // -- Picking up where you left off ------------------------------------------------
-  const rememberReading = () => {
-    const pos = review.span() === null && v.mode().kind === "diff" ? readingPosition() : null;
-    const path = pos ? review.snapshot().files[pos.file]?.path : undefined;
-    if (!pos || path === undefined) return;
+  /** A reload's restoring: the commits it brings back shouldn't move the cursor to their start. */
+  let restoring = false;
+  /** The last session has been put back: from now on, what's on screen is saved. */
+  let settled = false;
+  /** Remember every split (what it shows, where it's read, its cursor), the focused one, and the commits shown. */
+  const saveSession = () => {
+    // Until the last session is put back, what's on screen isn't where you were.
+    if (!settled) return;
+    const files = review.snapshot().files;
+    const place = (file: number, row: number, offset: number, side: Side): SavedPlace | null => {
+      const path = files[file]?.path;
+      return path === undefined ? null : { path, row, offset, side };
+    };
+    const panes = v.panes().map((p): SavedPane => {
+      const m = p.mode();
+      const c = p.cursor();
+      const pos = readingPosition(bufferEl(p.id));
+      return {
+        file: m.kind === "file" ? (files[m.file]?.path ?? null) : null,
+        reading: pos ? place(pos.file, pos.row, pos.offset, "new") : null,
+        cursor: c ? place(c.file, c.row, 0, c.side) : null,
+      };
+    });
+    const focused = Math.max(0, v.panes().indexOf(v.focused()));
+    const range = rangeOf(review.history(), review.span());
     v.persist.update((s) => {
-      s.reading = { path, row: pos.row, offset: pos.offset, side: "new" };
+      s.panes = panes;
+      s.focused = focused;
+      s.range = range;
     });
   };
   createEffect(() => {
-    const c = v.cursor();
-    const path = c ? review.snapshot().files[c.file]?.path : undefined;
-    if (!c || path === undefined || review.span() !== null) return;
-    v.persist.update((s) => {
-      s.cursor = { path, row: c.row, offset: 0, side: c.side };
-    });
+    // Anything that moves a split: its cursor, what it shows; splits opening and closing.
+    for (const p of v.panes()) {
+      p.cursor();
+      p.mode();
+    }
+    v.focused();
+    review.span();
+    untrack(saveSession);
   });
-  /** Put the cursor and the page back where they were before the reload. Returns whether it could. */
-  const restorePlace = (): boolean => {
-    const { cursor, reading, draft } = v.persist.session;
-    const find = (path: string, row: number) => {
-      const file = review.paths().indexOf(path);
-      return file >= 0 && layout.indexOfRow(file, row) >= 0 ? file : null;
+  /** Put a split back: its reading position, then its cursor. Returns whether anything was. */
+  const restorePane = (pane: Pane, saved: SavedPane): boolean => {
+    const find = (place: SavedPlace | null) => {
+      if (!place) return null;
+      const file = review.paths().indexOf(place.path);
+      return file >= 0 && place.row < (review.snapshot().files[file]?.rows.length ?? 0) ? file : null;
     };
-    const readAt = reading ? find(reading.path, reading.row) : null;
-    const cursorAt = cursor ? find(cursor.path, cursor.row) : null;
-    if (reading && readAt !== null)
-      restoreReadingPosition({ file: readAt, row: reading.row, offset: reading.offset });
-    if (cursor && cursorAt !== null)
-      cmd.placeRow(cursorAt, cursor.row, { side: cursor.side, scroll: readAt === null ? "center" : false });
-    if (draft) v.setComposer(draft.composer);
+    const readAt = find(saved.reading);
+    const cursorAt = find(saved.cursor);
+    if (saved.reading && readAt !== null)
+      restoreReadingPosition(
+        { file: readAt, row: saved.reading.row, offset: saved.reading.offset },
+        bufferEl(pane.id),
+      );
+    if (saved.cursor && cursorAt !== null)
+      cmd.placeRow(cursorAt, saved.cursor.row, {
+        side: saved.cursor.side,
+        scroll: readAt === null ? "center" : false,
+      });
     return readAt !== null || cursorAt !== null;
+  };
+  /** Put the page back as it was before the reload: commits, splits, places, a comment being written. */
+  const restoreSession = async (): Promise<boolean> => {
+    const { panes, focused, range, draft } = v.persist.session;
+    const span = range ? spanOf(review.history(), range) : null;
+    if (span) {
+      restoring = true;
+      await review.showSpan(span);
+      restoring = false;
+    }
+    let restored = false;
+    for (const [i, saved] of panes.entries()) {
+      if (i > 0) v.split();
+      const pane = v.focused();
+      const file = saved.file === null ? null : await review.openContext(saved.file);
+      if (file !== null) pane.setMode({ kind: "file", file });
+      // A new split or view is drawn in the next frame.
+      if (i > 0 || file !== null) await new Promise(requestAnimationFrame);
+      restored = restorePane(pane, saved) || restored;
+    }
+    const target = v.panes()[focused];
+    if (target) v.focusPane(target.id);
+    if (draft) v.setComposer(draft.composer);
+    return restored;
   };
 
   /** `path:line` links in any Markdown (threads, chat, hover cards, notes) jump to the code. */
@@ -125,8 +183,38 @@ export function ReviewPage(props: { state: ReviewState }) {
       return cmd.openFind();
     }
     const target = e.target as HTMLElement;
+    const drawer = target.closest<HTMLElement>("aside[data-drawer]");
+    // Ctrl+H / Ctrl+L move across the page from anywhere, text boxes included.
+    if (
+      e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey &&
+      (e.key === "h" || e.key === "l") &&
+      !v.picker() &&
+      !v.help()
+    ) {
+      e.preventDefault();
+      return cmd.focusAcross(
+        e.key === "h" ? -1 : 1,
+        (drawer?.dataset.drawer as "left" | "right" | undefined) ?? "panes",
+      );
+    }
     if (target.closest("input, textarea, select, [contenteditable], [role=menu]") || v.picker() || v.help())
       return;
+    // In a drawer: j / k move through its items, esc goes back to the code.
+    if (drawer && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const dir = e.key === "j" || e.key === "ArrowDown" ? 1 : e.key === "k" || e.key === "ArrowUp" ? -1 : 0;
+      if (dir !== 0) {
+        e.preventDefault();
+        return cmd.moveInDrawer(drawer, dir);
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        return bufferEl()?.focus({ preventScroll: true });
+      }
+      // Enter and space press the focused item; every other key works as it does in the code.
+      if (e.key === "Enter" || e.key === " ") return;
+    }
     if (v.nudge() && (e.key === "Enter" || e.key === "Escape")) {
       e.preventDefault();
       return cmd.nudgeDone(e.key === "Enter");
@@ -168,7 +256,7 @@ export function ReviewPage(props: { state: ReviewState }) {
     review.start();
     // Layout can change without scrolling (threads arriving): take the reading position fresh on the way out.
     const leaving = () => {
-      rememberReading();
+      saveSession();
       v.persist.flush();
     };
     window.addEventListener("pagehide", leaving);
@@ -178,15 +266,17 @@ export function ReviewPage(props: { state: ReviewState }) {
     window.addEventListener("blur", () => v.setSymKey(false));
     document.addEventListener("focusin", onFocus);
     document.addEventListener("focusout", () => queueMicrotask(onFocus));
-    const buf = bufferEl();
     // Scroll events don't bubble, but they can be captured: one listener for every split.
     container?.addEventListener("scroll", () => requestAnimationFrame(trackScroll), {
       passive: true,
       capture: true,
     });
-    if (!restorePlace()) cmd.startAtFirstChange(false);
-    trackScroll();
-    buf?.focus({ preventScroll: true });
+    void restoreSession().then((restored) => {
+      settled = true;
+      if (!restored) cmd.startAtFirstChange(false);
+      trackScroll();
+      bufferEl()?.focus({ preventScroll: true });
+    });
     document.title = `${review.meta().title} · diffd`;
   });
   onCleanup(() => {
@@ -218,6 +308,7 @@ export function ReviewPage(props: { state: ReviewState }) {
               )}
             </For>
           </main>
+          <QuickfixList view={v} cmd={cmd} />
         </div>
         <Drawer
           side="right"

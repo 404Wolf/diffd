@@ -7,19 +7,29 @@ import type { View } from "../state/view";
 import { Markdown } from "./Markdown";
 
 /** A simple place to ask the agent anything that isn't about specific lines. */
+/** The message box grows to this, then scrolls. */
+const MAX_INPUT_PX = 120;
+
 export function Chat(props: { review: Review; view: View }) {
   let log: HTMLDivElement | undefined;
-  let input: HTMLInputElement | undefined;
+  let input: HTMLTextAreaElement | undefined;
+  /** As tall as what's typed, up to a few lines; then it scrolls. */
+  const grow = () => {
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, MAX_INPUT_PX)}px`;
+  };
   createEffect(() => {
     props.review.chat().length;
     queueMicrotask(() => log?.scrollTo({ top: log.scrollHeight }));
   });
-  const send = (e: SubmitEvent) => {
-    e.preventDefault();
+  const send = (e?: SubmitEvent) => {
+    e?.preventDefault();
     const text = input?.value.trim();
     if (!text || !input) return;
     props.review.say(text);
     input.value = "";
+    grow();
   };
   return (
     // A fixed share of the side panel, whatever the conversation's length.
@@ -62,23 +72,30 @@ export function Chat(props: { review: Review; view: View }) {
         </Show>
       </div>
       <form class="flex flex-none flex-col gap-0.5 px-2 py-1.5" onSubmit={send}>
-        <input
+        <textarea
           ref={input}
           id="chat-input"
+          rows={1}
           autocomplete="off"
           placeholder={`Ask ${agentName()} about this diff`}
           aria-label={`Message ${agentName()}`}
-          class="h-6 w-full min-w-0 rounded-md border border-line-strong bg-bg px-2.5 text-[12.5px] focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
+          class="w-full min-w-0 resize-none rounded-md border border-line-strong bg-bg px-2.5 py-[3px] text-[12.5px] leading-[18px] focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
+          onInput={grow}
           onKeyDown={(e) => {
             if (composing(e)) return;
-            if (e.key === "Escape") {
+            // Enter sends; shift+enter is a new line.
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            } else if (e.key === "Escape") {
               e.currentTarget.blur();
               bufferEl()?.focus({ preventScroll: true });
             }
           }}
         />
         <span class="text-[10.5px] whitespace-nowrap text-subtle">
-          <kbd>space</kbd> <kbd>i</kbd> to focus · <kbd>enter</kbd> to send
+          <kbd>space</kbd> <kbd>i</kbd> to focus · <kbd>enter</kbd> to send · <kbd>shift</kbd>{" "}
+          <kbd>enter</kbd> new line
         </span>
       </form>
     </section>

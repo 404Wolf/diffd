@@ -3,7 +3,7 @@
  * server events alike.
  */
 
-import { batch } from "solid-js";
+import { batch, createEffect, on } from "solid-js";
 import { produce } from "solid-js/store";
 import { match } from "ts-pattern";
 import type { ActivityItem, CodeLocation, Symbol as Definition, ShowRequest, Side, Thread } from "../api";
@@ -49,6 +49,7 @@ import {
   EXPAND_STEP,
   type PickerItem,
   type Place,
+  type QuickItem,
   type Search,
   type View,
   type Word,
@@ -650,7 +651,44 @@ export function createCommands(review: Review, view: View) {
     view.focusPane(next.id);
     bufferEl()?.focus({ preventScroll: true });
   };
-  /** `g space`: the plain file at this line, in the split beside this one (made if needed). */
+  /**
+   * `ctrl-h` / `ctrl-l` from anywhere: across the page, the files drawer, the
+   * splits left to right, then the activity drawer. `from` is where focus is.
+   */
+  const focusAcross = (dir: 1 | -1, from: "left" | "right" | "panes") => {
+    const ps = view.panes();
+    match(from)
+      .with("left", () => dir > 0 && bufferEl()?.focus({ preventScroll: true }))
+      .with("right", () => dir < 0 && bufferEl()?.focus({ preventScroll: true }))
+      .with("panes", () => {
+        if (ps[ps.indexOf(view.focused()) + dir]) return focusSplit(dir);
+        focusDrawer(dir < 0 ? "left" : "right");
+      })
+      .exhaustive();
+  };
+  /** Focus a drawer (opening it): the file you're on in the tree, or the latest activity. */
+  const focusDrawer = (side: "left" | "right") => {
+    view.setDrawers(side, "collapsed", false);
+    requestAnimationFrame(() => {
+      const drawer = document.querySelector<HTMLElement>(`aside[data-drawer="${side}"]`);
+      const target =
+        drawer?.querySelector<HTMLElement>('[aria-current="true"]') ??
+        drawer?.querySelector<HTMLElement>(
+          side === "left" ? "[data-tree-file], [data-tree-group], [data-tree-dir]" : "ol button, [role=tab]",
+        );
+      target?.focus();
+    });
+  };
+  /** Up and down through a drawer's items (tree rows, activity), with j / k or the arrows. */
+  const moveInDrawer = (drawer: HTMLElement, dir: 1 | -1) => {
+    const items = [...drawer.querySelectorAll<HTMLElement>("button, a[href]")].filter(
+      (el) => el.offsetParent !== null,
+    );
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = items[at < 0 ? 0 : Math.max(0, Math.min(items.length - 1, at + dir))];
+    next?.focus();
+    next?.scrollIntoView({ block: "nearest" });
+  };
   /** Shift+click a `path:line` link (or a file in the tree): open it in the next split, making one if needed. */
   const openPathInSplit = async (path: string, line = 1) => {
     const file = await review.openContext(path);
@@ -669,6 +707,7 @@ export function createCommands(review: Review, view: View) {
     placeInFileView({ file, row, side, word: null }, "center");
     bufferEl()?.focus({ preventScroll: true });
   };
+  /** `g space`: the plain file at this line, in the split beside this one (made if needed). */
   const fileInSplit = () => {
     const c = view.cursor();
     if (!c) return view.say("Put the cursor on a line first");
@@ -736,15 +775,42 @@ export function createCommands(review: Review, view: View) {
   const goToLocations = (locations: readonly CodeLocation[], name: string, what: string) => {
     const [only] = locations;
     if (locations.length === 1 && only) return void openLocation(only, name);
-    view.setPicker({
-      title: `${locations.length} ${what} of ${name}`,
-      items: () =>
-        locations.map((l) => ({
-          label: `${l.path.split("/").pop()}:${l.line}`,
-          detail: l.path,
-          run: () => void openLocation(l, name),
-        })),
-    });
+    showQuickfix(
+      `${locations.length} ${what} of ${name}`,
+      locations.map((l) => ({
+        label: `${l.path.split("/").pop()}:${l.line}`,
+        detail: l.path,
+        go: () => openLocation(l, name),
+      })),
+    );
+    quickfixStep(1);
+  };
+
+  // -- The quickfix list --------------------------------------------------------------
+
+  const showQuickfix = (title: string, items: readonly QuickItem[]) => {
+    if (items.length === 0) return view.say(`${title}: none`);
+    view.setQuickfix({ title, items, index: -1 });
+    view.say(`${title} · ]q to go through them`);
+  };
+  /** Go to item `i` of the list. */
+  const quickfixGo = (i: number) => {
+    const q = view.quickfix();
+    const item = q?.items[i];
+    if (!q || !item) return;
+    view.setQuickfix({ ...q, index: i });
+    remember();
+    void item.go();
+    view.say(`${i + 1} of ${q.items.length} · ]q [q`);
+  };
+  /** `]q` / `[q`: the next / previous place in the list. */
+  const quickfixStep = (dir: 1 | -1) => {
+    const q = view.quickfix();
+    if (!q) return view.say("No list · grr lists references");
+    const next = q.index + dir;
+    if (next < 0 || next >= q.items.length)
+      return view.say(dir > 0 ? "That was the last one" : "That was the first one");
+    quickfixGo(next);
   };
   /** `gd`: ask the language server; without one (or no answer), the diff's own symbol index. */
   const gotoDefinition = async (name?: string) => {
@@ -803,18 +869,37 @@ export function createCommands(review: Review, view: View) {
         defs.map((d) => ({ label: where(d.file, d.line, d.side), detail: d.kind, run: () => jumpToDef(d) })),
     });
   };
-  const references = (name = wordAtCursor()) => {
+  /** `grr`: every use of the symbol, from the language server; without one, every line of the diff naming it. */
+  const references = async (name = wordAtCursor()) => {
     if (!name) return view.say("No symbol here · press w to pick one");
+    const pos = lspPosition();
+    if (pos && pos.word.text === name) {
+      view.say(`Finding references to ${name}…`);
+      const answer = await review.ask("references", pos.path, pos.line, pos.word.col);
+      if (answer.type === "locations" && answer.locations.length > 0)
+        return showQuickfix(
+          `${answer.locations.length} references to ${name}`,
+          answer.locations.map((l) => ({
+            label: `${l.path.split("/").pop()}:${l.line}`,
+            detail: l.path,
+            go: () => openLocation(l, name),
+          })),
+        );
+    }
+    textReferences(name);
+  };
+  /** References by text: lines of the diff with the name as a whole word. */
+  const textReferences = (name: string) => {
     const word = "[\\p{L}\\p{N}\\p{Mn}\\p{Mc}\\p{Pc}$]";
     const re = new RegExp(`(?<!${word})${name.replace(/\$/g, "\\$")}(?!${word})`, "u");
-    const items: PickerItem[] = [];
+    const items: QuickItem[] = [];
     files().forEach((f, file) => {
       f.new?.lines.forEach((l, i) => {
         if (re.test(l))
           items.push({
             label: where(file, i + 1, "new"),
             detail: l.trim(),
-            run: () => goTo(file, "new", i + 1),
+            go: () => void goTo(file, "new", i + 1),
           });
       });
       if (f.status === "deleted")
@@ -823,11 +908,11 @@ export function createCommands(review: Review, view: View) {
             items.push({
               label: where(file, i + 1, "old"),
               detail: l.trim(),
-              run: () => goTo(file, "old", i + 1),
+              go: () => void goTo(file, "old", i + 1),
             });
         });
     });
-    view.setPicker({ title: `${items.length} references to ${name}`, items: () => items });
+    showQuickfix(`${items.length} lines naming ${name}`, items);
   };
   const outline = (all: boolean) => {
     const file = view.cursor()?.file ?? 0;
@@ -1230,7 +1315,9 @@ export function createCommands(review: Review, view: View) {
     if (view.visual()) return view.setVisual(null);
     const c = view.cursor();
     if (c?.word) return view.setCursor({ ...c, word: null });
-    if (view.search()) view.setSearch(null);
+    if (view.search()) return view.setSearch(null);
+    // Last, once there's nothing else to clear: the quickfix list.
+    if (view.quickfix()) return view.setQuickfix(null);
     getSelection()?.removeAllRanges();
   };
   const startVisual = () => {
@@ -1238,6 +1325,110 @@ export function createCommands(review: Review, view: View) {
     if (!c) return;
     view.setVisual({ file: c.file, row: c.row });
     view.setCursor({ ...c, word: null });
+  };
+
+  // -- More of vim ----------------------------------------------------------------
+
+  /** The last visual selection, for `gv`: where it started and where the cursor was. */
+  let lastVisual: { file: number; anchor: number; row: number; side: Side } | null = null;
+  createEffect(
+    on(view.visual, (now, before) => {
+      const c = view.cursor();
+      if (!now && before && c && c.file === before.file)
+        lastVisual = { file: before.file, anchor: before.row, row: c.row, side: c.side };
+    }),
+  );
+  /** `gv`: select the last selection again. */
+  const reselect = () => {
+    if (!lastVisual) return view.say("No selection to go back to");
+    const { file, anchor, row, side } = lastVisual;
+    placeRow(file, row, { side, scroll: "nearest" });
+    view.setVisual({ file, row: anchor });
+  };
+  /** `o` in visual mode: go to the other end of the selection. */
+  const otherEnd = () => {
+    const v = view.visual();
+    const c = view.cursor();
+    if (!v || !c || v.file !== c.file) return;
+    view.setVisual({ file: v.file, row: c.row });
+    placeRow(c.file, v.row, { side: c.side });
+  };
+  /** The cursor's side of a file as lines, and the cursor's line on it (0-based). */
+  const sideLines = () => {
+    const c = view.cursor();
+    const f = c ? files()[c.file] : undefined;
+    const text = c && f ? (c.side === "old" ? f.old : f.new) : null;
+    const line = c && f ? f.rows[c.row]?.[c.side === "old" ? 0 : 1] : null;
+    if (!c || !text || line === null || line === undefined) return null;
+    return { c, lines: text.lines, line };
+  };
+  /** `}` / `{`: the next (previous) blank line after a run of text, like vim's paragraphs. */
+  const paragraphJump = (dir: 1 | -1, count = 1) => {
+    const at = sideLines();
+    if (!at) return;
+    let line = at.line;
+    for (let n = 0; n < count; n++) {
+      // Past any blank lines here, then through the text to the next blank one.
+      while (line + dir >= 0 && line + dir < at.lines.length && (at.lines[line + dir] ?? "").trim() === "")
+        line += dir;
+      while (line + dir >= 0 && line + dir < at.lines.length && (at.lines[line + dir] ?? "").trim() !== "")
+        line += dir;
+      if (line + dir >= 0 && line + dir < at.lines.length) line += dir;
+    }
+    if (line !== at.line) goTo(at.c.file, at.c.side, line + 1);
+  };
+  /** `^` / `_` (first word), `$` (last word), `0` (the whole line again). */
+  const wordOnLine = (which: "first" | "last" | "none") => {
+    const c = view.cursor();
+    if (!c) return;
+    if (which === "none") return view.setCursor({ ...c, word: null });
+    const words = [...lineText(c).matchAll(IDENT)];
+    const m = which === "first" ? words[0] : words.at(-1);
+    if (!m) return view.setCursor({ ...c, word: null });
+    view.setCursor({ ...c, word: { text: m[0], range: [m.index, m.index + m[0].length] } });
+  };
+  /** `*` / `#`: search this file for the word under the cursor, forward or back. */
+  const searchWord = (dir: 1 | -1) => {
+    const c = view.cursor();
+    const word = c?.word?.text ?? (c ? [...lineText(c).matchAll(IDENT)][0]?.[0] : undefined);
+    if (!c || !word) return view.say("No word here to search for");
+    const s: Search = {
+      query: word,
+      snapshot: review.snapshot(),
+      matches: findMatches(files(), review.models(), word, c.file),
+      index: -1,
+      file: c.file,
+    };
+    view.setSearch(s);
+    searchNext(dir);
+  };
+  /** `%`: the line with the bracket matching the first one on this line. */
+  const matchBracket = () => {
+    const at = sideLines();
+    if (!at) return;
+    const text = at.lines[at.line] ?? "";
+    const opens = "([{";
+    const closes = ")]}";
+    const col = [...text].findIndex((ch) => opens.includes(ch) || closes.includes(ch));
+    if (col < 0) return view.say("No bracket on this line");
+    const ch = text[col] as string;
+    const forward = opens.includes(ch);
+    const open = forward ? ch : (opens[closes.indexOf(ch)] as string);
+    const close = forward ? (closes[opens.indexOf(ch)] as string) : ch;
+    let depth = 0;
+    for (let l = at.line; l >= 0 && l < at.lines.length; l += forward ? 1 : -1) {
+      const s2 = at.lines[l] ?? "";
+      const start = l === at.line ? col : forward ? 0 : s2.length - 1;
+      for (let i = start; i >= 0 && i < s2.length; i += forward ? 1 : -1) {
+        if (s2[i] === open) depth += forward ? 1 : -1;
+        else if (s2[i] === close) depth += forward ? -1 : 1;
+        if (depth === 0) {
+          if (l !== at.line) goTo(at.c.file, at.c.side, l + 1);
+          return;
+        }
+      }
+    }
+    view.say("No matching bracket");
   };
 
   return {
@@ -1286,6 +1477,16 @@ export function createCommands(review: Review, view: View) {
     closePane,
     focusSplit,
     fileInSplit,
+    quickfixGo,
+    quickfixStep,
+    reselect,
+    otherEnd,
+    paragraphJump,
+    wordOnLine,
+    searchWord,
+    matchBracket,
+    focusAcross,
+    moveInDrawer,
     openPathInSplit,
     setMark,
     jumpToMark,

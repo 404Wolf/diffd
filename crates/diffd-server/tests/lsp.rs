@@ -109,6 +109,18 @@ async fn rust() {
     // The type of `s` (line 4, col 12) is Square.
     ask_until(&pool, &root, "src/lib.rs", CodeQuery::TypeDefinition, 4, 12, |a| goes_to(a, "src/shapes.rs", 2)).await;
     ask_until(&pool, &root, "src/lib.rs", CodeQuery::Hover, 4, 17, |a| hover_has(a, "A square")).await;
+    // Every use of Square: its declaration, the re-export and the parameter.
+    let uses = ask_until(
+        &pool,
+        &root,
+        "src/lib.rs",
+        CodeQuery::References,
+        4,
+        17,
+        |a| matches!(a, CodeAnswer::Locations { locations } if locations.len() >= 3),
+    )
+    .await;
+    assert!(goes_to(&uses, "src/shapes.rs", 2) && goes_to(&uses, "src/lib.rs", 4));
 
     write(&root, &[("src/lib.rs", "mod shapes;\npub use shapes::Square;\n\npub fn area(s: &Square) -> u32 {\n    s.sides\n}\n")]);
     diagnostics_until(&pool, &mut rx, &root, "src/lib.rs", |d| d.iter().any(|d| d.severity == Severity::Error && d.line == 5)).await;

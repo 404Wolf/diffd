@@ -285,15 +285,19 @@ impl LspPool {
             CodeQuery::Definition => "textDocument/definition",
             CodeQuery::TypeDefinition => "textDocument/typeDefinition",
             CodeQuery::Hover => "textDocument/hover",
+            CodeQuery::References => "textDocument/references",
         };
-        let params = json!({ "textDocument": { "uri": convert::file_uri(&file) }, "position": convert::position(line, col) });
+        let mut params = json!({ "textDocument": { "uri": convert::file_uri(&file) }, "position": convert::position(line, col) });
+        if query == CodeQuery::References {
+            params["context"] = json!({ "includeDeclaration": true });
+        }
         match server.conn.request(method, params, self.timeout()).await {
             Ok(result) => match query {
                 CodeQuery::Hover => match convert::hover_markdown(&result) {
                     Some(markdown) => CodeAnswer::Hover { markdown },
                     None => CodeAnswer::Unavailable { reason: "nothing to show here".into() },
                 },
-                CodeQuery::Definition | CodeQuery::TypeDefinition => {
+                CodeQuery::Definition | CodeQuery::TypeDefinition | CodeQuery::References => {
                     let root = repo_root.canonicalize().unwrap_or_else(|_| repo_root.to_path_buf());
                     CodeAnswer::Locations { locations: convert::locations(&result, &root) }
                 }

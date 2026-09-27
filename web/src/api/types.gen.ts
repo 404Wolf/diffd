@@ -137,7 +137,7 @@ export type CodeLocation = {
 /**
  * What the page can ask a language server about a position.
  */
-export type CodeQuery = 'definition' | 'typeDefinition' | 'hover';
+export type CodeQuery = 'definition' | 'typeDefinition' | 'hover' | 'references';
 
 /**
  * A commit between the review's two sides.

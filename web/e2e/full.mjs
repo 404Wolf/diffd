@@ -126,6 +126,16 @@ async function scrollUntil(page, selector, pane = ".buffer.focused") {
     await sleep(30);
   }
 }
+/** The review again, without the splits, views and places the page saved from earlier sections. */
+async function freshPage(page) {
+  await page.goto(base);
+  await page.evaluate(() => {
+    for (const store of [localStorage, sessionStorage])
+      for (const k of Object.keys(store)) if (k.startsWith("diffd:session:")) store.removeItem(k);
+  });
+  await page.goto(reviewUrl);
+}
+
 async function cursorTo(page, fileName, line, side = "new", pane = ".buffer.focused") {
   // Click the code cell of that line, like a user would.
   const selector = `[data-file-section]:has([data-path$="${fileName}"]) .row[data-${side === "new" ? "nl" : "ol"}="${line}"] .code[data-side="${side}"]`;
@@ -233,8 +243,9 @@ try {
     check((await status(page)).includes("bucket.rs:2"), "ctrl-i goes forward again");
     await keys(page, "Control+o");
     await keys(page, "g", "r", "r");
-    check(await page.getByText(/references to clamp/).isVisible(), "grr lists references");
-    await keys(page, "Escape");
+    await page.locator('section[aria-label="Quickfix list"]').getByText(/references to clamp/).waitFor({ timeout: 20000 });
+    check(true, "grr lists references under the code");
+    await keys(page, "Space", "q");
   });
 
   await section("File view and back", async () => {
@@ -979,9 +990,10 @@ try {
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
-    await sleep(300);
-    check(await page.locator("[role=listbox], [role=dialog]").first().isVisible(), "arrow keys and enter pick an item (find references opens its picker)");
-    await page.keyboard.press("Escape");
+    await page.waitForSelector('section[aria-label="Quickfix list"]', { timeout: 20000 });
+    check(true, "arrow keys and enter pick an item (find references lists them under the code, not in a popup)");
+    await page.locator(".buffer.focused").focus();
+    await keys(page, "Space", "q");
 
     // Ctrl+Enter: more lines above and below the hunk; Ctrl+Shift+Enter: fewer again.
     const shown = () =>
@@ -1189,7 +1201,7 @@ try {
   });
 
   await section("Vim screen motions: zz zt zb, H M L, ctrl-e ctrl-y, 12G, '', uppercase marks", async () => {
-    await page.goto(reviewUrl);
+    await freshPage(page);
     await page.waitForSelector(".buffer.focused .row");
     await cursorTo(page, "src/lib.rs", 45);
     const cur = () =>
@@ -1229,10 +1241,44 @@ try {
     check((await status(page)).includes("lib.rs:12 "), "12G goes to line 12 of this file");
     await keys(page, "'", "'");
     check((await status(page)).includes(here.match(/\S+:\d+/)[0]), "'' goes back to where the jump came from");
+    // More of vim: paragraphs, first / last word, the word under the cursor, gv and o.
+    await cursorTo(page, "src/lib.rs", 45);
+    const line = async () => Number((await status(page)).match(/lib\.rs:(\d+)/)?.[1]);
+    const from = await line();
+    await keys(page, "}");
+    check((await line()) > from, `} goes down to the next blank line (${from} → ${await line()})`);
+    await keys(page, "{");
+    check((await line()) < from + 1, "{ back up");
+    await cursorTo(page, "src/lib.rs", 45);
+    await keys(page, "$");
+    check((await status(page)).includes(" · "), "$ puts the cursor on the last word");
+    await keys(page, "0");
+    check(!(await status(page)).includes(" · "), "0 back on the whole line");
+    await keys(page, "_");
+    const word = (await status(page)).split(" · ")[1]?.split(" ")[0];
+    await keys(page, "*");
+    check((await status(page)).includes(`/${word} ·`), `* searches this file for the word under the cursor (${word})`);
+    await keys(page, "Escape", "Escape", "Shift+V", "j", "j", "Escape", "g", "v");
+    check((await page.locator(".buffer.focused .row.vsel").count()) === 3, "gv selects the last selection again");
+    await keys(page, "o");
+    check((await page.locator(".buffer.focused .row.vsel").count()) === 3, "o goes to its other end, keeping it");
+    await keys(page, "Escape");
+
+    // Ctrl+H / Ctrl+L move across the page: files, the code, activity, and back.
+    await keys(page, "Control+h");
+    check(await page.evaluate(() => !!document.activeElement?.closest('aside[data-drawer="left"]')), "ctrl-h from the code goes to the files drawer");
+    await keys(page, "j");
+    check(await page.evaluate(() => !!document.activeElement?.closest('aside[data-drawer="left"]')), "j moves through it");
+    await keys(page, "Control+l");
+    check(await page.evaluate(() => !!document.activeElement?.closest(".buffer.focused")), "ctrl-l back to the code");
+    await keys(page, "Control+l");
+    check(await page.evaluate(() => !!document.activeElement?.closest('aside[data-drawer="right"]')), "and on to the activity drawer");
+    await keys(page, "Control+h");
+    check(await page.evaluate(() => !!document.activeElement?.closest(".buffer.focused")), "ctrl-h from there back to the code");
   });
 
   await section("Find bar, replying, gc, keeping the selection, marks anywhere, shift+click to a split", async () => {
-    await page.goto(reviewUrl);
+    await freshPage(page);
     await page.waitForSelector(".buffer.focused .row");
     await cursorTo(page, "src/lib.rs", 45);
     // Ctrl+F: a small bar in the corner, finding in this file as you type.
@@ -1272,6 +1318,30 @@ try {
     check((await page.locator(".buffer.focused .row.vsel").count()) >= 3, "V … gc keeps the selected lines highlighted while commenting");
     await keys(page, "Escape");
 
+    // grr: every use, listed under the code (no popup), stepped through with ]q.
+    await cursorTo(page, "src/lib.rs", 45);
+    await keys(page, "w");
+    await keys(page, "g", "r", "r");
+    await page.waitForSelector('section[aria-label="Quickfix list"]', { timeout: 20000 });
+    check((await page.getByRole("dialog").count()) === 0, "grr lists references without a popup");
+    const refs = await page.locator("[data-quickfix]").count();
+    check(refs >= 1, `with every use (${refs})`);
+    await keys(page, "]", "q");
+    check((await page.locator('[data-quickfix][aria-current="true"]').count()) === 1, "]q goes to the first");
+    await keys(page, "Space", "q");
+    check((await page.locator('section[aria-label="Quickfix list"]').count()) === 0, "space q closes the list");
+
+    // The chat box grows with what's typed, instead of scrolling sideways.
+    const chat = page.locator("#chat-input");
+    const h1 = (await chat.boundingBox()).height;
+    await chat.fill("A long question about the limiter that wraps onto another line, and then another one after that, and more.");
+    await chat.dispatchEvent("input");
+    const h2 = (await chat.boundingBox()).height;
+    check(h2 > h1 + 10, `the chat box grows to fit (${Math.round(h1)} → ${Math.round(h2)}px)`);
+    await chat.fill("");
+    await chat.dispatchEvent("input");
+    await page.locator(".buffer.focused").focus();
+
     // r answers a thread on screen, and goes to one first when none is.
     await keys(page, "G");
     await keys(page, "r");
@@ -1297,6 +1367,36 @@ try {
     check((await page.locator(".buffer").count()) === 2, "shift+click on a link opens it in a split");
     check((await status(page)).startsWith("FILE"), "in file view");
     await keys(page, "Control+Escape");
+  });
+
+  await section("A reload puts everything back: splits, file view, the commit, the cursor", async () => {
+    await freshPage(page);
+    await page.waitForSelector(".buffer.focused .row");
+    await cursorTo(page, "src/lib.rs", 45);
+    await keys(page, "Control+Backslash");
+    await cursorTo(page, "src/bucket.rs", 6);
+    await keys(page, "g", "Enter", "j", "j");
+    const before = await status(page);
+    await page.reload();
+    await page.waitForSelector(".buffer.focused .row");
+    await sleep(800);
+    check((await page.locator(".buffer").count()) === 2, "both splits come back");
+    const after = await status(page);
+    check(after.startsWith("FILE") && after.includes(before.match(/\S+:\d+/)[0]), `the focused one is still the file view, on the same line (${after.slice(0, 30)})`);
+    await keys(page, "Control+Escape");
+    await keys(page, "]", "r");
+    await spanReady(page);
+    await page.waitForFunction(() => document.querySelector("header").innerText.includes("×"));
+    await spanReady(page);
+    const chip = await page.locator("[data-span-chip]").innerText();
+    await page.reload();
+    await page.waitForSelector(".buffer.focused .row");
+    await spanReady(page);
+    await sleep(500);
+    check((await page.locator("[data-span-chip]").innerText()) === chip, "the commit being looked at comes back");
+    const x = page.locator("[data-span-chip] button");
+    if (await x.count()) await x.first().click();
+    await spanReady(page);
   });
 
   await section("Home page", async () => {

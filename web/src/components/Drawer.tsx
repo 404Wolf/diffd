@@ -63,6 +63,7 @@ export function Drawer(props: {
     <aside
       ref={root}
       aria-label={props.label}
+      data-drawer={props.side}
       class="relative flex min-h-0 min-w-0 bg-panel"
       classList={{
         "border-r border-line": props.side === "left",

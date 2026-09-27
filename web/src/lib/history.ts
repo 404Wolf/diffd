@@ -41,6 +41,14 @@ export function stepAhead(h: History, prev: Span, next: Span): Span {
 }
 
 /** The span as revisions the server understands. */
+/** The span showing a range of commits (by hash), if this history still has both ends. */
+export function spanOf(h: History, range: CommitRange): Span {
+  const p = points(h);
+  const from = p.indexOf(range.from);
+  const to = p.indexOf(range.to);
+  return from >= 0 && to > from ? { from, to } : null;
+}
+
 export function rangeOf(h: History, span: Span): CommitRange | null {
   if (span === null) return null;
   const p = points(h);
