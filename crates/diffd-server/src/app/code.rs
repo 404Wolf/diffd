@@ -3,10 +3,14 @@
 //! definition / type definition / hover questions.
 //!
 //! Only reviews of the working tree get this: language servers see files on
-//! disk, which is exactly the new side of such a review.
+//! disk, which is exactly the new side of such a review. And only while a page
+//! shows the review: servers start when the first page opens it and stop soon
+//! after the last one closes, so a busy agent with nobody watching (or a big
+//! workspace's worth of servers) costs nothing.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
+use std::time::Duration;
 
 use diffd_core::model::{CodeAnswer, CodeQuery, FileStatus, ReviewId};
 use diffd_core::protocol::ServerMsg;
@@ -17,6 +21,24 @@ use crate::ports::{CodeIntel, FileDiagnostics};
 
 /// Files opened in language servers per review, for diagnostics.
 const MAX_SYNCED_FILES: usize = 300;
+
+/// How long servers outlive the last page of a review: a reload or a dropped
+/// connection shouldn't restart them.
+pub const VIEW_GRACE: Duration = Duration::from_secs(30);
+
+/// A page showing a review, for as long as it's held (see [`App::view`]).
+pub struct Viewing {
+    app: Weak<App>,
+    id: ReviewId,
+}
+
+impl Drop for Viewing {
+    fn drop(&mut self) {
+        let Some(app) = self.app.upgrade() else { return };
+        let id = self.id.clone();
+        tokio::spawn(async move { app.unview(&id, VIEW_GRACE).await });
+    }
+}
 
 impl App {
     /// Use these language servers; their diagnostics flow to pages from now on.
@@ -56,22 +78,62 @@ impl App {
         Some(root)
     }
 
-    /// A page opened the review: open its files in language servers, so diagnostics arrive.
-    pub async fn attach_code(&self, id: &ReviewId) -> Result<()> {
+    /// A page opened the review: count it as viewing (until the guard is dropped) and
+    /// open the review's files in language servers, so diagnostics arrive.
+    pub async fn view(&self, id: &ReviewId) -> Result<Viewing> {
         let live = self.live(id).await?;
-        let paths: Vec<String> = App::snapshot(&live)
+        live.inner.lock().expect("live lock").viewers += 1;
+        let viewing = Viewing { app: self.me.clone(), id: id.clone() };
+        self.attach_code(id, &live).await;
+        Ok(viewing)
+    }
+
+    /// A page closed the review. If none is left after `grace`, and no other viewed
+    /// review shares its repository, stop its language servers.
+    pub async fn unview(&self, id: &ReviewId, grace: Duration) {
+        let Ok(live) = self.live(id).await else { return };
+        let left = {
+            let mut inner = live.inner.lock().expect("live lock");
+            inner.viewers = inner.viewers.saturating_sub(1);
+            inner.viewers
+        };
+        if left > 0 {
+            return;
+        }
+        tokio::time::sleep(grace).await;
+        let Some(intel) = self.intel() else { return };
+        let (viewed, root) = {
+            let inner = live.inner.lock().expect("live lock");
+            (inner.viewers > 0, inner.code_root.clone())
+        };
+        let Some(root) = root.filter(|_| !viewed) else { return };
+        let lives: Vec<Arc<Live>> = self.live.lock().expect("live lock").values().cloned().collect();
+        let shared = lives.iter().any(|l| {
+            let inner = l.inner.lock().expect("live lock");
+            inner.viewers > 0 && inner.code_root.as_ref().is_some_and(|r| r.starts_with(&root) || root.starts_with(r))
+        });
+        if !shared {
+            intel.release(&root).await;
+        }
+    }
+
+    async fn attach_code(&self, id: &ReviewId, live: &Live) {
+        let paths: Vec<String> = App::snapshot(live)
             .files
             .iter()
             .filter(|f| f.omitted.is_none() && f.new.is_some() && f.status != FileStatus::Deleted)
             .map(|f| f.path.clone())
             .take(MAX_SYNCED_FILES)
             .collect();
-        self.sync_code(id, &live, paths).await;
-        Ok(())
+        self.sync_code(id, live, paths).await;
     }
 
-    /// Tell language servers these files (may have) changed. Runs in the background.
+    /// Tell language servers these files (may have) changed, if a page shows the
+    /// review (otherwise nothing starts them). Runs in the background.
     pub(super) async fn sync_code(&self, id: &ReviewId, live: &Live, paths: Vec<String>) {
+        if live.inner.lock().expect("live lock").viewers == 0 {
+            return;
+        }
         let Some(intel) = self.intel() else { return };
         let Some(root) = self.code_root(id, live).await else { return };
         tokio::spawn(async move {

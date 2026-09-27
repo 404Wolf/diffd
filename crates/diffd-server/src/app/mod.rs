@@ -17,6 +17,7 @@ use diffd_core::model::{History, Millis, Presence, ReviewId, ReviewMeta, Snapsho
 use diffd_core::protocol::{LiveState, ReviewState, ServerMsg};
 use tokio::sync::{Notify, broadcast};
 
+pub use code::{VIEW_GRACE, Viewing};
 pub use conversation::{LayoutInput, NoteInput, RegionInput};
 pub use feedback::{FeedbackBatch, FeedbackItem, ThreadMessage};
 pub use history::RangeEnd;
@@ -79,6 +80,8 @@ struct LiveInner {
     drafting: u32,
     /// `wait_for_feedback` calls and harness wake waits in progress.
     listeners: u32,
+    /// Pages showing the review. Language servers run for it only while there are some.
+    viewers: u32,
     /// User messages a harness hook already woke the agent for (see `wake`).
     told: std::collections::HashSet<diffd_core::model::MessageId>,
     last_agent: Option<Millis>,
@@ -190,6 +193,7 @@ impl App {
                         gate: FeedbackGate::default(),
                         drafting: 0,
                         listeners: 0,
+                        viewers: 0,
                         told: Default::default(),
                         last_agent: None,
                         presence: Presence::Away,

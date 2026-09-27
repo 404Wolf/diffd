@@ -432,10 +432,8 @@ async fn session(app: Arc<App>, id: ReviewId, has: Option<Revision>, socket: Web
         Err(e) => return Err(anyhow::anyhow!("{e}")),
     };
     let mut has = catch_up(&app, &id, has, &mut tx).await?;
-    {
-        let (app, id) = (app.clone(), id.clone());
-        tokio::spawn(async move { app.attach_code(&id).await });
-    }
+    // Language servers run for the review while this page (or another) shows it.
+    let _viewing = app.view(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     // Answers for this page only (language server questions), as opposed to review-wide events.
     let (direct, mut answers) = tokio::sync::mpsc::unbounded_channel::<ServerMsg>();
     let mut drafting = false;

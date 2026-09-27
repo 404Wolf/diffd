@@ -331,6 +331,29 @@ impl CodeIntel for LspPool {
         self.ask_inner(repo_root, path, query, line, col).boxed()
     }
 
+    fn release<'a>(&'a self, repo_root: &'a Path) -> BoxFuture<'a, ()> {
+        async move {
+            let cells: Vec<_> = self
+                .servers
+                .lock()
+                .expect("lsp lock")
+                .iter()
+                .filter(|((_, root), _)| root.starts_with(repo_root))
+                .map(|(_, c)| c.clone())
+                .collect();
+            for cell in cells {
+                // Wait for one that's starting: it's stopped once it's up.
+                let mut slot = cell.lock().await;
+                if let Some(Slot::Running(s)) = slot.take() {
+                    drop(slot);
+                    tracing::info!(root = %repo_root.display(), "stopping a language server: nobody is viewing its review");
+                    s.conn.shutdown().await;
+                }
+            }
+        }
+        .boxed()
+    }
+
     fn diagnostics(&self) -> broadcast::Receiver<FileDiagnostics> {
         self.diagnostics.subscribe()
     }
