@@ -11,9 +11,10 @@ import {
   nearestGap,
   shrinkAround,
 } from "./diffModel";
-import { carrySpan, locate, points, rangeOf, spanLabel, step, steps } from "./history";
+import { carrySpan, locate, points, rangeOf, spanLabel, step, stepAhead, steps } from "./history";
 import { JumpList } from "./jumps";
 import { KeyEngine, keyToken } from "./keymap";
+import { Lru } from "./lru";
 import { renderMarkdown, resolveRef } from "./markdown";
 import { changeMarks, lineHtml, rowHtml } from "./render";
 import { CLASS_KINDS, definition, FUNCTION_KINDS, pair, paragraph, tag } from "./textObjects";
@@ -259,6 +260,37 @@ describe("history", () => {
     expect(locate("a\nb", 4, lines)).toBe(4);
     expect(locate("a\nb", 1, lines)).toBe(1);
     expect(locate("q", 1, lines)).toBeNull();
+  });
+
+  it("guesses the step after next from the direction of the walk", () => {
+    // Forward from the whole review, from a range, or step by step.
+    expect(stepAhead(h, null, step(0))).toEqual(step(1));
+    expect(stepAhead(h, { from: 0, to: 2 }, step(1))).toEqual(step(2));
+    expect(stepAhead(h, step(0), step(1))).toEqual(step(2));
+    // Backward.
+    expect(stepAhead(h, step(2), step(1))).toEqual(step(0));
+    expect(stepAhead(h, step(1), step(0))).toBeNull();
+    // Nothing past the last step, or after a range of several.
+    expect(stepAhead(h, step(1), step(2))).toBeNull();
+    expect(stepAhead(h, null, { from: 0, to: 2 })).toBeNull();
+    expect(stepAhead(h, step(0), null)).toBeNull();
+  });
+});
+
+describe("most recently used", () => {
+  it("keeps the newest and most used entries", () => {
+    const lru = new Lru<string, number>(2);
+    lru.set("a", 1);
+    lru.set("b", 2);
+    expect(lru.get("a")).toBe(1);
+    lru.set("c", 3);
+    expect([lru.peek("a"), lru.peek("b"), lru.peek("c")]).toEqual([1, undefined, 3]);
+    // Peeking doesn't count as a use.
+    lru.peek("a");
+    lru.set("d", 4);
+    expect([lru.peek("a"), lru.peek("c"), lru.peek("d")]).toEqual([undefined, 3, 4]);
+    lru.deleteWhere((k) => k === "c");
+    expect(lru.size).toBe(1);
   });
 });
 

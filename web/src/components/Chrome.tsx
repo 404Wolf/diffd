@@ -55,9 +55,15 @@ export function TopBar(props: { review: Review }) {
         <Rev>{meta().from}</Rev>→<Rev>{meta().to ?? "working tree"}</Rev>
         <span>· rev {meta().revision}</span>
       </span>
-      <Show when={props.review.span() !== null}>
-        <span class="inline-flex h-[22px] items-center gap-1 rounded-full border border-accent-line bg-accent-soft pr-0.5 pl-2 text-xs text-accent">
-          <span class="font-mono text-[11px]">{spanLabel(props.review.history(), props.review.span())}</span>
+      {/* The commits on their way show right away, pulsing until they're ready. */}
+      <Show when={(props.review.loadingSpan() ?? props.review.span()) !== null}>
+        <span
+          class="inline-flex h-[22px] items-center gap-1 rounded-full border border-accent-line bg-accent-soft pr-0.5 pl-2 text-xs text-accent"
+          classList={{ "animate-pulse": props.review.loadingSpan() !== undefined }}
+        >
+          <span class="font-mono text-[11px]">
+            {spanLabel(props.review.history(), props.review.loadingSpan() ?? props.review.span())}
+          </span>
           <button
             type="button"
             title="Back to all changes"

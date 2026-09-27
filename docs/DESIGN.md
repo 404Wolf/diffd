@@ -701,8 +701,17 @@ review ends there ("Uncommitted changes").
 - **Any range:** `GET /api/reviews/{id}/range?from=<sha>&to=<sha>` (no `to` for
   the working tree) diffs exactly those two points, with the review's paths and
   collapse rules. The server checks that both are points in the review, and
-  keeps the last 24 range diffs in memory. Ranges ending at the working tree
-  are dropped on every rebuild.
+  keeps the 24 most recently used range diffs in memory; a range asked for
+  again while it's being diffed waits for that diff. Ranges ending at the
+  working tree are dropped on every rebuild.
+- **Walking is fast** because the next step is usually ready. After diffing
+  one step, the server diffs the next one, the previous one and the one after
+  next in the background (one at a time across reviews; a newer request takes
+  over). The page keeps the 12 most recent ranges, fetches the step after the
+  one shown (in the direction you're walking) when idle, keeps the old commit
+  on screen until the new one is ready, and shows the commit it's loading in
+  the header right away. Difftastic is most of the cost: typically 50–700 ms
+  a step, up to its 10 s timeout on a pathological file.
 - **Threads and regions** anchored in the whole diff are placed into the
   commit you're looking at by their text.
 - **Comments on a commit** carry that range in their anchor. The server
@@ -872,8 +881,9 @@ How we get there:
   one element.
 - **Budget for hidden context.** Folded gaps over 4000 rows aren't
   pre-rendered; `/` still searches them.
-- **Compact wire.** The WebSocket is compressed (§4). Snapshots are stored
-  zstd-compressed.
+- **Compact wire.** The WebSocket is compressed (§4), and so are pages and
+  JSON responses (zstd or gzip; a 9 MB review page is 1.3 MB). Snapshots are
+  stored zstd-compressed.
 
 There's no automated 100k-line benchmark yet (§15).
 
