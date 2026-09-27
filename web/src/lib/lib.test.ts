@@ -474,3 +474,12 @@ describe("context around the cursor's hunk", () => {
     ).toBe("1111111000");
   });
 });
+
+describe("help", () => {
+  it("writes bindings as they're typed", async () => {
+    const { keyLabel } = await import("../components/Chrome");
+    expect(
+      ["] c", "g r r", "space c", "g enter", "g space", "ctrl-shift-enter", "space t g"].map(keyLabel),
+    ).toEqual(["]c", "grr", "space c", "g enter", "g space", "ctrl-shift-enter", "space t g"]);
+  });
+});

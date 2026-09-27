@@ -222,6 +222,12 @@ export function Nudge(props: { view: View; cmd: Commands }) {
   );
 }
 
+/** A binding as you'd type it: `] c` as `]c`, but `space t g` and `g enter` keep their spaces. */
+export const keyLabel = (keys: string): string => {
+  const parts = keys.split(" ");
+  return parts.some((k) => k.length > 1) ? keys : parts.join("");
+};
+
 const fuzzy = (q: string, s: string) => {
   let i = 0;
   for (const ch of s) if (ch === q[i]) i++;
@@ -352,7 +358,7 @@ export function Help(props: { view: View }) {
                         <div class="flex items-center justify-between gap-2.5 border-b border-line py-1 text-[12.5px]">
                           <span>{e.label}</span>
                           <span class="flex flex-wrap justify-end gap-1">
-                            <For each={e.keys}>{(k) => <kbd>{k.replaceAll(" ", "")}</kbd>}</For>
+                            <For each={e.keys}>{(k) => <kbd>{keyLabel(k)}</kbd>}</For>
                           </span>
                         </div>
                       )}

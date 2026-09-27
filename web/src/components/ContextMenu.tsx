@@ -1,6 +1,7 @@
 import { createEffect, For, onCleanup, Show } from "solid-js";
 import type { Commands } from "../state/commands";
 import { bufferEl } from "../state/dom";
+import { keyLabel } from "./Chrome";
 
 export interface MenuAt {
   readonly x: number;
@@ -93,7 +94,7 @@ export function ContextMenu(props: { at: MenuAt | null; cmd: Commands; onClose: 
                 onClick={() => pick(item)}
               >
                 <span>{item.label}</span>
-                <kbd class="text-[11px] text-subtle">{item.keys}</kbd>
+                <kbd class="text-[11px] text-subtle">{keyLabel(item.keys)}</kbd>
               </button>
             )}
           </For>
