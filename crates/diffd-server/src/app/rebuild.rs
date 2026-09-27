@@ -1,6 +1,6 @@
 //! Building snapshots from the repository, and rebuilding them as files change.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
@@ -101,7 +101,7 @@ impl App {
         let (mut meta, spec) = self.meta(id).await?;
         let (repo, engine) = (self.repo.clone(), self.engine.clone());
         let (path, from, to, spec2) = (meta.repo_path.clone(), meta.from.clone(), meta.to.clone(), spec.clone());
-        let Built { inputs, mut files, fingerprint: fp, .. } = tokio::task::spawn_blocking(move || {
+        let Built { inputs, files, fingerprint: fp, .. } = tokio::task::spawn_blocking(move || {
             read_and_build(repo.as_ref(), engine.as_ref(), Path::new(&path), &from, to.as_deref(), &spec2)
         })
         .await
@@ -114,34 +114,13 @@ impl App {
         if live.inner.lock().expect("live lock").fingerprint == fp {
             return Ok(None);
         }
-        let by_path: HashMap<&str, &FileDiff> = prev.files.iter().map(|f| (f.path.as_str(), f)).collect();
-        let mut changed_paths = Vec::new();
-        for f in &mut files {
-            match by_path.get(f.path.as_str()) {
-                Some(p) => {
-                    mark_since(p, f);
-                    if p.new != f.new || p.old != f.old {
-                        changed_paths.push(f.path.clone());
-                    }
-                }
-                None => {
-                    f.since = f.new.as_ref().map(|n| (1..=n.lines.len() as u32).collect()).unwrap_or_default();
-                    changed_paths.push(f.path.clone());
-                }
-            }
-        }
-        for p in &prev.files {
-            if !files.iter().any(|f| f.path == p.path) {
-                changed_paths.push(p.path.clone());
-            }
-        }
-        if changed_paths.is_empty() {
+        let before = prev.clone();
+        let next = tokio::task::spawn_blocking(move || next_snapshot(&before, &inputs, files)).await.map_err(|e| anyhow::anyhow!(e))?;
+        let Some((snap, changed_paths)) = next else {
             live.inner.lock().expect("live lock").fingerprint = fp;
             return Ok(None);
-        }
-
-        let revision = prev.revision + 1;
-        let snap = build_snapshot(revision, &inputs, files);
+        };
+        let revision = snap.revision;
         let now = self.now();
         self.store.insert_revision(id, &snap, now).await?;
         self.store.set_revision(id, revision, now).await?;
@@ -182,6 +161,33 @@ impl App {
         App::broadcast(&live, ServerMsg::Activity { item });
         Ok(Some(revision))
     }
+}
+
+/// The snapshot after `prev`, with lines marked that changed since it, and
+/// the paths that changed; `None` when no file did.
+fn next_snapshot(prev: &Snapshot, inputs: &[FileInput], mut files: Vec<FileDiff>) -> Option<(Snapshot, Vec<String>)> {
+    let by_path: HashMap<&str, &FileDiff> = prev.files.iter().map(|f| (f.path.as_str(), f)).collect();
+    let mut changed_paths = Vec::new();
+    for f in &mut files {
+        match by_path.get(f.path.as_str()) {
+            Some(p) => {
+                mark_since(p, f);
+                if p.new != f.new || p.old != f.old {
+                    changed_paths.push(f.path.clone());
+                }
+            }
+            None => {
+                f.since = f.new.as_ref().map(|n| (1..=n.lines.len() as u32).collect()).unwrap_or_default();
+                changed_paths.push(f.path.clone());
+            }
+        }
+    }
+    let now: HashSet<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    changed_paths.extend(prev.files.iter().filter(|p| !now.contains(p.path.as_str())).map(|p| p.path.clone()));
+    if changed_paths.is_empty() {
+        return None;
+    }
+    Some((build_snapshot(prev.revision + 1, inputs, files), changed_paths))
 }
 
 /// Follow a region's lines into a new snapshot. Whole-file regions need nothing.

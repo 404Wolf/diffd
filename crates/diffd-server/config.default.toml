@@ -20,7 +20,8 @@ enabled = true
 request_timeout_secs = 10
 # Stop a language server nobody has used for this long.
 idle_timeout_secs = 900
-# Open at most this many files per review with language servers (for diagnostics).
+# Keep at most this many files open in each language server (the least
+# recently changed are closed first).
 max_open_files = 300
 
 # One table per language server. `languages` maps LSP language ids to the file

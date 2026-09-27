@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -33,11 +33,16 @@ pub enum Incoming {
 
 type Pending = Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Value, String>>>>>;
 
+/// Bigger messages are taken as a broken stream rather than read.
+const MAX_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
+
 pub struct Connection {
     outgoing: mpsc::UnboundedSender<Value>,
     pending: Pending,
     next_id: AtomicI64,
     child: Mutex<Option<Child>>,
+    /// Cleared when the server's output ends: it exited or crashed.
+    alive: Arc<AtomicBool>,
 }
 
 impl Connection {
@@ -62,9 +67,20 @@ impl Connection {
         let stdin = child.stdin.take().context("no stdin")?;
         let stdout = child.stdout.take().context("no stdout")?;
         let (outgoing, rx) = mpsc::unbounded_channel();
-        let conn = Arc::new(Self { outgoing, pending: Arc::default(), next_id: AtomicI64::new(1), child: Mutex::new(Some(child)) });
+        let alive = Arc::new(AtomicBool::new(true));
+        let conn = Arc::new(Self {
+            outgoing,
+            pending: Arc::default(),
+            next_id: AtomicI64::new(1),
+            child: Mutex::new(Some(child)),
+            alive: alive.clone(),
+        });
         tokio::spawn(write_loop(stdin, rx));
-        tokio::spawn(read_loop(BufReader::new(stdout), conn.pending.clone(), conn.outgoing.clone(), incoming));
+        let (pending, outgoing) = (conn.pending.clone(), conn.outgoing.clone());
+        tokio::spawn(async move {
+            read_loop(BufReader::new(stdout), pending, outgoing, incoming).await;
+            alive.store(false, Ordering::Release);
+        });
         Ok(conn)
     }
 
@@ -94,7 +110,7 @@ impl Connection {
     }
 
     pub fn alive(&self) -> bool {
-        !self.outgoing.is_closed()
+        self.alive.load(Ordering::Acquire) && !self.outgoing.is_closed()
     }
 
     /// Ask the server to stop, then make sure it does.
@@ -128,11 +144,17 @@ async fn read_loop(
 ) {
     loop {
         let msg = match read_message(&mut stdout).await {
-            Ok(Some(msg)) => msg,
-            Ok(None) => break,
-            Err(e) => {
+            Ok(Frame::Message(msg)) => msg,
+            Ok(Frame::End) => break,
+            // A whole frame that isn't JSON: skip it, the stream is still in step.
+            Ok(Frame::Malformed(e)) => {
                 tracing::debug!(error = %e, "bad message from a language server");
                 continue;
+            }
+            // The stream itself broke: nothing after this can be trusted.
+            Err(e) => {
+                tracing::debug!(error = %format!("{e:#}"), "language server output broke off");
+                break;
             }
         };
         let id = msg.get("id").cloned();
@@ -179,13 +201,21 @@ async fn read_loop(
     pending.lock().expect("rpc lock").clear();
 }
 
-/// One framed message, or `None` at end of stream.
-async fn read_message(r: &mut BufReader<tokio::process::ChildStdout>) -> anyhow::Result<Option<Value>> {
+enum Frame {
+    Message(Value),
+    /// A complete frame whose body isn't JSON.
+    Malformed(serde_json::Error),
+    /// End of stream: the server exited.
+    End,
+}
+
+/// One framed message. Errors mean the stream is broken (bad framing, I/O).
+async fn read_message(r: &mut BufReader<tokio::process::ChildStdout>) -> anyhow::Result<Frame> {
     let mut length = None;
     loop {
         let mut line = String::new();
         if r.read_line(&mut line).await? == 0 {
-            return Ok(None);
+            return Ok(Frame::End);
         }
         let line = line.trim_end();
         if line.is_empty() {
@@ -196,7 +226,13 @@ async fn read_message(r: &mut BufReader<tokio::process::ChildStdout>) -> anyhow:
         }
     }
     let length = length.context("a message without Content-Length")?;
+    if length > MAX_MESSAGE_BYTES {
+        bail!("a {length}-byte message");
+    }
     let mut body = vec![0; length];
     r.read_exact(&mut body).await?;
-    Ok(Some(serde_json::from_slice(&body)?))
+    Ok(match serde_json::from_slice(&body) {
+        Ok(msg) => Frame::Message(msg),
+        Err(e) => Frame::Malformed(e),
+    })
 }

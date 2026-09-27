@@ -43,6 +43,9 @@ pub struct Pending {
     pub message: Message,
 }
 
+/// Snapshots kept per review (see [`Store::insert_revision`]).
+const KEPT_REVISIONS: i64 = 3;
+
 #[derive(Clone)]
 pub struct Store {
     pool: SqlitePool,
@@ -157,12 +160,18 @@ impl Store {
         Ok(())
     }
 
+    /// Save a revision's snapshot, dropping all but the last few: only the
+    /// latest is ever read, and a live review makes one per save.
     pub async fn insert_revision(&self, id: &ReviewId, snapshot: &Snapshot, at: Millis) -> anyhow::Result<()> {
         let blob = zstd::encode_all(serde_json::to_vec(snapshot)?.as_slice(), 3)?;
         let (rev, at) = (snapshot.revision as i64, at as i64);
+        let oldest_kept = rev - KEPT_REVISIONS + 1;
+        let mut tx = self.pool.begin().await?;
         sqlx::query!("INSERT INTO revisions (review_id, number, snapshot, created_at) VALUES (?, ?, ?, ?)", id.0, rev, blob, at)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        sqlx::query!("DELETE FROM revisions WHERE review_id = ? AND number < ?", id.0, oldest_kept).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(())
     }
 

@@ -233,3 +233,67 @@ async fn several_languages_at_once_and_graceful_misses() {
         other => panic!("{other:?}"),
     }
 }
+
+/// A pool around the fake server in `fixtures/fake_lsp.py`, for `.fake` files.
+fn fake_pool(max_open_files: usize, log: &Path) -> Option<Arc<LspPool>> {
+    if !installed("python3") {
+        eprintln!("skipped: python3 isn't installed");
+        return None;
+    }
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_lsp.py");
+    let config = Config::parse(&format!(
+        "[lsp]\nmax_open_files = {max_open_files}\n[lsp.servers.fake]\ncommand = \"python3\"\nargs = [{script:?}]\n\
+         languages = {{ fake = [\"fake\"] }}\nenv = {{ FAKE_LSP_LOG = {log:?} }}\n"
+    ))
+    .unwrap();
+    Some(LspPool::new(Arc::new(config)))
+}
+
+/// Wait until the fake server's log has `line`.
+async fn logged(log: &Path, line: &str) -> String {
+    for _ in 0..100 {
+        let text = std::fs::read_to_string(log).unwrap_or_default();
+        if text.lines().any(|l| l == line) {
+            return text;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the server never logged `{line}`: {}", std::fs::read_to_string(log).unwrap_or_default());
+}
+
+#[tokio::test]
+async fn open_files_are_bounded_and_deleted_ones_closed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (root, log) = (dir.path().join("repo"), dir.path().join("log"));
+    let Some(pool) = fake_pool(2, &log) else { return };
+    write(&root, &[("a.fake", "a"), ("b.fake", "b"), ("c.fake", "c")]);
+    for f in ["a.fake", "b.fake", "c.fake"] {
+        pool.sync(&root, f).await;
+    }
+    let text = logged(&log, "didClose a.fake").await;
+    assert!(text.contains("didOpen c.fake") && !text.contains("didClose b.fake"), "the oldest goes first:\n{text}");
+
+    std::fs::remove_file(root.join("b.fake")).unwrap();
+    pool.sync(&root, "b.fake").await;
+    logged(&log, "didClose b.fake").await;
+}
+
+#[tokio::test]
+async fn a_crashing_server_is_restarted_then_given_up_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let (root, log) = (dir.path().join("repo"), dir.path().join("log"));
+    let Some(pool) = fake_pool(10, &log) else { return };
+    write(&root, &[("a.fake", "a")]);
+    let mut reasons = Vec::new();
+    for _ in 0..5 {
+        match pool.ask(&root, "a.fake", CodeQuery::Hover, 1, 1).await {
+            CodeAnswer::Unavailable { reason } => reasons.push(reason),
+            other => panic!("the fake server never answers a hover: {other:?}"),
+        }
+        // Let the pool see the exit.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    let crashes = std::fs::read_to_string(&log).unwrap().lines().filter(|l| *l == "crash").count();
+    assert_eq!(crashes, 3, "restarted after each crash, up to the limit: {reasons:?}");
+    assert!(reasons.last().unwrap().contains("keeps crashing"), "{reasons:?}");
+}

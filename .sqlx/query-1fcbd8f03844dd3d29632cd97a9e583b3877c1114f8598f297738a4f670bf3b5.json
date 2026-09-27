@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM revisions WHERE review_id = ? AND number < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1fcbd8f03844dd3d29632cd97a9e583b3877c1114f8598f297738a4f670bf3b5"
+}

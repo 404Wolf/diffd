@@ -37,6 +37,14 @@ pub struct LspPool {
     diagnostics: broadcast::Sender<FileDiagnostics>,
 }
 
+#[derive(Clone, Copy)]
+struct OpenFile {
+    version: i32,
+    /// A hash of the text last sent.
+    hash: u64,
+    last_synced: u64,
+}
+
 /// A server is per (configured server name, project root).
 type Key = (String, PathBuf);
 
@@ -48,8 +56,10 @@ enum Slot {
 
 struct Server {
     conn: Arc<Connection>,
-    /// Open documents: version and a hash of the text last sent.
-    open: Mutex<HashMap<PathBuf, (i32, u64)>>,
+    /// Open documents, at most `max_open_files` of them.
+    open: Mutex<HashMap<PathBuf, OpenFile>>,
+    /// Counts syncs, so the least recently synced file can be closed first.
+    clock: std::sync::atomic::AtomicU64,
     last_used: Mutex<Instant>,
     crashes: u32,
     /// The server asked for `didSave` (some crash on notifications they didn't ask for).
@@ -184,14 +194,32 @@ impl LspPool {
         // Some servers (pyright) only start working once they've been sent settings, even empty ones.
         let settings = spec.settings.clone().map(toml_to_json).unwrap_or_else(|| json!({}));
         conn.notify("workspace/didChangeConfiguration", json!({ "settings": settings }));
-        Ok(Arc::new(Server { conn, open: Mutex::default(), last_used: Mutex::new(Instant::now()), crashes, wants_save }))
+        Ok(Arc::new(Server {
+            conn,
+            open: Mutex::default(),
+            clock: Default::default(),
+            last_used: Mutex::new(Instant::now()),
+            crashes,
+            wants_save,
+        }))
     }
 
-    /// Send a file's current text to its server (open, or change).
+    /// Send a file's current text to its server (open, or change), or close
+    /// it when it's gone.
     async fn sync_file(&self, repo_root: &Path, path: &str) -> Result<(Arc<Server>, PathBuf), String> {
         let (server, language) = self.server_for(repo_root, path).await?;
         let file = repo_root.join(path);
-        let meta = tokio::fs::metadata(&file).await.map_err(|e| format!("can't read {path}: {e}"))?;
+        let uri = convert::file_uri(&file);
+        let meta = match tokio::fs::metadata(&file).await {
+            Ok(meta) => meta,
+            Err(e) => {
+                // Deleted: close it, so its diagnostics go away.
+                if server.open.lock().expect("lsp lock").remove(&file).is_some() {
+                    server.conn.notify("textDocument/didClose", json!({ "textDocument": { "uri": uri } }));
+                }
+                return Err(format!("can't read {path}: {e}"));
+            }
+        };
         if meta.len() > MAX_FILE_BYTES {
             return Err(format!("{path} is too large for the language server"));
         }
@@ -201,21 +229,35 @@ impl LspPool {
             text.hash(&mut h);
             h.finish()
         };
-        let uri = convert::file_uri(&file);
-        let sent = {
+        let now = server.clock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (sent, evicted) = {
             let mut open = server.open.lock().expect("lsp lock");
-            match open.get(&file).copied() {
+            let sent = match open.get_mut(&file) {
                 None => {
-                    open.insert(file.clone(), (1, hash));
+                    open.insert(file.clone(), OpenFile { version: 1, hash, last_synced: now });
                     Some(("open", 1))
                 }
-                Some((version, old)) if old != hash => {
-                    open.insert(file.clone(), (version + 1, hash));
-                    Some(("change", version + 1))
+                Some(f) if f.hash != hash => {
+                    *f = OpenFile { version: f.version + 1, hash, last_synced: now };
+                    Some(("change", f.version))
                 }
-                Some(_) => None,
+                Some(f) => {
+                    f.last_synced = now;
+                    None
+                }
+            };
+            // Too many open: close the ones synced longest ago.
+            let mut evicted = Vec::new();
+            while open.len() > self.config.lsp.max_open_files.max(1) {
+                let Some(oldest) = open.iter().min_by_key(|(_, f)| f.last_synced).map(|(p, _)| p.clone()) else { break };
+                open.remove(&oldest);
+                evicted.push(oldest);
             }
+            (sent, evicted)
         };
+        for path in evicted {
+            server.conn.notify("textDocument/didClose", json!({ "textDocument": { "uri": convert::file_uri(&path) } }));
+        }
         match sent {
             Some(("open", _)) => server.conn.notify(
                 "textDocument/didOpen",
