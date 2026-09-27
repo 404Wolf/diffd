@@ -5,10 +5,22 @@
 # config only needs what it changes. `diffd config` prints this file.
 
 [server]
-# Where the review server listens (always on localhost).
+# Where the review server listens.
 port = 3433
 # The SQLite database with your reviews. Empty means ~/.local/share/diffd/diffd.db.
 db = ""
+# The address to listen on. Keep 127.0.0.1 unless you share diffd over a
+# network you trust, e.g. "0.0.0.0" on a tailnet (or put a proxy such as
+# `tailscale serve` in front and keep this as is).
+bind = "127.0.0.1"
+# Host names the review pages also answer to, besides localhost: the names
+# you open diffd by from other machines, e.g. ["mybox", "mybox.tailnet.ts.net"].
+# Review comments become input for your agent, so list only names reachable
+# from networks you trust. MCP (/mcp) always stays localhost-only.
+allowed_hosts = []
+# The base of the review links agents hand out, e.g.
+# "https://mybox.tailnet.ts.net:3433". Empty means http://localhost:<port>.
+public_url = ""
 
 [lsp]
 # Language servers power go to definition (gd), go to type definition (gt),

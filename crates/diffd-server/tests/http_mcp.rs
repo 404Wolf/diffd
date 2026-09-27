@@ -146,3 +146,48 @@ async fn agent_and_page_talk_through_the_server() {
     assert_eq!(result.is_error, Some(true));
     client.cancel().await.unwrap();
 }
+
+/// Shared over a private network: the listed hosts get the pages, every other
+/// host is still refused, and MCP stays loopback-only.
+#[tokio::test]
+async fn allowed_hosts_reach_the_pages_but_not_mcp() {
+    let app = common::app().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let access = http::Access { allowed_hosts: vec!["Box.Tailnet.ts.net".into()] };
+    tokio::spawn(async move {
+        let page = "<!doctype html><title>t</title><!--diffd-boot-->";
+        axum::serve(listener, http::router_with_access(app, page, tokio_util::sync::CancellationToken::new(), access)).await.unwrap();
+    });
+    let base = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+    let get = |host: &'static str, path: &'static str| client.get(format!("{base}{path}")).header("host", host).send();
+
+    // Listed hosts (any case, any port) and loopback get the page.
+    assert_eq!(get("box.tailnet.ts.net:3433", "/").await.unwrap().status(), 200);
+    assert_eq!(get("localhost", "/").await.unwrap().status(), 200);
+    // Anything else is refused, as before.
+    assert_eq!(get("evil.example", "/").await.unwrap().status(), 403);
+    assert_eq!(get("tailnet.ts.net", "/").await.unwrap().status(), 403);
+    // MCP only answers loopback, even for a listed host.
+    let mcp = client.post(format!("{base}/mcp")).header("host", "box.tailnet.ts.net").body("{}").send().await.unwrap();
+    assert_eq!(mcp.status(), 403);
+    // A listed host still can't be written to from another origin.
+    let cross = client
+        .delete(format!("{base}/api/reviews/missing"))
+        .header("host", "box.tailnet.ts.net")
+        .header("origin", "https://evil.example")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cross.status(), 403);
+    // Its own origin can (the review doesn't exist, so that's a 404, not a 403).
+    let same = client
+        .delete(format!("{base}/api/reviews/missing"))
+        .header("host", "box.tailnet.ts.net")
+        .header("origin", "https://box.tailnet.ts.net")
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(same.status(), 403);
+}

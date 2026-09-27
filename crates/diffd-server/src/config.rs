@@ -24,6 +24,13 @@ pub struct ServerSection {
     pub port: u16,
     /// Empty for the default location.
     pub db: String,
+    /// The address to listen on.
+    pub bind: String,
+    /// Extra `Host` names the review pages answer to (MCP stays loopback-only).
+    pub allowed_hosts: Vec<String>,
+    /// The base of the review links agents hand out. Empty means
+    /// `http://localhost:<port>`.
+    pub public_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

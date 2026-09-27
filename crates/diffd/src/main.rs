@@ -1,6 +1,6 @@
 //! `diffd`: the local server agents share their changes through.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -60,9 +60,18 @@ enum Agent {
 
 #[derive(clap::Args, Clone)]
 struct ServeArgs {
-    /// Port to listen on (localhost only); overrides the config.
+    /// Port to listen on; overrides the config.
     #[arg(long, env = "DIFFD_PORT")]
     port: Option<u16>,
+    /// Address to listen on (default 127.0.0.1); overrides the config.
+    #[arg(long, env = "DIFFD_BIND")]
+    bind: Option<IpAddr>,
+    /// Extra host names the review pages answer to, comma-separated; overrides the config.
+    #[arg(long, env = "DIFFD_ALLOWED_HOSTS", value_delimiter = ',')]
+    allowed_hosts: Option<Vec<String>>,
+    /// Base URL for the review links agents hand out; overrides the config.
+    #[arg(long, env = "DIFFD_PUBLIC_URL")]
+    public_url: Option<String>,
     /// SQLite database file; overrides the config.
     #[arg(long, env = "DIFFD_DB")]
     db: Option<PathBuf>,
@@ -114,7 +123,17 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
             Arc::new(NoEngine)
         }
     };
-    let base_url = format!("http://localhost:{port}");
+    let bind: IpAddr = match args.bind {
+        Some(ip) => ip,
+        None => config.server.bind.parse().with_context(|| format!("server.bind = {:?} isn't an IP address", config.server.bind))?,
+    };
+    let allowed_hosts = args.allowed_hosts.unwrap_or_else(|| config.server.allowed_hosts.clone());
+    let allowed_hosts: Vec<String> = allowed_hosts.into_iter().map(|h| h.trim().to_string()).filter(|h| !h.is_empty()).collect();
+    let local_url = format!("http://localhost:{port}");
+    let base_url = match args.public_url.unwrap_or_else(|| config.server.public_url.clone()) {
+        u if u.trim().is_empty() => local_url.clone(),
+        u => u.trim().trim_end_matches('/').to_string(),
+    };
     let app = App::new(store, Arc::new(GitCli), engine, Arc::new(SystemClock), base_url.clone()).await;
     if config.lsp.enabled {
         app.set_code_intel(LspPool::new(config.clone()));
@@ -132,16 +151,17 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         });
     }
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::new(bind, port);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .with_context(|| format!("port {port} is taken; is diffd already running? (--port to pick another)"))?;
-    tracing::info!(db = %db.display(), "diffd is running at {base_url}  ·  MCP: {base_url}/mcp");
+        .with_context(|| format!("can't listen on {addr}; is diffd already running? (--port to pick another)"))?;
+    tracing::info!(db = %db.display(), %addr, ?allowed_hosts, "diffd is running at {base_url}  ·  MCP: {local_url}/mcp");
     let shutdown = CancellationToken::new();
-    let serve = axum::serve(listener, http::router(app, PAGE, shutdown.clone())).with_graceful_shutdown({
+    let access = http::Access { allowed_hosts };
+    let serve = axum::serve(listener, http::router_with_access(app, PAGE, shutdown.clone(), access)).with_graceful_shutdown({
         let shutdown = shutdown.clone();
         async move {
-            let _ = tokio::signal::ctrl_c().await;
+            stop_signal().await;
             shutdown.cancel();
         }
     });
@@ -154,6 +174,25 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     }
     drop(watcher);
     Ok(())
+}
+
+/// Ctrl+C, or SIGTERM from a service manager such as systemd.
+async fn stop_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = term.recv() => {}
+                }
+                return;
+            }
+            Err(e) => tracing::warn!(error = %e, "can't listen for SIGTERM; only Ctrl+C stops diffd"),
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 fn setup_claude(print: bool, port: u16) -> anyhow::Result<()> {

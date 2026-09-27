@@ -36,10 +36,37 @@ struct Web {
     shutdown: CancellationToken,
 }
 
-/// Build the router. `template` is the single-file page bundle. Cancelling
-/// `shutdown` closes WebSockets and MCP sessions (an agent waiting for
-/// feedback, say), so a graceful shutdown doesn't wait on them.
+/// Which `Host`s the review pages answer to. Loopback names always work; a
+/// server shared over a private network (a tailnet, say) adds its names here.
+/// `/mcp` never uses this list: agents run on this machine, so MCP stays
+/// loopback-only however the server is exposed.
+#[derive(Debug, Clone, Default)]
+pub struct Access {
+    /// Extra host names or IP addresses, without ports, matched
+    /// case-insensitively.
+    pub allowed_hosts: Vec<String>,
+}
+
+impl Access {
+    fn allows(&self, hostname: &str) -> bool {
+        is_loopback(hostname) || self.allowed_hosts.iter().any(|h| h.eq_ignore_ascii_case(hostname))
+    }
+}
+
+fn is_loopback(hostname: &str) -> bool {
+    matches!(hostname, "localhost" | "127.0.0.1" | "[::1]")
+}
+
+/// Build the router for a localhost-only server. `template` is the
+/// single-file page bundle. Cancelling `shutdown` closes WebSockets and MCP
+/// sessions (an agent waiting for feedback, say), so a graceful shutdown
+/// doesn't wait on them.
 pub fn router(app: Arc<App>, template: &'static str, shutdown: CancellationToken) -> Router {
+    router_with_access(app, template, shutdown, Access::default())
+}
+
+/// [`router`], also answering page requests for the hosts in `access`.
+pub fn router_with_access(app: Arc<App>, template: &'static str, shutdown: CancellationToken, access: Access) -> Router {
     let mcp_app = app.clone();
     // The default config already only accepts loopback `Host`s.
     let mut mcp_config = StreamableHttpServerConfig::default();
@@ -57,19 +84,23 @@ pub fn router(app: Arc<App>, template: &'static str, shutdown: CancellationToken
         .route("/api/reviews/{id}/ws", get(ws))
         .with_state(web)
         .nest_service("/mcp", mcp)
-        .layer(middleware::from_fn(local_only))
+        .layer(middleware::from_fn(move |req, next| local_only(access.clone(), req, next)))
 }
 
-/// Only answer requests addressed to this machine, and only accept
-/// state-changing requests from our own pages. Comments become LLM input, so
-/// another website must not be able to post them.
-async fn local_only(req: Request, next: Next) -> Response {
+/// Only answer requests addressed to this machine (or a host in `access`),
+/// only let MCP in over loopback, and only accept state-changing requests
+/// from our own pages. Comments become LLM input, so another website must not
+/// be able to post them.
+async fn local_only(access: Access, req: Request, next: Next) -> Response {
     let host = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("");
     let hostname = host.rsplit_once(':').map_or(host, |(h, port)| if port.chars().all(|c| c.is_ascii_digit()) { h } else { host });
-    if !matches!(hostname, "localhost" | "127.0.0.1" | "[::1]") {
-        return (StatusCode::FORBIDDEN, "diffd only answers requests for localhost").into_response();
-    }
     let is_mcp = req.uri().path().starts_with("/mcp");
+    if is_mcp && !is_loopback(hostname) {
+        return (StatusCode::FORBIDDEN, "diffd only answers MCP requests for localhost").into_response();
+    }
+    if !access.allows(hostname) {
+        return (StatusCode::FORBIDDEN, "diffd only answers requests for localhost and its configured hosts").into_response();
+    }
     if !is_mcp && let Some(origin) = req.headers().get(header::ORIGIN).and_then(|o| o.to_str().ok()) {
         let expected = [format!("http://{host}"), format!("https://{host}")];
         if !expected.iter().any(|e| e == origin) {
