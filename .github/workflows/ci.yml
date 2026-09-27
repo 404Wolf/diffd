@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, rust-analyzer, rust-src
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
@@ -23,8 +23,11 @@ jobs:
       - run: npm --prefix web ci
       - run: just lint
       - run: just test
-      - name: Generated TypeScript types match the Rust ones
-        run: just types && git diff --exit-code web/src/gen && test -z "$(git status --porcelain web/src/gen)"
+      - name: Generated types, OpenAPI description and API client match the Rust ones
+        run: |
+          just types
+          git diff --exit-code web/src/gen web/openapi.json web/src/api
+          test -z "$(git status --porcelain web/src/gen web/openapi.json web/src/api)"
 
   e2e:
     name: End to end

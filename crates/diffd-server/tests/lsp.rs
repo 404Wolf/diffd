@@ -15,6 +15,16 @@ fn installed(command: &str) -> bool {
     std::process::Command::new("sh").args(["-c", &format!("command -v {command}")]).output().is_ok_and(|o| o.status.success())
 }
 
+/// rustup puts a `rust-analyzer` proxy on the `PATH` even when the component
+/// isn't installed: make sure it actually runs.
+fn rust_analyzer_installed() -> bool {
+    std::process::Command::new("rust-analyzer")
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
 fn write(root: &Path, files: &[(&str, &str)]) {
     for (path, text) in files {
         let p = root.join(path);
@@ -80,7 +90,7 @@ fn setup() -> (tempfile::TempDir, std::path::PathBuf, Arc<LspPool>) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn rust() {
-    if !installed("rust-analyzer") {
+    if !rust_analyzer_installed() {
         return eprintln!("skipped: rust-analyzer isn't installed");
     }
     let (_dir, root, pool) = setup();

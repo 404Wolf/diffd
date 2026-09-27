@@ -16,7 +16,7 @@ web:
 
 # Build the release binary with the page baked in.
 build: web
-    cargo build --release -p diffd
+    SQLX_OFFLINE=true cargo build --release -p diffd
     @echo "built target/release/diffd"
 
 # Run the server from source (rebuilds the page first).
