@@ -29,9 +29,14 @@ notify = "8"
 notify-debouncer-mini = "0.7"
 rand = "0.9"
 toml = "0.9"
+# The page's WebSocket, compressed with permessage-deflate (tungstenite is Signal's fork, patched in the workspace).
+tokio-tungstenite = { version = "0.27", default-features = false, features = ["handshake"] }
+tungstenite = { version = "0.27", default-features = false, features = ["handshake", "deflate"] }
+hyper = "1"
+hyper-util = { version = "0.1", features = ["tokio"] }
 url = "2"
 
 [dev-dependencies]
 rmcp = { version = "3.4", features = ["client", "transport-streamable-http-client-reqwest"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-tokio-tungstenite = "0.28"
+tokio-tungstenite = { version = "0.27", features = ["connect"] }

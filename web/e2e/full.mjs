@@ -122,6 +122,11 @@ await agent.init();
 
 try {
   await section("The review page loads", async () => {
+    // Watch the WebSocket handshake to see what compression the browser and server agree on.
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Network.enable");
+    const handshakes = [];
+    cdp.on("Network.webSocketHandshakeResponseReceived", (e) => handshakes.push(e.response.headers));
     await page.goto(reviewUrl);
     await page.waitForSelector("[data-file-section]");
     await sleep(400);
@@ -132,6 +137,9 @@ try {
     check((await page.locator(".nv-add").count()) > 20, "novel tokens are highlighted");
     check((await page.locator(".s-keyword").count()) > 20, "syntax is highlighted");
     check((await status(page)).includes("NORMAL"), "status line shows NORMAL mode");
+    await page.waitForFunction(() => /listening|working|checked in/.test(document.getElementById("presence")?.innerText ?? ""));
+    const ext = handshakes.map((h) => h["Sec-WebSocket-Extensions"] ?? h["sec-websocket-extensions"] ?? "").join(" ");
+    check(ext.includes("permessage-deflate"), `the page's WebSocket is compressed (${ext || "no extensions"})`);
     await shot(page, "loaded");
   });
 

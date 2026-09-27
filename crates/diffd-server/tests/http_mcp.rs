@@ -81,8 +81,17 @@ async fn agent_and_page_talk_through_the_server() {
         reqwest::Client::new().delete(format!("{base}/api/reviews/{id}")).header("origin", "https://evil.example").send().await.unwrap();
     assert_eq!(cross.status(), 403);
 
-    // The page connects and gets the full state.
-    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}/api/reviews/{id}/ws")).await.unwrap();
+    // The page connects, with permessage-deflate like a browser, and gets the full state.
+    let url = format!("ws://127.0.0.1:{port}/api/reviews/{id}/ws");
+    let mut config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
+    config.extensions.permessage_deflate = Some(tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig::default());
+    let (mut ws, response) = tokio_tungstenite::connect_async_with_config(&url, Some(config), false).await.unwrap();
+    let agreed = response.headers().get("sec-websocket-extensions").map(|v| v.to_str().unwrap().to_owned());
+    assert_eq!(agreed.as_deref(), Some("permessage-deflate"), "compression is negotiated");
+    // A client that doesn't offer compression works too.
+    let (mut plain, response) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    assert!(response.headers().get("sec-websocket-extensions").is_none());
+    assert_eq!(next_json(&mut plain).await["type"], "state");
     let first = next_json(&mut ws).await;
     assert_eq!(first["type"], "state");
     assert_eq!(first["state"]["threads"].as_array().unwrap().len(), 1);

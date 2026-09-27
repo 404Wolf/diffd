@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
@@ -12,9 +11,15 @@ use axum::routing::get;
 use diffd_core::model::{Author, ReviewId};
 use diffd_core::protocol::{Boot, ClientMsg, ReviewSummary, ServerMsg};
 use futures::{SinkExt, StreamExt};
+use hyper_util::rt::TokioIo;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use tokio::sync::broadcast::error::RecvError;
+use tokio_tungstenite::WebSocketStream;
+use tungstenite::Message as WsMessage;
+use tungstenite::extensions::compression::deflate::DeflateConfig;
+use tungstenite::handshake::derive_accept_key;
+use tungstenite::protocol::{Role, WebSocketConfig};
 
 use super::mcp::DiffdMcp;
 use crate::app::{App, AppError};
@@ -163,12 +168,57 @@ async fn delete_review(State(web): State<Web>, Path(id): Path<String>) -> Respon
     }
 }
 
+/// The page's socket: tungstenite (Signal's fork) over the connection hyper hands over.
+type WebSocket = WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>;
+
+/// Upgrade to the page's WebSocket, compressed with permessage-deflate when
+/// the browser offers it (they all do). The handshake is done here rather
+/// than by axum so the compression can be negotiated.
 /// Browsers always send `Origin` on WebSocket requests, and `local_only` has checked it.
-async fn ws(State(web): State<Web>, Path(id): Path<String>, upgrade: WebSocketUpgrade) -> Response {
-    upgrade.on_upgrade(move |socket| async move {
+async fn ws(State(web): State<Web>, Path(id): Path<String>, mut req: Request) -> Response {
+    let headers = req.headers();
+    let is_upgrade = headers.get(header::UPGRADE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.eq_ignore_ascii_case("websocket"));
+    let version_13 = headers.get(header::SEC_WEBSOCKET_VERSION).is_some_and(|v| v == "13");
+    let Some(key) = headers.get(header::SEC_WEBSOCKET_KEY).filter(|_| is_upgrade && version_13).cloned() else {
+        return (StatusCode::UPGRADE_REQUIRED, "this endpoint speaks WebSocket (version 13)").into_response();
+    };
+    let deflate = offers_deflate(headers.get_all(header::SEC_WEBSOCKET_EXTENSIONS));
+    let upgrading = hyper::upgrade::on(&mut req);
+    tokio::spawn(async move {
+        let io = match upgrading.await {
+            Ok(upgraded) => TokioIo::new(upgraded),
+            Err(e) => return tracing::debug!(error = %e, "websocket upgrade failed"),
+        };
+        let mut config = WebSocketConfig::default();
+        if deflate {
+            config.extensions.permessage_deflate = Some(DeflateConfig::default());
+        }
+        let socket = WebSocketStream::from_raw_socket(io, Role::Server, Some(config)).await;
         if let Err(e) = session(web.app, ReviewId(id), socket).await {
             tracing::debug!(error = %format!("{e:#}"), "websocket closed");
         }
+    });
+    let mut res = Response::builder()
+        .status(StatusCode::SWITCHING_PROTOCOLS)
+        .header(header::CONNECTION, "upgrade")
+        .header(header::UPGRADE, "websocket")
+        .header(header::SEC_WEBSOCKET_ACCEPT, derive_accept_key(key.as_bytes()));
+    if deflate {
+        // Default parameters on both sides: 15-bit windows, context takeover.
+        res = res.header(header::SEC_WEBSOCKET_EXTENSIONS, "permessage-deflate");
+    }
+    res.body(axum::body::Body::empty()).expect("a valid response")
+}
+
+/// Whether the browser offered permessage-deflate in a form we accept as is
+/// (RFC 7692): with no parameters, or only `client_max_window_bits` (a hint
+/// we may ignore) and `client_no_context_takeover` (the client's own choice).
+/// Offers asking things of the server are declined, and the socket stays uncompressed.
+fn offers_deflate(values: axum::http::header::GetAll<'_, axum::http::HeaderValue>) -> bool {
+    values.iter().filter_map(|v| v.to_str().ok()).flat_map(|v| v.split(',')).any(|offer| {
+        let mut parts = offer.split(';').map(str::trim);
+        parts.next() == Some("permessage-deflate")
+            && parts.all(|p| matches!(p.split('=').next().map(str::trim), Some("client_max_window_bits" | "client_no_context_takeover")))
     })
 }
 
@@ -204,6 +254,7 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Resu
             incoming = rx.next() => {
                 let Some(Ok(frame)) = incoming else { break Ok(()) };
                 let WsMessage::Text(text) = frame else { continue };
+                let text = text.as_str();
                 match serde_json::from_str::<ClientMsg>(&text) {
                     // Language servers can take a while: answer in the background, in any order.
                     Ok(ClientMsg::Code { request_id, query, path, line, col }) => {
