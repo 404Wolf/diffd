@@ -182,6 +182,20 @@ integration is on (`services.diffd.mcp.enable = false` to skip that).
 }
 ```
 
+It also installs diffd as a **Claude Code plugin and a Codex plugin**
+(`programs.claude-code.plugins.diffd`, `programs.codex.plugins`) when those
+programs are enabled: the hooks that wake an idle agent when you leave
+feedback, the same ones `diffd setup` writes into your settings, but packaged,
+so they come and go with the plugin and never touch your own hooks. Turn
+either off with `services.diffd.agents.claude.enable = false` (or `codex`).
+The plugins carry the MCP server too when `mcp.enable` is off. Without
+home-manager, use the flake's `claude-plugin` and `codex-plugin` packages, e.g.
+`claude --plugin-dir $(nix build --print-out-paths github:404Wolf/diffd#claude-plugin)`.
+
+Language servers start through `direnv exec .` in the reviewed project when
+`programs.direnv` is enabled (`services.diffd.lsp.direnv`), so they come from
+the project's devshell, the same toolchain the agent uses there.
+
 On a server you log out of, run `loginctl enable-linger $USER` (or set
 `users.users.<name>.linger = true` on NixOS) so user services keep running.
 

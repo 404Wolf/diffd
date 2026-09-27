@@ -24,12 +24,17 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         diffd = pkgs.callPackage ./nix/package.nix { };
+        plugins = pkgs.callPackage ./nix/agent-plugins.nix { inherit diffd; };
       in
       {
         packages = {
           inherit diffd;
           default = diffd;
           web = diffd.web;
+          # Standalone plugins (hooks + MCP on the default port), e.g.
+          # `claude --plugin-dir $(nix build --print-out-paths .#claude-plugin)`.
+          claude-plugin = plugins.claude;
+          codex-plugin = plugins.codex;
         };
 
         apps.default = flake-utils.lib.mkApp { drv = diffd; };
