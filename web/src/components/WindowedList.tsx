@@ -406,6 +406,10 @@ export function WindowedList(props: Props) {
     el.classList.add("vitem");
     itemOf.set(el, item);
     elOf.set(item, el);
+    // Items outlive their elements (the layout keeps them): let the element go.
+    onCleanup(() => {
+      if (elOf.get(item) === el) elOf.delete(item);
+    });
     return el;
   };
   /** Rendered items by group, in order; each group's items are consecutive. */
