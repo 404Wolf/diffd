@@ -23,6 +23,8 @@ let
     npmDeps = importNpmLock { npmRoot = lib.cleanSource ../web; };
     npmConfigHook = importNpmLock.npmConfigHook;
     npmBuildScript = "build";
+    # Playwright is only for the end-to-end tests; never fetch browsers here.
+    env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     installPhase = ''
       runHook preInstall
       mkdir -p $out

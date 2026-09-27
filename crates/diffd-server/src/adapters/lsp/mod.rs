@@ -31,7 +31,9 @@ const MAX_CRASHES: u32 = 3;
 
 pub struct LspPool {
     config: Arc<Config>,
-    servers: tokio::sync::Mutex<HashMap<Key, Slot>>,
+    /// One slot per server, each with its own lock: starting one server (which
+    /// can take a while) doesn't hold up questions to the others.
+    servers: Mutex<HashMap<Key, Arc<tokio::sync::Mutex<Option<Slot>>>>>,
     diagnostics: broadcast::Sender<FileDiagnostics>,
 }
 
@@ -84,8 +86,9 @@ impl LspPool {
         };
         let root = project_root(repo_root, path, &spec.root_markers);
         let key = (name.to_owned(), root.clone());
-        let mut servers = self.servers.lock().await;
-        let crashes = match servers.get(&key) {
+        let cell = self.servers.lock().expect("lsp lock").entry(key).or_default().clone();
+        let mut slot = cell.lock().await;
+        let crashes = match &*slot {
             Some(Slot::Running(s)) if s.conn.alive() => {
                 *s.last_used.lock().expect("lsp lock") = Instant::now();
                 return Ok((s.clone(), language.to_owned()));
@@ -96,19 +99,19 @@ impl LspPool {
         };
         if crashes >= MAX_CRASHES {
             let reason = format!("{name} keeps crashing; restart diffd to try again");
-            servers.insert(key, Slot::Broken(reason.clone()));
+            *slot = Some(Slot::Broken(reason.clone()));
             return Err(reason);
         }
         match self.start(name, spec, &root, crashes).await {
             Ok(server) => {
                 tracing::info!(server = name, root = %root.display(), "language server started");
-                servers.insert(key, Slot::Running(server.clone()));
+                *slot = Some(Slot::Running(server.clone()));
                 Ok((server, language.to_owned()))
             }
             Err(e) => {
                 let reason = format!("{name} isn't available: {e:#}");
                 tracing::warn!("{reason}");
-                servers.insert(key, Slot::Broken(reason.clone()));
+                *slot = Some(Slot::Broken(reason.clone()));
                 Err(reason)
             }
         }
@@ -259,22 +262,15 @@ impl LspPool {
 
     async fn stop_idle(&self) {
         let idle = Duration::from_secs(self.config.lsp.idle_timeout_secs);
-        let stale: Vec<Arc<Server>> = {
-            let mut servers = self.servers.lock().await;
-            let keys: Vec<Key> = servers
-                .iter()
-                .filter(|(_, slot)| matches!(slot, Slot::Running(s) if s.last_used.lock().expect("lsp lock").elapsed() > idle))
-                .map(|(k, _)| k.clone())
-                .collect();
-            keys.iter()
-                .filter_map(|k| match servers.remove(k) {
-                    Some(Slot::Running(s)) => Some(s),
-                    _ => None,
-                })
-                .collect()
-        };
-        for s in stale {
-            s.conn.shutdown().await;
+        let cells: Vec<_> = self.servers.lock().expect("lsp lock").values().cloned().collect();
+        for cell in cells {
+            // A server that's busy starting isn't idle.
+            let Ok(mut slot) = cell.try_lock() else { continue };
+            let idle_server = matches!(&*slot, Some(Slot::Running(s)) if s.last_used.lock().expect("lsp lock").elapsed() > idle);
+            if idle_server && let Some(Slot::Running(s)) = slot.take() {
+                drop(slot);
+                s.conn.shutdown().await;
+            }
         }
     }
 }

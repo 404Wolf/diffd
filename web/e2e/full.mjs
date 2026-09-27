@@ -110,7 +110,8 @@ async function cursorTo(page, fileName, line, side = "new", pane = ".buffer.focu
 }
 
 // -- The run ---------------------------------------------------------------------
-const browser = await chromium.launch();
+// DIFFD_E2E_CHROMIUM: a Chromium to use instead of Playwright's own (e.g. one preinstalled elsewhere).
+const browser = await chromium.launch(process.env.DIFFD_E2E_CHROMIUM ? { executablePath: process.env.DIFFD_E2E_CHROMIUM } : {});
 const context = await browser.newContext({ viewport: { width: 1500, height: 950 } });
 const page = await context.newPage();
 const errors = [];
@@ -762,6 +763,16 @@ try {
   });
 
   await section("Language servers: diagnostics, go to definition, hover", async () => {
+    const servers = ["rust-analyzer", "typescript-language-server", "pyright-langserver", "gopls", "nil", "yaml-language-server"];
+    const missing = servers.filter((s) => {
+      try {
+        execSync(`command -v ${s}`, { stdio: "ignore", shell: "/bin/sh" });
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    if (missing.length > 0) return log(`(skipped: ${missing.join(", ")} not installed)`);
     // Like any TypeScript project, the web app has its own `typescript` (ignored by git).
     const ts = execSync("npm root -g").toString().trim() + "/typescript";
     mkdirSync(`${repo}/web/node_modules`, { recursive: true });

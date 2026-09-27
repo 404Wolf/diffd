@@ -372,13 +372,16 @@
     text-underline-offset: 2px;
   }
   .num.diag-error {
-    box-shadow: inset 3px 0 0 var(--del);
+    /* A bar on the left, as a background layer so it doesn't fight `.since`'s box-shadow. */
+    background-image: linear-gradient(to right, var(--del) 3px, transparent 3px);
   }
   .num.diag-warning {
-    box-shadow: inset 3px 0 0 var(--warn);
+    /* A bar on the left, as a background layer so it doesn't fight `.since`'s box-shadow. */
+    background-image: linear-gradient(to right, var(--warn) 3px, transparent 3px);
   }
   .num.diag-info {
-    box-shadow: inset 3px 0 0 var(--accent);
+    /* A bar on the left, as a background layer so it doesn't fight `.since`'s box-shadow. */
+    background-image: linear-gradient(to right, var(--accent) 3px, transparent 3px);
   }
   .md-hover pre {
     margin: 0.25rem 0;
