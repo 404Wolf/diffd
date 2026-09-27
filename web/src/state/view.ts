@@ -13,6 +13,7 @@ import type { Snapshot } from "../gen/Snapshot";
 import type { ThreadId } from "../gen/ThreadId";
 import { applyFolds, initialVisible, regionRows, rowOf } from "../lib/diffModel";
 import { JumpList } from "../lib/jumps";
+import type { Match } from "../lib/search";
 import { setFocusedPane } from "./dom";
 import { fromRuns, loadSession, sessionWriter, toRuns } from "./persist";
 import type { Review } from "./review";
@@ -51,6 +52,18 @@ export interface Picker {
   /** Items for a query; `literal` pickers filter themselves instead of fuzzy matching. */
   readonly items: (query: string) => readonly PickerItem[];
   readonly literal?: boolean;
+  /** A line under the query, e.g. how many matches there are. */
+  readonly status?: (query: string) => string;
+}
+
+/** The last search (`/`, Ctrl+F): what `n` / `N` walk and what's highlighted. */
+export interface Search {
+  readonly query: string;
+  /** The diff it was run on: another revision or commit means searching again. */
+  readonly snapshot: Snapshot;
+  readonly matches: readonly Match[];
+  /** The match last gone to, or -1. */
+  readonly index: number;
 }
 
 /** Lines picked with the mouse, waiting to be commented on. */
@@ -187,7 +200,12 @@ export function createView(review: Review) {
   const markFoldsApplied = () => {
     for (const r of review.regions()) if (r.kind === "fold") appliedFolds.add(foldKey(r));
   };
-  const resetVisibility = (prev: Snapshot | null, next: Snapshot) => {
+  /**
+   * Rows shown for a new snapshot. A file that's the very same object (a
+   * revision that didn't touch it) keeps its signal, so nothing about it is
+   * laid out again. Whether files moved (and every file must be looked at again).
+   */
+  const resetVisibility = (prev: Snapshot | null, next: Snapshot): boolean => {
     const keep = new Map<string, Uint8Array>();
     if (prev) {
       prev.files.forEach((f, i) => {
@@ -196,8 +214,18 @@ export function createView(review: Review) {
           keep.set(f.path, sig[0]());
       });
     }
+    const sameFiles =
+      prev !== null &&
+      prev.files.length === next.files.length &&
+      prev.files.every((f, i) => f.path === next.files[i]?.path);
+    const old = visibleSignals.slice();
     visibleSignals.length = 0;
     next.files.forEach((f, i) => {
+      const sig = sameFiles ? old[i] : undefined;
+      if (sig && prev?.files[i] === f) {
+        visibleSignals.push(sig);
+        return;
+      }
       const model = review.models()[i];
       const pinned = pinnedRows(i);
       const saved = prev === null && review.span() === null ? persist.session.visibility[f.path] : undefined;
@@ -208,8 +236,12 @@ export function createView(review: Review) {
       // keeps the row count can still change which rows differ, and those must show.
       const kept = keep.get(f.path) ?? (saved ? fromRuns(saved, f.rows.length) : null);
       const initial = kept && kept.length === fresh.length ? fresh.map((v, r) => v | (kept[r] ?? 0)) : fresh;
-      visibleSignals.push(createSignal(initial));
+      if (sig) {
+        sig[1](initial);
+        visibleSignals.push(sig);
+      } else visibleSignals.push(createSignal(initial));
     });
+    return !sameFiles;
   };
   resetVisibility(null, review.snapshot());
   markFoldsApplied();
@@ -232,8 +264,7 @@ export function createView(review: Review) {
   createEffect(
     on(review.snapshot, (next, prev) => {
       if (prev) {
-        resetVisibility(prev, next);
-        bumpVisibility((v) => v + 1);
+        if (resetVisibility(prev, next)) bumpVisibility((v) => v + 1);
         followFiles(prev, next);
       }
     }),
@@ -380,6 +411,7 @@ export function createView(review: Review) {
   const [nudge, setNudge] = createSignal<ShowRequest | null>(null);
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [picker, setPicker] = createSignal<Picker | null>(null);
+  const [search, setSearch] = createSignal<Search | null>(null);
   const [help, setHelp] = createSignal(false);
   const [pending, setPending] = createSignal("");
   const [message, setMessageRaw] = createSignal("");
@@ -450,6 +482,8 @@ export function createView(review: Review) {
     setSelection,
     picker,
     setPicker,
+    search,
+    setSearch,
     help,
     setHelp,
     pending,

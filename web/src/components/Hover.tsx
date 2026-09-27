@@ -2,8 +2,7 @@ import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid
 import { match } from "ts-pattern";
 import type { Diagnostic } from "../gen/Diagnostic";
 import { columnAtPoint, diagnosticSpan, diagnosticsOn, rank, textRange, wordAt } from "../lib/code";
-import { rowsRenderedEvent } from "../lib/lazyRows";
-import { allBuffers, rowEl } from "../state/dom";
+import { allBuffers, rowEl, rowsRenderedEvent } from "../state/dom";
 import type { Review } from "../state/review";
 import type { View } from "../state/view";
 import { Markdown } from "./Markdown";

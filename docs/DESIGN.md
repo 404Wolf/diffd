@@ -705,13 +705,13 @@ The connection state is always visible, with the number of queued messages.
   green for added lines, yellow for changed lines, and a red notch where lines
   were removed. `ctrl-o` returns to the diff where you left it. `g space`
   opens the file view in a split instead (§8.11). You can comment in file view.
-- **Ctrl+F is never intercepted, and nothing scrolls on its own.**
-  - Folded context is kept in the DOM as `hidden="until-found"`. Browser find
-    searches it, and on a match the gap expands (`beforematch`). Gaps over
-    4000 rows aren't pre-rendered, so Ctrl+F can't see into those.
-  - `/` is our own search over every line of both sides, hidden ones too.
-- **No virtualization**, because virtual rows are invisible to Ctrl+F. §10
-  covers how that still scales to 100k lines.
+- **Ctrl+F (Cmd+F) opens our own search**, the same as `/`: every line of
+  both sides, folded ones too, with the number of matches. Enter goes to the
+  first match after the cursor (unfolding it if needed), `n` / `N` to the next
+  and previous, wrapping around, and the status line says which match of how
+  many. Matches on screen are highlighted (CSS Custom Highlight API); `esc`
+  clears them. The diff is windowed (§10), so the browser's find could only
+  see the rows near the screen. Nothing scrolls on its own.
 
 ### 8.7 When the agent wants to show you something
 
@@ -882,7 +882,7 @@ table is plain data in `web/src/state/bindings.ts`, which also generates the
 | `ctrl-h` / `ctrl-l` | focus the split to the left / right |
 | `space e` · `space n` | files drawer · activity drawer |
 | `space f` / `ctrl-p` | go to file (fuzzy) |
-| `/` | search every line, hidden ones too |
+| `/`, ctrl-f | search every line, hidden ones too; `n` / `N` next and previous match |
 | `?` | key help |
 | `esc` | close whatever is open, leave visual or symbol mode |
 
@@ -893,33 +893,47 @@ A small engine (`web/src/lib/keymap.ts`) runs the table, handling counts, modes
 
 The target is a diff of 100k changed lines across many files, in Chromium on a
 normal laptop: the first screen and keys working right away, cursor movement
-and scrolling smooth, everything searchable with Ctrl+F soon after.
+and scrolling smooth, and the page as fast after an hour as after a minute.
 
 How we get there:
 
-- **Rows are HTML strings.** The diff body is built by `web/src/lib/render.ts`
-  as HTML and handed to the browser's parser, the fastest way to create a lot
-  of DOM. Rows never change once built; everything around them is Solid.
-- **Lazy chunks** (`web/src/lib/lazyRows.ts`). Long runs of rows are split
-  into chunks of 80. Each chunk starts as a placeholder holding its code as
-  plain text, one line per row, at the right height: cheap to build, and still
-  found by Ctrl+F. Chunks are filled in with real rows near the viewport (an
-  IntersectionObserver, 1500 px ahead) and the rest in idle-time slices.
-  Filling a chunk above the viewport keeps the page still. Anything that needs
-  every row (moving across the whole diff, some searches) fills everything
-  first.
-- **`content-visibility: auto`** on each file's rows and on each chunk, with
-  intrinsic sizes, skips layout and paint off-screen. Scroll height stays
-  stable.
-- **Indexed row lookups** (`web/src/state/dom.ts`). Every pane's rows are
-  indexed once (position, `file:row` key, hunk starts) and the index is kept
-  until a MutationObserver sees a structural change, so key presses don't
-  query 100k rows.
+- **A windowed multibuffer** (`web/src/components/Multibuffer.tsx`). Every
+  file's header, rows, gaps, thread cards and end form one flat list of items
+  (`web/src/state/layout.ts`), and only the items within a couple of screens
+  of the viewport are in the DOM (a few hundred elements, whatever the diff's
+  size), each file's in its own `<section>`. Rendering runs in the scroll
+  event, before the frame is drawn, and reaches further ahead in the
+  direction of scrolling (`web/src/components/WindowedList.tsx`). A list
+  under ~12,000 px (a few hundred rows) is rendered whole.
+- **Heights: estimated, then measured.** An item that hasn't been rendered is
+  stood in for by its height: rows from how their code wraps in the current
+  column width, the rest from typical sizes. Once rendered, items are
+  measured, and an item above the viewport that differs from its estimate
+  moves the scroll position by the difference, so nothing on screen moves.
+  Heights are kept in a Fenwick tree (`web/src/lib/windower.ts`): the item at
+  a scroll position and an item's offset are O(log n).
+- **The reader's place is kept by the window.** Every layout change (a gap
+  expanding, a file collapsing, a thread or a revision arriving) keeps the
+  item at the top of the screen where it was. A collapsed file's header takes
+  the place of its rows.
+- **Sticky file headers** are one overlay showing the file at the top of the
+  screen, pushed up by the end of its card.
+- **Selections and the composer.** A text selection keeps the item it starts
+  in rendered, and everything between, however far it's dragged. The comment
+  composer follows its line from the window's heights when the line itself
+  isn't rendered.
+- **Keys work on the list, not the DOM.** The cursor, `j`/`k`, `]c`, `]f`,
+  `G`, `]t` and jumps move through the list's row and hunk indices and then
+  ask the window to reveal an item, which renders it right away.
+- **Rows are HTML strings.** Rows are built by `web/src/lib/render.ts` as HTML
+  and handed to the browser's parser. Everything around them is Solid.
 - **Overlays, not per-row state.** The cursor, selections and diagnostics
-  (CSS Custom Highlight API) don't re-render rows. Moving the cursor touches
-  one element.
-- **Budget for hidden context.** Folded gaps over 4000 rows aren't
-  pre-rendered; `/` still searches them.
+  (CSS Custom Highlight API) don't re-render rows; they're painted again on
+  the rows that come into the window.
+- **Search is ours.** The browser's find can't see rows that aren't rendered,
+  so Ctrl+F opens `/` (§8.6).
+- **File view** is a windowed list too (one file's rows and its threads), so
+  a huge file opens at once.
 - **Compact wire.** The WebSocket is compressed (§4), and so are pages and
   JSON responses (zstd or gzip; a 9 MB review page is 1.3 MB). Reconnects and
   new revisions send only what the page doesn't have (§4). Snapshots are

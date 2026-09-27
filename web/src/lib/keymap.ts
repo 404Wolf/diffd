@@ -32,7 +32,8 @@ export function composing(e: Pick<KeyboardEvent, "isComposing" | "keyCode">): bo
 export function keyToken(
   e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">,
 ): string | null {
-  if (e.metaKey) return null;
+  // Cmd+F is find on macOS, as Ctrl+F is elsewhere: both open the page's own search.
+  if (e.metaKey) return e.key === "f" ? "ctrl-f" : null;
   if (e.altKey) {
     // AltGr (which Windows reports as Ctrl+Alt) and macOS Option type `[ ] { } \`
     // on many keyboard layouts: take the character they typed. Alt with a

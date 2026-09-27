@@ -240,6 +240,10 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "space f", run: ({ cmd }) => cmd.filePicker(), help: ["Panels", "Go to file"] },
   { keys: "ctrl-p", run: ({ cmd }) => cmd.filePicker() },
   { keys: "/", run: ({ cmd }) => cmd.search(), help: ["Panels", "Search every line"] },
+  // Only rows near the screen are in the page, so the browser's find can't see the rest: use ours.
+  { keys: "ctrl-f", run: ({ cmd }) => cmd.search() },
+  { keys: "n", run: ({ cmd }) => cmd.searchNext(1), help: ["Panels", "Next / previous match of the search"] },
+  { keys: "N", run: ({ cmd }) => cmd.searchNext(-1) },
   { keys: "?", run: ({ view }) => view.setHelp(true), help: ["Panels", "This list"] },
   { keys: "esc", run: ({ cmd }) => cmd.escapeAll() },
 ];
