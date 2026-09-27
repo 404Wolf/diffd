@@ -7,8 +7,19 @@
   };
 
   outputs =
-    { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    {
+      # `services.diffd` for NixOS (system service, /var/lib/diffd) and
+      # home-manager (user service); see the README.
+      nixosModules.default = import ./nix/nixos-module.nix self;
+      homeManagerModules.default = import ./nix/hm-module.nix self;
+      overlays.default = final: _prev: { diffd = final.callPackage ./nix/package.nix { }; };
+    }
+    // flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -39,6 +50,10 @@
             python3
           ];
           DATABASE_URL = "sqlite://target/sqlx-dev.db";
+        };
+
+        checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          nixos-module = import ./nix/nixos-test.nix self { inherit pkgs; };
         };
 
         formatter = pkgs.nixfmt-rfc-style;
