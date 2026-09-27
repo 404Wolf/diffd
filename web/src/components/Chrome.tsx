@@ -1,6 +1,7 @@
 import { Dialog } from "@kobalte/core/dialog";
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { match } from "ts-pattern";
+import { diagnosticsOn } from "../lib/code";
 import { spanLabel } from "../lib/history";
 import { helpEntries } from "../state/bindings";
 import type { Commands } from "../state/commands";
@@ -116,6 +117,14 @@ export function StatusLine(props: { review: Review; view: View; mode: () => stri
     const at = cur ? lo : 0;
     return `hunk ${at}/${starts.length}`;
   });
+  /** The worst diagnostic on the cursor's line, like an editor's status bar. */
+  const lineDiagnostic = createMemo(() => {
+    const c = props.view.cursor();
+    const file = c ? props.review.snapshot().files[c.file] : undefined;
+    const line = c && file ? file.rows[c.row]?.[1] : null;
+    if (!c || !file || c.side !== "new" || line === null || line === undefined) return null;
+    return diagnosticsOn(props.review.conv.diagnostics[file.path], line + 1)[0] ?? null;
+  });
   const hint = () =>
     match(props.mode())
       .with("SYMBOL", () => "w b next / previous symbol · enter or gd to definition · ctrl-o back · esc")
@@ -141,7 +150,20 @@ export function StatusLine(props: { review: Review; view: View; mode: () => stri
       </span>
       <span class="min-w-[3ch] text-fg">{props.view.pending()}</span>
       <span>rev {props.review.meta().revision}</span>
-      <span class="ml-auto hidden font-sans md:inline">{props.view.message() || hint()}</span>
+      <Show
+        when={!props.view.message() && lineDiagnostic()}
+        fallback={<span class="ml-auto hidden font-sans md:inline">{props.view.message() || hint()}</span>}
+      >
+        {(d) => (
+          <span
+            data-line-diagnostic
+            class="ml-auto min-w-0 truncate font-sans"
+            classList={{ "text-del": d().severity === "error", "text-warn": d().severity === "warning" }}
+          >
+            {d().severity}: {d().message.split("\n")[0]} <span class="text-subtle">· K for more</span>
+          </span>
+        )}
+      </Show>
     </footer>
   );
 }

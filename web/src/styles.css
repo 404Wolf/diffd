@@ -355,6 +355,35 @@
     width: 2px;
     background: var(--accent);
   }
+  /* Language server diagnostics: wavy underlines (CSS highlights) and a gutter mark. */
+  ::highlight(diag-error) {
+    text-decoration: underline wavy var(--del);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+  ::highlight(diag-warning) {
+    text-decoration: underline wavy var(--warn);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+  ::highlight(diag-info) {
+    text-decoration: underline dotted var(--accent);
+    text-underline-offset: 2px;
+  }
+  .num.diag-error {
+    box-shadow: inset 3px 0 0 var(--del);
+  }
+  .num.diag-warning {
+    box-shadow: inset 3px 0 0 var(--warn);
+  }
+  .num.diag-info {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .md-hover pre {
+    margin: 0.25rem 0;
+    white-space: pre-wrap;
+    font-size: 11.5px;
+  }
   /* A vim mark's letter, at the gutter's inner edge. */
   .mk {
     position: absolute;

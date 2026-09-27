@@ -288,7 +288,8 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
 
   /** Messages that move content around go through `layout`, so the reader's place is kept. */
   const apply = (msg: ServerMsg) => {
-    const moves = msg.type === "state" || msg.type === "revision" || msg.type === "thread" || msg.type === "regions";
+    const moves =
+      msg.type === "state" || msg.type === "revision" || msg.type === "thread" || msg.type === "regions";
     if (moves && events.layout) events.layout(() => applyNow(msg));
     else applyNow(msg);
   };

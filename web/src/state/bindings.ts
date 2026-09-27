@@ -38,11 +38,21 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "b", run: ({ cmd }) => cmd.stepWord(-1) },
   {
     keys: "g d",
-    run: ({ cmd }) => cmd.gotoDefinition(),
+    run: ({ cmd }) => void cmd.gotoDefinition(),
     help: ["Symbols", "Go to definition (or ctrl-click)"],
   },
-  { keys: "ctrl-]", run: ({ cmd }) => cmd.gotoDefinition() },
-  { keys: "enter", modes: ["symbol"], run: ({ cmd }) => cmd.gotoDefinition() },
+  { keys: "ctrl-]", run: ({ cmd }) => void cmd.gotoDefinition() },
+  {
+    keys: "g t",
+    run: ({ cmd }) => void cmd.typeDefinition(),
+    help: ["Symbols", "Go to the type's definition (language server)"],
+  },
+  {
+    keys: "K",
+    run: ({ cmd }) => void cmd.hoverAtCursor(),
+    help: ["Symbols", "Docs and errors here (or hover)"],
+  },
+  { keys: "enter", modes: ["symbol"], run: ({ cmd }) => void cmd.gotoDefinition() },
   { keys: "g r r", run: ({ cmd }) => cmd.references(), help: ["Symbols", "Find references"] },
   {
     keys: "g s",

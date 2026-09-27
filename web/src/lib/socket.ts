@@ -28,13 +28,15 @@ export interface Socket {
 
 /** Which outbox entry a message replaces, or null when it's never queued. */
 function outboxKey(msg: ClientMsg): string | null {
-  return match(msg)
-    .with({ type: "comment" }, { type: "reply" }, { type: "chat" }, (m) => `m:${m.messageId}`)
-    .with({ type: "resolve" }, (m) => `resolve:${m.threadId}`)
-    .with({ type: "read" }, () => "read")
-    // Live-only: a stale draft flag or an old question is worth nothing after a reconnect.
-    .with({ type: "drafting" }, { type: "code" }, () => null)
-    .exhaustive();
+  return (
+    match(msg)
+      .with({ type: "comment" }, { type: "reply" }, { type: "chat" }, (m) => `m:${m.messageId}`)
+      .with({ type: "resolve" }, (m) => `resolve:${m.threadId}`)
+      .with({ type: "read" }, () => "read")
+      // Live-only: a stale draft flag or an old question is worth nothing after a reconnect.
+      .with({ type: "drafting" }, { type: "code" }, () => null)
+      .exhaustive()
+  );
 }
 
 /** Whether an entry waits for an ack, rather than leaving once it's sent. */

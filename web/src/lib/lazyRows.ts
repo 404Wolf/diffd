@@ -20,6 +20,8 @@ let idle = false;
 
 /** How far outside the viewport chunks are filled in ahead of scrolling. */
 const AHEAD = "1500px 0px";
+/** Fired on `document` after placeholders are filled in, for painters that decorate rows. */
+export const lazyFilledEvent = "diffd:rows-filled";
 /** Background work per idle slice. */
 const SLICE_MS = 12;
 
@@ -60,7 +62,15 @@ function fill(el: HTMLElement): void {
   const top = buf?.getBoundingClientRect().top ?? 0;
   el.innerHTML = render();
   el.classList.remove("lazy");
+  announceFill();
   if (buf && before.bottom <= top) buf.scrollTop += el.getBoundingClientRect().height - before.height;
+}
+
+let announced = 0;
+/** Tell painters once per frame, however many chunks were filled. */
+function announceFill(): void {
+  cancelAnimationFrame(announced);
+  announced = requestAnimationFrame(() => document.dispatchEvent(new Event(lazyFilledEvent)));
 }
 
 /** Fill in everything that's left (before anything that walks all rows). */

@@ -22,6 +22,7 @@ import { Help, Nudge, Picker, StatusLine, TopBar } from "./Chrome";
 import { CommentPopover, SelectionBubble } from "./CommentPopover";
 import { Drawer } from "./Drawer";
 import { FileTree } from "./FileTree";
+import { HoverCard, usePaintDiagnostics } from "./Hover";
 import { RightPanel } from "./RightPanel";
 
 /** Wait this long for the rest of a key sequence (`g` → `g d`). */
@@ -38,6 +39,7 @@ export function ReviewPage(props: { state: ReviewState }) {
   const v = createView(review);
   view = v;
   const cmd = createCommands(review, v);
+  usePaintDiagnostics({ review, view: v });
   /** A different part of the history is on screen: start at its first change. */
   const showSpanStart = () => {
     v.setMode({ kind: "diff" });
@@ -229,6 +231,7 @@ export function ReviewPage(props: { state: ReviewState }) {
       </div>
       <StatusLine review={review} view={v} mode={modeLabel} />
       <Picker view={v} />
+      <HoverCard review={review} view={v} />
       <Help view={v} />
       <Show when={review.error()}>
         {(message) => (

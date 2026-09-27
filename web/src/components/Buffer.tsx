@@ -7,6 +7,7 @@ import { bufferEl, rowEl } from "../state/dom";
 import type { Review } from "../state/review";
 import type { Pane, View } from "../state/view";
 import { FileSection } from "./FileSection";
+import { useMouseHover } from "./Hover";
 import { Markdown } from "./Markdown";
 import { ThreadCard } from "./ThreadCard";
 
@@ -21,6 +22,8 @@ interface Props {
 /** The scrolling area: every file as excerpts (the multibuffer), or one plain file (file view). */
 export function Buffer(props: Props) {
   usePaintCursor(props);
+  let main: HTMLElement | undefined;
+  useMouseHover(props, () => main);
 
   const onClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -62,13 +65,14 @@ export function Buffer(props: Props) {
       word = { text: ref.textContent ?? "", range: [at, at + (ref.textContent?.length ?? 0)] as const };
     }
     props.cmd.place(row, { side, word, scroll: false });
-    if (word && (e.ctrlKey || e.metaKey)) props.cmd.gotoDefinition(word.text);
+    if (word && (e.ctrlKey || e.metaKey)) void props.cmd.gotoDefinition(word.text);
   };
 
   return (
     // Clicks are delegated from static rows; every click action also has a key binding.
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard equivalents live in state/bindings.ts
     <main
+      ref={main}
       id={`buffer-${props.pane.id}`}
       data-pane={props.pane.id}
       tabindex="-1"

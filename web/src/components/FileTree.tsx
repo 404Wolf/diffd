@@ -38,6 +38,13 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     }
     return set;
   });
+  /** Language server errors and warnings in a file, or null when it's clean. */
+  const problems = (path: string) => {
+    const all = props.review.conv.diagnostics[path] ?? [];
+    const errors = all.filter((d) => d.severity === "error").length;
+    const warnings = all.filter((d) => d.severity === "warning").length;
+    return errors + warnings > 0 ? { errors, warnings } : null;
+  };
   const threadCount = (path: string) =>
     props.review.threads().filter((t) => t.anchor.path === path && t.kind.type === "comment").length;
 
@@ -145,6 +152,17 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
                     >
                       ◆{threadCount(f().path)}
                     </span>
+                  </Show>
+                  <Show when={problems(f().path)}>
+                    {(p) => (
+                      <span
+                        data-problems={f().path}
+                        classList={{ "text-del": p().errors > 0, "text-warn": p().errors === 0 }}
+                        title={`${p().errors} errors, ${p().warnings} warnings`}
+                      >
+                        {p().errors > 0 ? `✖${p().errors}` : `▲${p().warnings}`}
+                      </span>
+                    )}
                   </Show>
                   <DiffBar added={file().added} removed={file().removed} />
                 </span>

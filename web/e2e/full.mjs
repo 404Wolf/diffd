@@ -5,7 +5,7 @@
 //
 // Every step asserts what it expects; the first failure stops the run.
 import { execFileSync, execSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -619,6 +619,100 @@ try {
     await keys(page, "Space", "c");
     check(await page.getByText("Tidy up the README and flake").last().isVisible(), "space c picks from the commits");
     await keys(page, "Escape");
+  });
+
+  await section("Language servers: diagnostics, go to definition, hover", async () => {
+    // Like any TypeScript project, the web app has its own `typescript` (ignored by git).
+    const ts = execSync("npm root -g").toString().trim() + "/typescript";
+    mkdirSync(`${repo}/web/node_modules`, { recursive: true });
+    try {
+      symlinkSync(ts, `${repo}/web/node_modules/typescript`);
+    } catch {}
+    const append = (path, text) => writeFileSync(`${repo}/${path}`, readFileSync(`${repo}/${path}`, "utf8") + text);
+    const lines = (path) => readFileSync(`${repo}/${path}`, "utf8").split("\n").length;
+    // The agent keeps working, and breaks something in every language.
+    const apiLine = lines("web/src/api.ts");
+    append("web/src/api.ts", 'import { formatSeconds } from "./format";\nexport const waitLabel = (q: Quota): string => formatSeconds(q.resetAt);\nexport const broken: number = "not a number";\n');
+    append("src/bucket.rs", '\npub fn broken() -> u32 {\n    "not a number"\n}\n');
+    append("cmd/probe/main.go", '\nfunc broken() int {\n\treturn "not a number"\n}\n');
+    append("tools/logreport.py", "\nBROKEN = undefined_name\n");
+    writeFileSync(`${repo}/flake.nix`, "{\n  outputs = { self }: {\n    broken = missingName;\n  };\n}\n");
+    append(".github/workflows/ci.yml", "  bad: [\n");
+    const broken = ["web/src/api.ts", "src/bucket.rs", "cmd/probe/main.go", "tools/logreport.py", "flake.nix", ".github/workflows/ci.yml"];
+    for (const path of broken) {
+      await page.waitForSelector(`[data-problems="${path}"]`, { timeout: 90_000 });
+      log(`✓ ${path}: ${await page.locator(`[data-problems="${path}"]`).innerText()}`);
+    }
+    check(true, "every language's errors show in the tree");
+    const squiggles = await page.evaluate(() => CSS.highlights.get("diag-error")?.size ?? 0);
+    check(squiggles >= 4, `errors are underlined in the code (${squiggles} ranges)`);
+    await shot(page, "diagnostics");
+
+    await page.locator('[data-tree-file="web/src/api.ts"]').click();
+    await cursorTo(page, "web/src/api.ts", apiLine + 2);
+    await page.waitForSelector("[data-line-diagnostic]");
+    check((await page.locator("[data-line-diagnostic]").innerText()).includes("not assignable"), "the status bar shows the error on the cursor's line");
+    const word = page.locator('section:has([data-path="web/src/api.ts"]) .row[data-nl="' + (apiLine + 2) + '"] .code[data-side="new"]');
+    const at = await word.evaluate((el) => {
+      const text = el.firstChild ? el.textContent : "";
+      const i = text.indexOf("broken");
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let seen = 0;
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (i < seen + n.textContent.length) {
+          const r = document.createRange();
+          r.setStart(n, i - seen + 2);
+          r.setEnd(n, i - seen + 3);
+          const b = r.getBoundingClientRect();
+          return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        }
+        seen += n.textContent.length;
+      }
+      return null;
+    });
+    await page.mouse.move(at.x, at.y);
+    await page.waitForSelector("[data-hover]", { timeout: 10_000 });
+    check((await page.locator("[data-hover]").innerText()).toLowerCase().includes("error"), "hovering the error explains it");
+    await page.mouse.move(5, 5);
+    await keys(page, "Escape");
+
+    // gd through the language server reaches a file that isn't in the diff.
+    await cursorTo(page, "web/src/api.ts", apiLine + 1);
+    for (let i = 0; i < 12 && !(await status(page)).includes("· formatSeconds"); i++) await keys(page, "w");
+    await keys(page, "g", "d");
+    await page.waitForFunction(() => document.querySelector(".buffer.focused .fv")?.textContent.includes("export function formatSeconds"), null, { timeout: 30_000 });
+    check((await status(page)).includes("format.ts:2"), "gd goes where the language server says, even outside the diff");
+    await keys(page, "Control+o");
+
+    // Into a library outside the repository (Go's standard library), and to a type's definition.
+    await cursorTo(page, "cmd/probe/main.go", 11);
+    for (let i = 0; i < 12 && !(await status(page)).includes("· Client"); i++) await keys(page, "w");
+    await keys(page, "g", "d");
+    await page.waitForFunction(() => document.querySelector(".buffer.focused .fv")?.textContent.includes("type Client struct"), null, { timeout: 30_000 });
+    check(true, "gd opens library code outside the repository");
+    await keys(page, "Control+o");
+    await cursorTo(page, "cmd/probe/main.go", 12);
+    for (let i = 0; i < 6 && !(await status(page)).includes("· resp"); i++) await keys(page, "w");
+    await keys(page, "g", "t");
+    await page.waitForFunction(() => document.querySelector(".buffer.focused .fv")?.textContent.includes("type Response struct"), null, { timeout: 30_000 });
+    check(true, "gt goes to the type's definition");
+    await keys(page, "Control+o");
+
+    // K: docs from the language server.
+    const fetchLine = readFileSync(`${repo}/web/src/api.ts`, "utf8").split("\n").findIndex((l) => l.includes("function fetchQuota")) + 1;
+    await cursorTo(page, "web/src/api.ts", fetchLine);
+    for (let i = 0; i < 12 && !(await status(page)).includes("· fetchQuota"); i++) await keys(page, "w");
+    await keys(page, "K");
+    await page.waitForSelector("[data-hover]", { timeout: 20_000 });
+    check((await page.locator("[data-hover]").innerText()).includes("fetchQuota"), "K shows the language server's docs");
+    await keys(page, "Escape");
+
+    // The old side has no language server: gd uses the diff's own symbols.
+    await cursorTo(page, "web/src/api.ts", 6, "old");
+    for (let i = 0; i < 12 && !(await status(page)).includes("· fetchQuota"); i++) await keys(page, "w");
+    await keys(page, "g", "d");
+    await sleep(300);
+    check((await status(page)).includes("Definition of fetchQuota"), "on the old side, gd falls back to the diff's symbols");
   });
 
   await section("Home page", async () => {

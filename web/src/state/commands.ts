@@ -7,10 +7,12 @@ import { batch } from "solid-js";
 import { produce } from "solid-js/store";
 import { match } from "ts-pattern";
 import type { ActivityItem } from "../gen/ActivityItem";
+import type { CodeLocation } from "../gen/CodeLocation";
 import type { ShowRequest } from "../gen/ShowRequest";
 import type { Side } from "../gen/Side";
 import type { Symbol as Definition } from "../gen/Symbol";
 import type { Thread } from "../gen/Thread";
+import { diagnosticsOn, IDENT, textRange, type WordAt } from "../lib/code";
 import { type ExpandDirection, expandGap, initialVisible, nearestGap, rowOf } from "../lib/diffModel";
 import { step, steps } from "../lib/history";
 import { fillAll } from "../lib/lazyRows";
@@ -30,8 +32,6 @@ import {
 } from "./dom";
 import { fromAgent, type Review } from "./review";
 import { CONTEXT, type Cursor, EXPAND_STEP, type PickerItem, type Place, type View, type Word } from "./view";
-
-const IDENT = /[A-Za-z_$][\w$]*/g;
 
 export function createCommands(review: Review, view: View) {
   const files = () => review.snapshot().files;
@@ -450,7 +450,93 @@ export function createCommands(review: Review, view: View) {
     goTo(d.file, d.side, d.line, { word: { text: d.name, range: [d.start, d.end] } });
     view.say(`Definition of ${d.name} · ctrl-o to go back`);
   };
-  const gotoDefinition = (name = wordAtCursor()) => {
+  // -- Language servers ------------------------------------------------------------
+
+  /**
+   * Where the cursor is, for a language server: they see files on disk, so
+   * only the new side of a review of the working tree (and files opened for context).
+   */
+  const lspPosition = (): { path: string; line: number; word: WordAt } | null => {
+    const c = view.cursor();
+    const f = c ? files()[c.file] : undefined;
+    const row = c && f ? f.rows[c.row] : undefined;
+    if (!c || !f || !row || row[1] === null || c.side !== "new") return null;
+    const range = review.range();
+    if (review.meta().to !== null || (range !== null && range.to !== null && !review.isContext(c.file)))
+      return null;
+    const text = lineText(c);
+    const word = c.word
+      ? { text: c.word.text, col: c.word.range[0] }
+      : (() => {
+          const defs = review.definedNames();
+          const words = [...text.matchAll(IDENT)];
+          const m = words.find((w) => defs.has(w[0])) ?? words[0];
+          return m ? { text: m[0], col: m.index } : null;
+        })();
+    return word ? { path: f.path, line: row[1] + 1, word } : null;
+  };
+  /** Open a place a language server pointed at: in the diff, the repository, or outside it. */
+  const openLocation = async (l: CodeLocation, name: string) => {
+    const file = await review.openContext(l.path);
+    if (file === null) return view.say(`Can't open ${l.path}`);
+    goTo(file, "new", l.line, { word: { text: name, range: [l.col, l.col + name.length] } });
+    view.say(`${name} · ${l.path.split("/").pop()}:${l.line} · ctrl-o to go back`);
+  };
+  const goToLocations = (locations: readonly CodeLocation[], name: string, what: string) => {
+    const [only] = locations;
+    if (locations.length === 1 && only) return void openLocation(only, name);
+    view.setPicker({
+      title: `${locations.length} ${what} of ${name}`,
+      items: () =>
+        locations.map((l) => ({
+          label: `${l.path.split("/").pop()}:${l.line}`,
+          detail: l.path,
+          run: () => void openLocation(l, name),
+        })),
+    });
+  };
+  /** `gd`: ask the language server; without one (or no answer), the diff's own symbol index. */
+  const gotoDefinition = async (name?: string) => {
+    const pos = lspPosition();
+    if (pos && (name === undefined || name === pos.word.text)) {
+      const answer = await review.ask("definition", pos.path, pos.line, pos.word.col);
+      if (answer.type === "locations" && answer.locations.length > 0)
+        return goToLocations(answer.locations, pos.word.text, "definitions");
+    }
+    symbolDefinition(name ?? pos?.word.text ?? wordAtCursor());
+  };
+  /** `gt`: the definition of the type of what's under the cursor (language servers only). */
+  const typeDefinition = async () => {
+    const pos = lspPosition();
+    if (!pos) return view.say("Type definitions come from a language server: new side, working tree reviews");
+    const answer = await review.ask("typeDefinition", pos.path, pos.line, pos.word.col);
+    if (answer.type === "locations" && answer.locations.length > 0)
+      return goToLocations(answer.locations, pos.word.text, "type definitions");
+    view.say(answer.type === "unavailable" ? answer.reason : `No type definition for ${pos.word.text}`);
+  };
+  /** `K`: docs for what's under the cursor, and any diagnostics on its line. */
+  const hoverAtCursor = async () => {
+    const c = view.cursor();
+    const el = cursorEl()?.querySelector<HTMLElement>(`.code[data-side="${c?.side ?? "new"}"]`);
+    const pos = lspPosition();
+    if (!c || !el) return;
+    const f = files()[c.file];
+    const diagnostics = pos && f ? diagnosticsOn(review.conv.diagnostics[f.path], pos.line) : [];
+    const answer = pos ? await review.ask("hover", pos.path, pos.line, pos.word.col) : null;
+    const markdown = answer?.type === "hover" ? answer.markdown : null;
+    if (!markdown && diagnostics.length === 0)
+      return view.say(answer?.type === "unavailable" ? answer.reason : "Nothing to show here");
+    const word = pos ? textRange(el, pos.word.col, pos.word.col + pos.word.text.length) : null;
+    const box = (word ?? el).getBoundingClientRect();
+    view.setHover({
+      key: `${pos?.path}:${pos?.line}:${pos?.word.col}`,
+      markdown,
+      diagnostics,
+      at: { left: box.left, top: box.top, bottom: box.bottom },
+    });
+  };
+
+  const symbolDefinition = (name: string | null) => {
     if (!name) return view.say("No symbol here · press w to pick one");
     const defs = rankDefs(review.snapshot().symbols.filter((s) => s.name === name));
     if (defs.length === 0) return view.say(`No definition of ${name} in this diff`);
@@ -718,6 +804,8 @@ export function createCommands(review: Review, view: View) {
     references,
     outline,
     filePicker,
+    typeDefinition,
+    hoverAtCursor,
     openPath,
     splitPane,
     closePane,

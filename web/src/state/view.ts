@@ -5,6 +5,7 @@
 import { type Accessor, createEffect, createSignal, on, type Setter } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { Anchor } from "../gen/Anchor";
+import type { Diagnostic } from "../gen/Diagnostic";
 import type { ShowRequest } from "../gen/ShowRequest";
 import type { Side } from "../gen/Side";
 import type { Snapshot } from "../gen/Snapshot";
@@ -80,6 +81,16 @@ export interface Mark {
 }
 
 export type RightTab = "activity" | "commits";
+
+/** A hover card: a language server's docs and/or the diagnostics at a spot. */
+export interface HoverCard {
+  /** What it's about, so the same spot isn't asked twice. */
+  readonly key: string;
+  readonly markdown: string | null;
+  readonly diagnostics: readonly Diagnostic[];
+  /** Where on screen the hovered word is. */
+  readonly at: { readonly left: number; readonly top: number; readonly bottom: number };
+}
 
 export interface Drawer {
   size: number;
@@ -274,6 +285,7 @@ export function createView(review: Review) {
   const mode = () => focused().mode();
   const setMode = (m: Mode) => focused().setMode(m);
   const [composer, setComposer] = createSignal<Composer | null>(null);
+  const [hover, setHover] = createSignal<HoverCard | null>(null);
   const [nudge, setNudge] = createSignal<ShowRequest | null>(null);
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [picker, setPicker] = createSignal<Picker | null>(null);
@@ -322,6 +334,8 @@ export function createView(review: Review) {
     setMode,
     composer,
     setComposer,
+    hover,
+    setHover,
     nudge,
     setNudge,
     selection,
