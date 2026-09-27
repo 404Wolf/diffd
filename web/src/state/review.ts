@@ -17,6 +17,7 @@ import type { Diagnostic } from "../gen/Diagnostic";
 import type { FileDiff } from "../gen/FileDiff";
 import type { History } from "../gen/History";
 import type { Layout } from "../gen/Layout";
+import type { LiveState } from "../gen/LiveState";
 import type { Message } from "../gen/Message";
 import type { MessageId } from "../gen/MessageId";
 import type { Presence } from "../gen/Presence";
@@ -26,6 +27,7 @@ import type { ReviewState } from "../gen/ReviewState";
 import type { ServerMsg } from "../gen/ServerMsg";
 import type { ShowRequest } from "../gen/ShowRequest";
 import type { Snapshot } from "../gen/Snapshot";
+import type { SnapshotDelta } from "../gen/SnapshotDelta";
 import type { Thread } from "../gen/Thread";
 import type { ThreadId } from "../gen/ThreadId";
 import { setAgentName } from "../lib/agent";
@@ -414,6 +416,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   const apply = (msg: ServerMsg) => {
     const moves =
       msg.type === "state" ||
+      msg.type === "resume" ||
       msg.type === "revision" ||
       msg.type === "thread" ||
       msg.type === "regions" ||
@@ -421,33 +424,46 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     if (moves && events.layout) events.layout(() => applyNow(msg));
     else applyNow(msg);
   };
+  /**
+   * Everything but the snapshot, as of (re)connecting. Usually nothing
+   * changed while the page was away, so only real changes are applied: a
+   * reconnect shouldn't re-render anything.
+   */
+  const catchUp = (state: LiveState) => {
+    if (!sameJson(meta(), state.review)) setMeta(state.review);
+    followHistory(state.history);
+    if (!sameJson(layout(), state.layout)) setLayout(state.layout);
+    setConv({
+      diagnostics: reconcile(state.diagnostics)(conv.diagnostics),
+      threads: reconcile(state.threads, { key: "id" })(conv.threads),
+      // A new array would re-render every file's rows; only replace real changes.
+      regions: sameJson(conv.regions, state.regions) ? conv.regions : state.regions,
+      chat: reconcile(state.chat, { key: "id" })(conv.chat),
+      activity: reconcile(state.activity, { key: "seq" })(conv.activity),
+      presence: state.presence,
+      readSeq: state.readSeq,
+    });
+  };
   const applyNow = (msg: ServerMsg) =>
     match(msg)
       .with({ type: "state" }, ({ state }) =>
         batch(() => {
           const prev = whole();
-          setMeta(state.review);
           if (state.snapshot.revision !== prev.revision) {
             setWhole(state.snapshot);
             events.onRevision?.(prev, state.snapshot);
             refreshWorktreeSpan();
           }
-          followHistory(state.history);
-          if (!sameJson(layout(), state.layout)) setLayout(state.layout);
-          setConv({
-            diagnostics: reconcile(state.diagnostics)(conv.diagnostics),
-            threads: reconcile(state.threads, { key: "id" })(conv.threads),
-            // A new array would re-render every file's rows; only replace real changes.
-            regions: sameJson(conv.regions, state.regions) ? conv.regions : state.regions,
-            chat: state.chat,
-            activity: state.activity,
-            presence: state.presence,
-            readSeq: state.readSeq,
-          });
+          catchUp(state);
         }),
       )
-      .with({ type: "revision" }, ({ review, snapshot: next }) => {
+      // The server knew we have the current revision, so it left the snapshot out.
+      .with({ type: "resume" }, ({ state }) => batch(() => catchUp(state)))
+      .with({ type: "revision" }, ({ review, delta }) => {
         const prev = whole();
+        const next = applyDelta(prev, delta);
+        // Not a change to what we have (we missed one): ask for everything.
+        if (next === null) return socket?.resync();
         batch(() => {
           setMeta(review);
           setWhole(next);
@@ -524,7 +540,12 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
 
   let socket: Socket | null = null;
   const start = () => {
-    socket = connect(initial.review.id, { onMessage: apply, onStatus: setConnection, onOutbox: setOutbox });
+    socket = connect(initial.review.id, {
+      onMessage: apply,
+      onStatus: setConnection,
+      onOutbox: setOutbox,
+      revision: () => whole().revision,
+    });
   };
   const send = (msg: ClientMsg) => {
     if (connection() === "gone") setError("This review was deleted; nothing more can be sent.");
@@ -627,6 +648,47 @@ function fetchRange(reviewId: string, r: CommitRange): Promise<Snapshot> {
 }
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/** A definition (`Symbol` would shadow the global). */
+type Definition = Snapshot["symbols"][number];
+
+/**
+ * The revision `delta` describes, built on `prev` (which must be its base):
+ * files it doesn't carry are `prev`'s very objects, so everything cached per
+ * file stays. `null` when `prev` is another revision or lacks a file it needs.
+ */
+export function applyDelta(prev: Snapshot, delta: SnapshotDelta): Snapshot | null {
+  if (prev.revision !== delta.base) return null;
+  const before = new Map(prev.files.map((f, i) => [f.path, i]));
+  const fresh = new Map(delta.files.map((f) => [f.path, f]));
+  const bySource = (symbols: Definition[]) => {
+    const map = new Map<number, Definition[]>();
+    for (const s of symbols) {
+      const list = map.get(s.file);
+      if (list) list.push(s);
+      else map.set(s.file, [s]);
+    }
+    return map;
+  };
+  const oldSymbols = bySource(prev.symbols);
+  const newSymbols = bySource(delta.symbols);
+  const files: FileDiff[] = [];
+  const symbols: Definition[] = [];
+  for (const [i, path] of delta.paths.entries()) {
+    const f = fresh.get(path);
+    if (f) {
+      files.push(f);
+      symbols.push(...(newSymbols.get(i) ?? []));
+      continue;
+    }
+    const old = before.get(path);
+    const kept = old === undefined ? undefined : prev.files[old];
+    if (old === undefined || kept === undefined) return null;
+    files.push(kept);
+    for (const s of oldSymbols.get(old) ?? []) symbols.push(s.file === i ? s : { ...s, file: i });
+  }
+  return { revision: delta.revision, files, symbols };
+}
 
 function loadJson<T>(key: string, fallback: T): T {
   try {

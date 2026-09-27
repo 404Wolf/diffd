@@ -8,7 +8,7 @@ use std::sync::Arc;
 use diffd_core::anchor::{Reanchor, map_line, reanchor};
 use diffd_core::build::{FileInput, build_file, mark_since, snapshot};
 use diffd_core::model::{ActivityKind, FileDiff, FileStatus, ReviewId, Revision, Side, Snapshot, Thread};
-use diffd_core::protocol::ServerMsg;
+use diffd_core::protocol::{ServerMsg, SnapshotDelta};
 use globset::{Glob, GlobSetBuilder};
 use rayon::prelude::*;
 
@@ -144,13 +144,15 @@ impl App {
         if regions_changed {
             self.store.set_spec(id, &spec).await?;
         }
+        // Pages get only the files that changed; one that can't apply that is sent everything (see `adapters::http`).
+        let delta = SnapshotDelta::between(&prev, &snap);
         {
             let mut inner = live.inner.lock().expect("live lock");
-            inner.snapshot = Arc::new(snap.clone());
+            inner.snapshot = Arc::new(snap);
             inner.fingerprint = fp;
         }
         self.sync_code(id, &live, changed_paths.clone()).await;
-        App::broadcast(&live, ServerMsg::Revision { review: meta, snapshot: Box::new(snap) });
+        App::broadcast(&live, ServerMsg::Revision { review: meta, delta: Box::new(delta) });
         for t in moved {
             App::broadcast(&live, ServerMsg::Thread { thread: t });
         }

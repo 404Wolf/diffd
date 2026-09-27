@@ -283,6 +283,26 @@ export type Layout = {
 };
 
 /**
+ * [`ReviewState`] without the snapshot: what a page that already has the
+ * current revision needs when its socket (re)connects. A big review's
+ * snapshot is megabytes, and the page already holds it.
+ */
+export type LiveState = {
+    review: ReviewMeta;
+    threads: Array<Thread>;
+    regions: Array<Region>;
+    layout: Layout;
+    history: History;
+    chat: Array<Message>;
+    activity: Array<ActivityItem>;
+    presence: Presence;
+    readSeq: number;
+    diagnostics: {
+        [key: string]: Array<Diagnostic>;
+    };
+};
+
+/**
  * A message in a thread, or in the chat.
  */
 export type Message = {
@@ -363,7 +383,8 @@ export type ReviewMeta = {
 
 /**
  * Everything the page needs to render a review. It's embedded in the HTML so
- * the page works offline, and re-sent when the socket (re)connects.
+ * the page works offline, and sent again when the socket (re)connects from a
+ * page without the current revision (otherwise it gets [`LiveState`]).
  */
 export type ReviewState = {
     review: ReviewMeta;
@@ -421,8 +442,11 @@ export type ServerMsg = {
     state: ReviewState;
     type: 'state';
 } | {
+    state: LiveState;
+    type: 'resume';
+} | {
     review: ReviewMeta;
-    snapshot: Snapshot;
+    delta: SnapshotDelta;
     type: 'revision';
 } | {
     regions: Array<Region>;
@@ -504,6 +528,31 @@ export type SideText = {
 export type Snapshot = {
     revision: U32;
     files: Array<FileDiff>;
+    symbols: Array<Symbol>;
+};
+
+/**
+ * A revision as changes to the one before it. An agent editing one file of
+ * a big review would otherwise resend every file (megabytes) on each save.
+ */
+export type SnapshotDelta = {
+    /**
+     * The revision this applies to.
+     */
+    base: U32;
+    revision: U32;
+    /**
+     * Every file's path, in the new order. Paths not in `files` are the
+     * base's files, unchanged; base files missing here are gone.
+     */
+    paths: Array<string>;
+    /**
+     * Files that are new or differ in any way from the base's.
+     */
+    files: Array<FileDiff>;
+    /**
+     * The definitions in `files`, with `file` indexing the new order.
+     */
     symbols: Array<Symbol>;
 };
 

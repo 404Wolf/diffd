@@ -7,15 +7,16 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::model::{
-    ActivityItem, Anchor, CodeAnswer, CodeQuery, Diagnostic, History, Layout, Message, MessageId, Presence, Region, ReviewMeta,
-    ShowRequest, Snapshot, Thread, ThreadId,
+    ActivityItem, Anchor, CodeAnswer, CodeQuery, Diagnostic, FileDiff, History, Layout, Message, MessageId, Presence, Region, ReviewMeta,
+    Revision, ShowRequest, Snapshot, Symbol, Thread, ThreadId,
 };
 
 /// Everything the page needs to render a review. It's embedded in the HTML so
-/// the page works offline, and re-sent when the socket (re)connects.
+/// the page works offline, and sent again when the socket (re)connects from a
+/// page without the current revision (otherwise it gets [`LiveState`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -39,18 +40,116 @@ pub struct ReviewState {
     pub diagnostics: BTreeMap<String, Vec<Diagnostic>>,
 }
 
+/// [`ReviewState`] without the snapshot: what a page that already has the
+/// current revision needs when its socket (re)connects. A big review's
+/// snapshot is megabytes, and the page already holds it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveState {
+    pub review: ReviewMeta,
+    pub threads: Vec<Thread>,
+    pub regions: Vec<Region>,
+    pub layout: Layout,
+    pub history: History,
+    pub chat: Vec<Message>,
+    pub activity: Vec<ActivityItem>,
+    pub presence: Presence,
+    #[ts(type = "number")]
+    pub read_seq: u64,
+    pub diagnostics: BTreeMap<String, Vec<Diagnostic>>,
+}
+
+impl ReviewState {
+    pub fn new(snapshot: Snapshot, live: LiveState) -> Self {
+        let LiveState { review, threads, regions, layout, history, chat, activity, presence, read_seq, diagnostics } = live;
+        Self { review, snapshot, threads, regions, layout, history, chat, activity, presence, read_seq, diagnostics }
+    }
+}
+
+/// A revision as changes to the one before it. An agent editing one file of
+/// a big review would otherwise resend every file (megabytes) on each save.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SnapshotDelta {
+    /// The revision this applies to.
+    pub base: Revision,
+    pub revision: Revision,
+    /// Every file's path, in the new order. Paths not in `files` are the
+    /// base's files, unchanged; base files missing here are gone.
+    pub paths: Vec<String>,
+    /// Files that are new or differ in any way from the base's.
+    pub files: Vec<FileDiff>,
+    /// The definitions in `files`, with `file` indexing the new order.
+    pub symbols: Vec<Symbol>,
+}
+
+impl SnapshotDelta {
+    /// What changed from `prev` to `next`.
+    pub fn between(prev: &Snapshot, next: &Snapshot) -> Self {
+        let before: HashMap<&str, &FileDiff> = prev.files.iter().map(|f| (f.path.as_str(), f)).collect();
+        let changed: Vec<bool> = next.files.iter().map(|f| before.get(f.path.as_str()) != Some(&f)).collect();
+        Self {
+            base: prev.revision,
+            revision: next.revision,
+            paths: next.files.iter().map(|f| f.path.clone()).collect(),
+            files: next.files.iter().zip(&changed).filter(|(_, c)| **c).map(|(f, _)| f.clone()).collect(),
+            symbols: next.symbols.iter().filter(|s| changed.get(s.file as usize) == Some(&true)).cloned().collect(),
+        }
+    }
+
+    /// The new snapshot, from `prev` (which must be the base revision).
+    /// `None` when `prev` is some other revision, or doesn't have a file the
+    /// delta counts on.
+    pub fn apply(&self, prev: &Snapshot) -> Option<Snapshot> {
+        if prev.revision != self.base {
+            return None;
+        }
+        let before: HashMap<&str, usize> = prev.files.iter().enumerate().map(|(i, f)| (f.path.as_str(), i)).collect();
+        let fresh: HashMap<&str, &FileDiff> = self.files.iter().map(|f| (f.path.as_str(), f)).collect();
+        let by_file = |symbols: &'_ [Symbol]| {
+            let mut map: HashMap<u32, Vec<Symbol>> = HashMap::new();
+            for s in symbols {
+                map.entry(s.file).or_default().push(s.clone());
+            }
+            map
+        };
+        let (mut old_symbols, mut new_symbols) = (by_file(&prev.symbols), by_file(&self.symbols));
+        let mut files = Vec::with_capacity(self.paths.len());
+        let mut symbols = Vec::new();
+        for (i, path) in self.paths.iter().enumerate() {
+            let i = i as u32;
+            if let Some(f) = fresh.get(path.as_str()) {
+                files.push((*f).clone());
+                symbols.extend(new_symbols.remove(&i).unwrap_or_default());
+            } else {
+                let old = *before.get(path.as_str())?;
+                files.push(prev.files[old].clone());
+                symbols.extend(old_symbols.remove(&(old as u32)).unwrap_or_default().into_iter().map(|s| Symbol { file: i, ..s }));
+            }
+        }
+        Some(Snapshot { revision: self.revision, files, symbols })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(export)]
 pub enum ServerMsg {
-    /// Full state, sent on connect.
+    /// Full state, sent on connect, and to a page that can't apply a `revision`.
     State {
         state: Box<ReviewState>,
     },
-    /// A new revision of the diff.
+    /// Sent on connect instead of `State` when the page already has the
+    /// current revision (the socket's URL says which one it has).
+    Resume {
+        state: Box<LiveState>,
+    },
+    /// A new revision of the diff, as changes to the one before.
     Revision {
         review: ReviewMeta,
-        snapshot: Box<Snapshot>,
+        delta: Box<SnapshotDelta>,
     },
     /// The agent's region labels changed.
     Regions {
@@ -167,4 +266,57 @@ impl ClientMsg {
 /// Ids the page generates must look like ours: short, URL-safe.
 pub fn valid_client_id(id: &str) -> bool {
     (8..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{FileStatus, Side, SideText};
+
+    fn file(path: &str, text: &str) -> FileDiff {
+        FileDiff {
+            path: path.into(),
+            old_path: None,
+            status: FileStatus::Modified,
+            language: None,
+            omitted: None,
+            details: vec![],
+            collapsed: None,
+            labels: vec![],
+            added: 1,
+            removed: 0,
+            old: None,
+            new: Some(SideText { lines: vec![text.into()], syntax: vec![vec![]], novel: vec![vec![]] }),
+            rows: vec![],
+            since: vec![],
+        }
+    }
+
+    fn symbol(name: &str, file: u32) -> Symbol {
+        Symbol { name: name.into(), kind: "function".into(), file, side: Side::New, line: 1, start: 0, end: 1, lines: [1, 1] }
+    }
+
+    #[test]
+    fn a_delta_carries_only_what_changed_and_rebuilds_the_next_snapshot() {
+        let prev = Snapshot {
+            revision: 3,
+            files: vec![file("a.rs", "a"), file("b.rs", "b"), file("c.rs", "c")],
+            symbols: vec![symbol("fa", 0), symbol("fb", 1), symbol("fc", 2), symbol("fc2", 2)],
+        };
+        // b changes, a goes, d arrives first, c moves.
+        let next = Snapshot {
+            revision: 4,
+            files: vec![file("d.rs", "d"), file("b.rs", "b2"), file("c.rs", "c")],
+            symbols: vec![symbol("fd", 0), symbol("fb2", 1), symbol("fc", 2), symbol("fc2", 2)],
+        };
+        let delta = SnapshotDelta::between(&prev, &next);
+        assert_eq!((delta.base, delta.revision), (3, 4));
+        assert_eq!(delta.paths, ["d.rs", "b.rs", "c.rs"]);
+        assert_eq!(delta.files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["d.rs", "b.rs"]);
+        assert_eq!(delta.symbols.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["fd", "fb2"]);
+        assert_eq!(delta.apply(&prev), Some(next));
+
+        // Only onto the base revision.
+        assert_eq!(delta.apply(&Snapshot { revision: 2, ..prev }), None);
+    }
 }

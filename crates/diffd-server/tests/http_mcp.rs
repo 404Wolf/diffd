@@ -107,6 +107,15 @@ async fn agent_and_page_talk_through_the_server() {
     let first = next_json(&mut ws).await;
     assert_eq!(first["type"], "state");
     assert_eq!(first["state"]["threads"].as_array().unwrap().len(), 1);
+    // A page that already has this revision isn't sent the snapshot again; one with another revision is.
+    let revision = first["state"]["snapshot"]["revision"].as_u64().unwrap();
+    let (mut resumed, _) = tokio_tungstenite::connect_async(format!("{url}?revision={revision}")).await.unwrap();
+    let resume = next_json(&mut resumed).await;
+    assert_eq!(resume["type"], "resume");
+    assert!(resume["state"].get("snapshot").is_none());
+    assert_eq!(resume["state"]["threads"].as_array().unwrap().len(), 1);
+    let (mut stale, _) = tokio_tungstenite::connect_async(format!("{url}?revision={}", revision + 1)).await.unwrap();
+    assert_eq!(next_json(&mut stale).await["type"], "state");
 
     // The agent waits; the user comments from the page.
     let waiting = {
@@ -142,6 +151,21 @@ async fn agent_and_page_talk_through_the_server() {
         let msg = next_json(&mut ws).await;
         if msg["type"] == "show" {
             assert_eq!(msg["request"]["message"], "the whole function");
+            break;
+        }
+    }
+
+    // The agent edits a file: the page is sent only that file, as a change to the revision it has.
+    repo.write("src/other.rs", "pub fn other() {}\n");
+    call(&client, "refresh", json!({})).await;
+    loop {
+        let msg = next_json(&mut ws).await;
+        if msg["type"] == "revision" {
+            let delta = &msg["delta"];
+            assert_eq!((delta["base"].as_u64(), delta["revision"].as_u64()), (Some(revision), Some(revision + 1)));
+            let sent: Vec<&str> = delta["files"].as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
+            assert_eq!(sent, ["src/other.rs"]);
+            assert_eq!(delta["paths"].as_array().unwrap().len(), 2);
             break;
         }
     }

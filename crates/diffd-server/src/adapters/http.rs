@@ -8,7 +8,7 @@ use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
-use diffd_core::model::{Author, FileDiff, ReviewId, Snapshot};
+use diffd_core::model::{Author, FileDiff, ReviewId, Revision, Snapshot};
 use diffd_core::protocol::{Boot, ClientMsg, ReviewState, ReviewSummary, ServerMsg};
 use futures::{SinkExt, StreamExt};
 use hyper_util::rt::TokioIo;
@@ -342,7 +342,7 @@ type WebSocket = WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>;
 /// the browser offers it (they all do). The handshake is done here rather
 /// than by axum so the compression can be negotiated.
 /// Browsers always send `Origin` on WebSocket requests, and `local_only` has checked it.
-async fn ws(State(web): State<Web>, Path(id): Path<String>, mut req: Request) -> Response {
+async fn ws(State(web): State<Web>, Path(id): Path<String>, Query(q): Query<WsQuery>, mut req: Request) -> Response {
     let headers = req.headers();
     let is_upgrade = headers.get(header::UPGRADE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.eq_ignore_ascii_case("websocket"));
     let version_13 = headers.get(header::SEC_WEBSOCKET_VERSION).is_some_and(|v| v == "13");
@@ -361,7 +361,7 @@ async fn ws(State(web): State<Web>, Path(id): Path<String>, mut req: Request) ->
             config.extensions.permessage_deflate = Some(DeflateConfig::default());
         }
         let socket = WebSocketStream::from_raw_socket(io, Role::Server, Some(config)).await;
-        if let Err(e) = session(web.app, ReviewId(id), socket, web.shutdown).await {
+        if let Err(e) = session(web.app, ReviewId(id), q.revision, socket, web.shutdown).await {
             tracing::debug!(error = %format!("{e:#}"), "websocket closed");
         }
     });
@@ -394,8 +394,34 @@ async fn send(tx: &mut futures::stream::SplitSink<WebSocket, WsMessage>, msg: &S
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+struct WsQuery {
+    /// The revision the page already has, if any: its snapshot isn't sent again.
+    revision: Option<Revision>,
+}
+
+/// Bring a page up to date: everything, or everything but the snapshot when
+/// the page already has this revision. Returns the revision the page now has.
+async fn catch_up(
+    app: &App,
+    id: &ReviewId,
+    has: Option<Revision>,
+    tx: &mut futures::stream::SplitSink<WebSocket, WsMessage>,
+) -> anyhow::Result<Revision> {
+    let (snapshot, state) = app.live_state(id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let revision = snapshot.revision;
+    let msg = if has == Some(revision) {
+        ServerMsg::Resume { state: Box::new(state) }
+    } else {
+        ServerMsg::State { state: Box::new(ReviewState::new((*snapshot).clone(), state)) }
+    };
+    send(tx, &msg).await?;
+    Ok(revision)
+}
+
 /// One page's connection: push review events, apply what the page sends.
-async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket, shutdown: CancellationToken) -> anyhow::Result<()> {
+/// `has` is the revision the page already has, if any.
+async fn session(app: Arc<App>, id: ReviewId, has: Option<Revision>, socket: WebSocket, shutdown: CancellationToken) -> anyhow::Result<()> {
     let (mut tx, mut rx) = socket.split();
     let mut events = match app.subscribe(&id).await {
         Ok(events) => events,
@@ -405,8 +431,7 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket, shutdown: Cance
         }
         Err(e) => return Err(anyhow::anyhow!("{e}")),
     };
-    let state = app.state(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
-    send(&mut tx, &ServerMsg::State { state: Box::new(state) }).await?;
+    let mut has = catch_up(&app, &id, has, &mut tx).await?;
     {
         let (app, id) = (app.clone(), id.clone());
         tokio::spawn(async move { app.attach_code(&id).await });
@@ -422,16 +447,18 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket, shutdown: Cance
             }
             Some(msg) = answers.recv() => send(&mut tx, &msg).await?,
             event = events.recv() => match event {
+                // Revisions come as changes to the one before, which this page may not have.
+                Ok(ServerMsg::Revision { delta, .. }) if delta.revision <= has => {}
+                Ok(ServerMsg::Revision { delta, .. }) if delta.base != has => has = catch_up(&app, &id, Some(has), &mut tx).await?,
                 Ok(msg) => {
                     send(&mut tx, &msg).await?;
-                    if matches!(msg, ServerMsg::Gone { .. }) {
-                        break Ok(());
+                    match msg {
+                        ServerMsg::Gone { .. } => break Ok(()),
+                        ServerMsg::Revision { delta, .. } => has = delta.revision,
+                        _ => {}
                     }
                 }
-                Err(RecvError::Lagged(_)) => {
-                    let state = app.state(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
-                    send(&mut tx, &ServerMsg::State { state: Box::new(state) }).await?;
-                }
+                Err(RecvError::Lagged(_)) => has = catch_up(&app, &id, Some(has), &mut tx).await?,
                 // The review's events end only when it's deleted.
                 Err(RecvError::Closed) => {
                     send(&mut tx, &ServerMsg::Gone { message: "This review was deleted.".into() }).await?;

@@ -149,6 +149,16 @@ and patched in through `[patch.crates-io]`, so builds (Nix included) need no
 network. Offers that ask things of the server are declined, and the socket
 then stays uncompressed.
 
+**The socket never resends what the page has.**
+- On (re)connect the page says which revision it has (`/ws?revision=N`). If
+  that's current, the server answers `resume`: everything in `state` but the
+  snapshot.
+- A new revision goes out as a `SnapshotDelta`: the new file order, the files
+  that are new or differ in any way, and their definitions. The page builds
+  the new snapshot from its own, keeping unchanged files as the same objects.
+- A page that can't apply it (it missed a revision) reconnects and gets the
+  whole `state`. The server does the same for a socket that fell behind.
+
 **Why one HTTP server instead of a stdio MCP process per agent session:**
 
 - Many agents share one server and one port.
@@ -909,7 +919,8 @@ How we get there:
 - **Budget for hidden context.** Folded gaps over 4000 rows aren't
   pre-rendered; `/` still searches them.
 - **Compact wire.** The WebSocket is compressed (§4), and so are pages and
-  JSON responses (zstd or gzip; a 9 MB review page is 1.3 MB). Snapshots are
+  JSON responses (zstd or gzip; a 9 MB review page is 1.3 MB). Reconnects and
+  new revisions send only what the page doesn't have (§4). Snapshots are
   stored zstd-compressed.
 
 There's no automated 100k-line benchmark yet (§15).
