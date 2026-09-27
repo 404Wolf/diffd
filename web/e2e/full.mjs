@@ -81,6 +81,12 @@ async function keys(page, ...seq) {
 }
 const status = async (page) => (await page.locator("footer").innerText()).replace(/\s+/g, " ");
 /** The file:line the cursor is on, from the status line. */
+/** Wait (briefly) until the status line mentions `text`; for commands that answer asynchronously. */
+const statusSoon = async (page, text, ms = 5000) =>
+  page
+    .waitForFunction((t) => document.querySelector("footer")?.innerText.includes(t), text, { timeout: ms })
+    .then(() => true)
+    .catch(() => false);
 const at = async (page) => (await status(page)).match(/([\w.-]+):(\d+|-) (?:new|old)/)?.[1] ?? "";
 const shot = (page, name) => page.screenshot({ path: `${shots}/${String(step).padStart(2, "0")}-${name}.png` });
 /** The top visible row and its offset, to prove the page didn't move. */
@@ -105,7 +111,8 @@ async function cursorTo(page, fileName, line, side = "new", pane = ".buffer.focu
 
 // -- The run ---------------------------------------------------------------------
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+const context = await browser.newContext({ viewport: { width: 1500, height: 950 } });
+const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 // Connection failures are expected while the offline section has the server stopped.
@@ -155,7 +162,7 @@ try {
     for (let i = 0; i < 12 && !(await status(page)).includes("· clamp"); i++) await keys(page, "w");
     check((await status(page)).includes("SYMBOL") && (await status(page)).includes("· clamp"), "w walks symbols to `clamp`");
     await keys(page, "Enter");
-    check((await status(page)).includes("bucket.rs:2"), "enter jumps to clamp's definition in bucket.rs");
+    check(await statusSoon(page, "bucket.rs:2"), "enter jumps to clamp's definition in bucket.rs");
     await shot(page, "definition");
     await keys(page, "Control+o");
     check((await status(page)).includes("lib.rs:60"), "ctrl-o comes back");
@@ -511,7 +518,14 @@ try {
     await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");
     check((await presence.innerText()).includes("2 queued"), `the top bar counts what's queued: "${await presence.innerText()}"`);
-    const stored = await page.evaluate((id) => localStorage.getItem(`diffd:outbox:${id}`) ?? "", reviewId);
+    const stored = await page.evaluate(
+      (id) =>
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith(`diffd:outbox:${id}:`))
+          .map((k) => localStorage.getItem(k))
+          .join(""),
+      reviewId,
+    );
     check(stored.includes("Written while the server was down.") && stored.includes("Are you still there?"), "the outbox is saved to localStorage");
     await shot(page, "offline");
 
@@ -552,6 +566,82 @@ try {
     check((await page.locator("section[aria-label='Marks']").innerText()).includes("main.go:11"), "marks survive a reload");
     await page.waitForSelector('[data-tree-file="web/src/format.ts"]');
     check(true, "files outside the diff with threads come back after a reload");
+  });
+
+  await section("Several tabs at once", async () => {
+    const other = await page.context().newPage();
+    other.on("pageerror", (e) => errors.push(`tab 2: ${e.message}`));
+    await other.goto(reviewUrl);
+    await other.waitForSelector("[data-file-section]");
+    await other.waitForFunction(() => !/Offline|Connecting/.test(document.getElementById("presence")?.innerText ?? ""));
+    const tabIds = await Promise.all([page, other].map((p) => p.evaluate(() => sessionStorage.getItem("diffd:tab"))));
+    check(tabIds[0] && tabIds[1] && tabIds[0] !== tabIds[1], "each tab gets its own id");
+
+    // A comment in one tab shows in the other, live.
+    await other.bringToFront();
+    await cursorTo(other, "src/bucket.rs", 6);
+    await keys(other, "g", "c", "c");
+    await other.keyboard.type("From the second tab.");
+    await keys(other, "Control+Enter");
+    await page.waitForFunction(() => document.body.textContent.includes("From the second tab."));
+    check(true, "a comment in one tab appears in the other");
+    await agent.call("wait_for_feedback", { review_id: reviewId, timeout_seconds: 20 });
+
+    // Marks and viewed files are shared between tabs, without clobbering.
+    await page.bringToFront();
+    await cursorTo(page, "src/bucket.rs", 2);
+    await keys(page, "m", "b");
+    await other.waitForFunction(() => document.querySelector("section[aria-label='Marks']")?.textContent.includes("bucket.rs:2"));
+    check(true, "a mark set in one tab shows in the other");
+    await other.bringToFront();
+    await cursorTo(other, "src/bucket.rs", 3);
+    await keys(other, "m", "c");
+    await page.waitForFunction(() => document.querySelector("section[aria-label='Marks']")?.textContent.includes("bucket.rs:3"));
+    const marksText = await page.locator("section[aria-label='Marks']").innerText();
+    check(marksText.includes("bucket.rs:2") && marksText.includes("bucket.rs:3"), "and neither tab's marks overwrite the other's");
+
+    // A duplicated tab (same sessionStorage) doesn't share the original's id.
+    const dup = await page.context().newPage();
+    await dup.addInitScript((id) => sessionStorage.setItem("diffd:tab", id), tabIds[0]);
+    await dup.goto(reviewUrl);
+    await dup.waitForSelector("[data-file-section]");
+    await dup.waitForFunction((id) => sessionStorage.getItem("diffd:tab") !== id, tabIds[0]);
+    check(true, "a duplicated tab picks a new id");
+    await dup.close();
+
+    // Offline in both tabs; one closes before the server's back. Nothing is lost.
+    const { stop, start } = serverControl;
+    if (!stop || !start) return log("(offline part skipped: no server control)");
+    execSync(stop);
+    for (const p of [page, other]) await p.waitForFunction(() => document.getElementById("presence")?.innerText.startsWith("Offline"));
+    await page.bringToFront();
+    await cursorTo(page, "src/bucket.rs", 7);
+    await keys(page, "g", "c", "c");
+    await page.keyboard.type("Offline in tab one.");
+    await keys(page, "Control+Enter");
+    await other.bringToFront();
+    await cursorTo(other, "src/bucket.rs", 8);
+    await keys(other, "g", "c", "c");
+    await other.keyboard.type("Offline in tab two, which then closes.");
+    await keys(other, "Control+Enter");
+    await other.waitForFunction(() => document.body.textContent.includes("Queued offline"));
+    await sleep(300);
+    await other.close();
+    await page.bringToFront();
+    execSync(start);
+    await page.waitForFunction(
+      () => document.body.textContent.includes("which then closes") && document.querySelectorAll("[data-pending]").length === 0,
+      null,
+      { timeout: 20_000 },
+    );
+    check(true, "the open tab sends its own queued comment and the closed tab's");
+    agent = new Agent(`${base}/mcp`);
+    await agent.init();
+    const got = await agent.call("wait_for_feedback", { review_id: reviewId, timeout_seconds: 20 });
+    const bodies = got.items.flatMap((i) => i.new ?? []);
+    check(bodies.includes("Offline in tab one.") && bodies.includes("Offline in tab two, which then closes."), "the agent gets both");
+    const left = await page.evaluate((id) => Object.keys(localStorage).filter((k) => k.startsWith(`diffd:outbox:${id}`)).length, reviewId);
+    check(left === 0, "and no outbox is left behind");
   });
 
   await section("Walking the commits one at a time", async () => {
@@ -711,8 +801,7 @@ try {
     await cursorTo(page, "web/src/api.ts", 6, "old");
     for (let i = 0; i < 12 && !(await status(page)).includes("· fetchQuota"); i++) await keys(page, "w");
     await keys(page, "g", "d");
-    await sleep(300);
-    check((await status(page)).includes("Definition of fetchQuota"), "on the old side, gd falls back to the diff's symbols");
+    check(await statusSoon(page, "Definition of fetchQuota"), "on the old side, gd falls back to the diff's symbols");
   });
 
   await section("Home page", async () => {

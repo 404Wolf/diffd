@@ -7,10 +7,15 @@
  * page reconnects; the server ignores ids it has already stored, so resending
  * is always safe. Other messages only matter while connected: the latest
  * resolve per thread and the read watermark are kept, drafting is dropped.
+ *
+ * Each tab has its own outbox (tabs mustn't overwrite each other's). When a
+ * tab closes with messages still unsent, the next tab to connect adopts them;
+ * if two do at once, the server's idempotency makes the double send harmless.
  */
 import { match } from "ts-pattern";
 import type { ClientMsg } from "../gen/ClientMsg";
 import type { ServerMsg } from "../gen/ServerMsg";
+import { liveTabs, tabId } from "./tabs";
 
 export type Connection = "connecting" | "live" | "offline";
 
@@ -46,8 +51,10 @@ const MIN_DELAY = 500;
 const MAX_DELAY = 8_000;
 
 export function connect(reviewId: string, events: SocketEvents): Socket {
-  const storageKey = `diffd:outbox:${reviewId}`;
-  const outbox = new Map<string, ClientMsg>(load(storageKey));
+  const prefix = `diffd:outbox:${reviewId}`;
+  /** Known once this tab's id is claimed; until then the outbox lives in memory only. */
+  let storageKey: string | null = null;
+  const outbox = new Map<string, ClientMsg>();
   let ws: WebSocket | null = null;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
@@ -55,7 +62,9 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
 
   const changed = () => {
     try {
-      if (outbox.size === 0) localStorage.removeItem(storageKey);
+      if (storageKey === null) {
+        // Not saved yet: the tab id is still being claimed.
+      } else if (outbox.size === 0) localStorage.removeItem(storageKey);
       else localStorage.setItem(storageKey, JSON.stringify([...outbox]));
     } catch {
       // Storage can be unavailable (private mode, quota); the outbox still lives in memory.
@@ -95,6 +104,7 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
       delay = MIN_DELAY;
       events.onStatus("live");
       flush();
+      void adopt();
     };
     socket.onmessage = (e) => {
       let msg: ServerMsg;
@@ -130,7 +140,36 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
   window.addEventListener("focus", nudge);
   document.addEventListener("visibilitychange", nudge);
 
-  events.onOutbox([...outbox.values()].filter(needsAck));
+  /** Take over outboxes that closed tabs left behind (and the pre-tab one, from older versions). */
+  const adopt = async () => {
+    const live = await liveTabs();
+    let took = false;
+    for (const key of storageKeys()) {
+      if (key === storageKey || !(key === prefix || key.startsWith(`${prefix}:`))) continue;
+      const tab = key.slice(prefix.length + 1);
+      if (key !== prefix && (live === null || live.has(tab))) continue;
+      for (const [k, msg] of load(key)) if (!outbox.has(k)) outbox.set(k, msg);
+      removeKey(key);
+      took = true;
+    }
+    if (took) {
+      changed();
+      flush();
+    }
+  };
+
+  void tabId().then((tab) => {
+    storageKey = `${prefix}:${tab}`;
+    // This tab's own outbox, from before a reload, goes first; then anything written since.
+    const mine = new Map(load(storageKey));
+    for (const [k, msg] of outbox) mine.set(k, msg);
+    outbox.clear();
+    for (const [k, msg] of mine) outbox.set(k, msg);
+    changed();
+    flush();
+    void adopt();
+  });
+  events.onOutbox([]);
   open();
 
   return {
@@ -154,6 +193,22 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
       ws?.close();
     },
   };
+}
+
+function storageKeys(): string[] {
+  try {
+    return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? "");
+  } catch {
+    return [];
+  }
+}
+
+function removeKey(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Nothing to clean up without storage.
+  }
 }
 
 function load(key: string): [string, ClientMsg][] {

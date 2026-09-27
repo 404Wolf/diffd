@@ -2,8 +2,8 @@
  * Everything about how the review is being looked at, as opposed to what it
  * contains: folds, cursor, mode, drawers, overlays.
  */
-import { type Accessor, createEffect, createSignal, on, type Setter } from "solid-js";
-import { createStore } from "solid-js/store";
+import { type Accessor, createEffect, createSignal, on, onCleanup, type Setter } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import type { Anchor } from "../gen/Anchor";
 import type { Diagnostic } from "../gen/Diagnostic";
 import type { ShowRequest } from "../gen/ShowRequest";
@@ -229,6 +229,19 @@ export function createView(review: Review) {
     viewed: load(`diffd:viewed:${id}`, {}),
   });
   createEffect(() => save(`diffd:viewed:${id}`, { ...flags.viewed }));
+  // Other tabs of this review: viewed files and marks are shared, so take their changes.
+  const fromOtherTabs = (e: StorageEvent) => {
+    if (e.newValue === null) return;
+    try {
+      if (e.key === `diffd:viewed:${id}`)
+        setFlags("viewed", reconcile(JSON.parse(e.newValue) as Record<string, boolean>));
+      if (e.key === `diffd:marks:${id}`) setMarks(reconcile(JSON.parse(e.newValue) as Record<string, Mark>));
+    } catch {
+      // Another version's data: ignore it.
+    }
+  };
+  window.addEventListener("storage", fromOtherTabs);
+  onCleanup(() => window.removeEventListener("storage", fromOtherTabs));
   createEffect(() => {
     const collapsed = { ...flags.collapsed };
     persist.update((s) => {

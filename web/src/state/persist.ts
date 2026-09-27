@@ -1,5 +1,7 @@
 /**
- * What the page remembers between reloads, per review, in localStorage:
+ * What the page remembers between reloads, per review and per tab (in
+ * sessionStorage, so tabs don't trample each other), with the latest copy
+ * also in localStorage to start new tabs from:
  * which lines are expanded, where you were reading, the cursor, and a comment
  * you were in the middle of writing. (Sent-but-unconfirmed messages live in
  * the socket's outbox; viewed files and marks in the view state.)
@@ -35,12 +37,16 @@ export interface Session {
 const empty = (): Session => ({ visibility: {}, collapsed: {}, reading: null, cursor: null, draft: null });
 
 export function loadSession(reviewId: string): Session {
-  try {
-    const raw = localStorage.getItem(`diffd:session:${reviewId}`);
-    return raw ? { ...empty(), ...(JSON.parse(raw) as Partial<Session>) } : empty();
-  } catch {
-    return empty();
+  const key = `diffd:session:${reviewId}`;
+  for (const storage of [() => sessionStorage, () => localStorage]) {
+    try {
+      const raw = storage().getItem(key);
+      if (raw) return { ...empty(), ...(JSON.parse(raw) as Partial<Session>) };
+    } catch {
+      // Unavailable or not ours: try the next one.
+    }
   }
+  return empty();
 }
 
 /** Writes are batched: many small changes (scrolling, typing) become one write. */
@@ -49,10 +55,13 @@ export function sessionWriter(reviewId: string, session: Session) {
   const flush = () => {
     clearTimeout(timer);
     timer = undefined;
-    try {
-      localStorage.setItem(`diffd:session:${reviewId}`, JSON.stringify(session));
-    } catch {
-      // Storage full or unavailable: the page works, it just won't remember.
+    const json = JSON.stringify(session);
+    for (const storage of [() => sessionStorage, () => localStorage]) {
+      try {
+        storage().setItem(`diffd:session:${reviewId}`, json);
+      } catch {
+        // Storage full or unavailable: the page works, it just won't remember.
+      }
     }
   };
   addEventListener("pagehide", flush);

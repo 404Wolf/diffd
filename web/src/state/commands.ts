@@ -33,6 +33,10 @@ import {
 import { fromAgent, type Review } from "./review";
 import { CONTEXT, type Cursor, EXPAND_STEP, type PickerItem, type Place, type View, type Word } from "./view";
 
+/** How long `gd` waits for a language server before using the diff's own symbols. */
+const LSP_PATIENCE_MS = 1500;
+const wait = (ms: number) => new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
+
 export function createCommands(review: Review, view: View) {
   const files = () => review.snapshot().files;
   const fileName = (i: number) => files()[i]?.path.split("/").pop() ?? "";
@@ -498,12 +502,17 @@ export function createCommands(review: Review, view: View) {
   /** `gd`: ask the language server; without one (or no answer), the diff's own symbol index. */
   const gotoDefinition = async (name?: string) => {
     const pos = lspPosition();
+    const word = name ?? pos?.word.text ?? wordAtCursor();
     if (pos && (name === undefined || name === pos.word.text)) {
-      const answer = await review.ask("definition", pos.path, pos.line, pos.word.col);
-      if (answer.type === "locations" && answer.locations.length > 0)
+      const asking = review.ask("definition", pos.path, pos.line, pos.word.col);
+      // A server that's starting or indexing can be slow; when the diff itself knows
+      // the answer, don't keep the reader waiting for it.
+      const known = word !== null && review.snapshot().symbols.some((s) => s.name === word);
+      const answer = known ? await Promise.race([asking, wait(LSP_PATIENCE_MS)]) : await asking;
+      if (answer && answer.type === "locations" && answer.locations.length > 0)
         return goToLocations(answer.locations, pos.word.text, "definitions");
     }
-    symbolDefinition(name ?? pos?.word.text ?? wordAtCursor());
+    symbolDefinition(word);
   };
   /** `gt`: the definition of the type of what's under the cursor (language servers only). */
   const typeDefinition = async () => {
