@@ -1,0 +1,6 @@
+// Branch with ts-pattern's `match` (exhaustive, and an expression) instead of `switch`.
+language js
+
+JsSwitchStatement() as $switch where {
+  register_diagnostic(span=$switch, message="Use ts-pattern's match() instead of switch.", severity="error")
+}

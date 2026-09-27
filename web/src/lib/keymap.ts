@@ -1,3 +1,5 @@
+import { match } from "ts-pattern";
+
 /**
  * A small vim-style key-sequence engine. Bindings are plain data; the engine
  * handles counts (`5j`), multi-key sequences (`g d`, `] c`) and modes.
@@ -20,13 +22,13 @@ export type Feed =
   | { readonly kind: "pending"; readonly display: string }
   | { readonly kind: "unbound" };
 
-/** Normalize a keyboard event to a token, or null for keys we never bind. */
 /** An input method (Japanese, Chinese, …) is composing text: its keys aren't ours. */
 export function composing(e: Pick<KeyboardEvent, "isComposing" | "keyCode">): boolean {
   // keyCode 229 is how some browsers mark the key that starts a composition.
   return e.isComposing || e.keyCode === 229;
 }
 
+/** Normalize a keyboard event to a token, or null for keys we never bind. */
 export function keyToken(
   e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">,
 ): string | null {
@@ -37,22 +39,21 @@ export function keyToken(
     // letter or digit is a browser or OS shortcut, not ours.
     return e.key.length === 1 && !/[\p{L}\p{N}]/u.test(e.key) ? e.key : null;
   }
-  switch (e.key) {
-    case " ":
-      return e.ctrlKey ? null : "space";
-    case "Enter":
-      return `${e.ctrlKey ? "ctrl-" : ""}${e.shiftKey ? "shift-" : ""}enter`;
-    case "Escape":
-      return e.ctrlKey ? "ctrl-esc" : "esc";
-    case "Tab":
-      return e.shiftKey || e.ctrlKey ? null : "tab";
-    case "ArrowDown":
-      return "down";
-    case "ArrowUp":
-      return "up";
-  }
-  if (e.key.length !== 1) return null;
-  return e.ctrlKey ? `ctrl-${e.key.toLowerCase()}` : e.key;
+  return (
+    match(e.key)
+      .with(" ", () => (e.ctrlKey ? null : "space"))
+      .with("Enter", () => `${e.ctrlKey ? "ctrl-" : ""}${e.shiftKey ? "shift-" : ""}enter`)
+      .with("Escape", () => (e.ctrlKey ? "ctrl-esc" : "esc"))
+      .with("Tab", () => (e.shiftKey || e.ctrlKey ? null : "tab"))
+      .with("ArrowDown", () => "down")
+      .with("ArrowUp", () => "up")
+      // Other named keys (F1, Home, …) aren't bound.
+      .when(
+        (key) => key.length !== 1,
+        () => null,
+      )
+      .otherwise((key) => (e.ctrlKey ? `ctrl-${key.toLowerCase()}` : key))
+  );
 }
 
 export class KeyEngine<C> {
