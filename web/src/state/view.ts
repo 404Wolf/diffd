@@ -6,7 +6,7 @@ import { type Accessor, createEffect, createSignal, on, onCleanup, type Setter, 
 import { createStore, reconcile } from "solid-js/store";
 import { match } from "ts-pattern";
 import type { Anchor, Diagnostic, ShowRequest, Side, Snapshot, ThreadId } from "../api";
-import { applyFolds, initialVisible, regionRows, rowOf } from "../lib/diffModel";
+import { applyFolds, carryRow, initialVisible, regionRows, rowOf } from "../lib/diffModel";
 import { JumpList } from "../lib/jumps";
 import type { Match } from "../lib/search";
 import { setFocusedPane } from "./dom";
@@ -385,8 +385,13 @@ export function createView(review: Review) {
   const followFiles = (prev: Snapshot, next: Snapshot) => {
     const byPath = new Map(next.files.map((f, i) => [f.path, i]));
     const moved = (file: number): number | null => byPath.get(prev.files[file]?.path ?? "") ?? null;
-    const rowIn = (file: number, row: number) =>
-      Math.max(0, Math.min(row, (next.files[file]?.rows.length ?? 1) - 1));
+    /** Row `row` of file `was` (in `prev`), in file `file` of `next`: the same line of code. */
+    const rowIn = (was: number, file: number, row: number) => {
+      const from = prev.files[was];
+      const to = review.models()[file];
+      if (from && to) return carryRow(from, to, row);
+      return Math.max(0, Math.min(row, (next.files[file]?.rows.length ?? 1) - 1));
+    };
     const place = (p: Place): Place | null => {
       const mode: Mode | null = match(p.mode)
         .with({ kind: "diff" }, (m) => m)
@@ -402,15 +407,18 @@ export function createView(review: Review) {
         mode,
         cursor:
           p.cursor && cursorFile !== null
-            ? { ...p.cursor, file: cursorFile, row: rowIn(cursorFile, p.cursor.row) }
+            ? { ...p.cursor, file: cursorFile, row: rowIn(p.cursor.file, cursorFile, p.cursor.row) }
             : null,
-        top: p.top && topFile !== null ? { ...p.top, file: topFile, row: rowIn(topFile, p.top.row) } : null,
+        top:
+          p.top && topFile !== null
+            ? { ...p.top, file: topFile, row: rowIn(p.top.file, topFile, p.top.row) }
+            : null,
       };
     };
     for (const pane of panes()) {
       const c = pane.cursor();
       const cf = c ? moved(c.file) : null;
-      pane.setCursor(c && cf !== null ? { ...c, file: cf, row: rowIn(cf, c.row), word: null } : null);
+      pane.setCursor(c && cf !== null ? { ...c, file: cf, row: rowIn(c.file, cf, c.row), word: null } : null);
       const m = pane.mode();
       if (m.kind === "file") {
         const f = moved(m.file);
@@ -418,7 +426,7 @@ export function createView(review: Review) {
       }
       const v = pane.visual();
       const vf = v ? moved(v.file) : null;
-      pane.setVisual(v && vf !== null ? { file: vf, row: rowIn(vf, v.row) } : null);
+      pane.setVisual(v && vf !== null ? { file: vf, row: rowIn(v.file, vf, v.row) } : null);
       pane.jumps.remap(place);
       pane.syncJumps();
     }

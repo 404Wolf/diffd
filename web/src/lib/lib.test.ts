@@ -4,6 +4,7 @@ import { fromRuns, toRuns } from "../state/persist";
 import { diagnosticSpan, diagnosticsOn, IDENT, wordAt } from "./code";
 import {
   blocks,
+  carryRow,
   expandGap,
   fileModel,
   growAround,
@@ -113,6 +114,41 @@ describe("rows", () => {
   });
   it("marks changes for file view", () => {
     expect(changeMarks(file(), "new")).toEqual(["", "mod", "add", ""]);
+  });
+});
+
+describe("carrying rows across a revision", () => {
+  // The agent added two lines at the top of the file.
+  const edited = (): FileDiff => {
+    const f = file();
+    return {
+      ...f,
+      new: {
+        lines: ["x", "y", ...(f.new?.lines ?? [])],
+        syntax: [[], [], ...(f.new?.syntax ?? [])],
+        novel: [[], [], ...(f.new?.novel ?? [])],
+      },
+      rows: [
+        [null, 0],
+        [null, 1],
+        [0, 2],
+        [1, 3],
+        [null, 4],
+        [2, 5],
+      ],
+    };
+  };
+  it("keeps a row with an old line on that line", () => {
+    const to = fileModel(edited());
+    expect(carryRow(file(), to, 0)).toBe(2);
+    expect(carryRow(file(), to, 3)).toBe(5);
+  });
+  it("finds an added line by its text, where the edits above moved it", () => {
+    expect(carryRow(file(), fileModel(edited()), 2)).toBe(4);
+  });
+  it("leaves an unchanged file alone", () => {
+    const f = file();
+    expect(carryRow(f, fileModel(f), 3)).toBe(3);
   });
 });
 

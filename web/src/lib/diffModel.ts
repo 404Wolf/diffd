@@ -3,6 +3,7 @@
  * shown, which are folded into gaps, and where threads sit.
  */
 import type { FileDiff, Region, Side } from "../api";
+import { locate } from "./history";
 import { rowChanged } from "./render";
 
 export interface FileModel {
@@ -35,6 +36,41 @@ export function fileModel(file: FileDiff): FileModel {
 export function rowOf(model: FileModel, side: Side, line: number): number {
   const map = side === "old" ? model.oldRow : model.newRow;
   return map[line - 1] ?? -1;
+}
+
+/**
+ * Where a row of one version of a file is in the next (after the agent edits
+ * it): the same line of code, not the same row number. A row with an old line
+ * keeps it, as the base doesn't change; an added line is found by its text,
+ * nearest to where the edits above it moved it.
+ */
+export function carryRow(from: FileDiff, to: FileModel, row: number): number {
+  const last = to.file.rows.length - 1;
+  if (from === to.file || last < 0) return Math.max(0, Math.min(row, last));
+  const viaOld = (r: number): number => {
+    const old = from.rows[r]?.[0];
+    if (old === null || old === undefined || from.old?.lines[old] !== to.file.old?.lines[old]) return -1;
+    return to.oldRow[old] ?? -1;
+  };
+  const same = viaOld(row);
+  if (same >= 0) return same;
+  const line = from.rows[row]?.[1];
+  const lines = to.file.new?.lines;
+  if (line === null || line === undefined || !lines) return Math.min(row, last);
+  // How far the edits above moved the new side here: from the nearest row above that kept its old line.
+  let shift = 0;
+  for (let r = row - 1; r >= 0; r--) {
+    const at = viaOld(r);
+    const was = from.rows[r]?.[1];
+    const now = at >= 0 ? to.file.rows[at]?.[1] : null;
+    if (at < 0) continue;
+    if (was !== null && was !== undefined && now !== null && now !== undefined) shift = now - was;
+    break;
+  }
+  const text = from.new?.lines[line];
+  const found = text === undefined ? null : locate(text, line + 1 + shift, lines);
+  const target = (found ?? line + 1 + shift) - 1;
+  return to.newRow[Math.max(0, Math.min(target, lines.length - 1))] ?? Math.min(row, last);
 }
 
 /** Rows shown by default: changes plus `context` lines around them, plus pinned rows. */

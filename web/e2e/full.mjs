@@ -5,7 +5,7 @@
 //
 // Every step asserts what it expects; the first failure stops the run.
 import { execFileSync, execSync } from "node:child_process";
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -100,6 +100,18 @@ const viewport = (page) =>
       if (r.closest(".gap-body[hidden]")) continue;
       const rect = r.getBoundingClientRect();
       if (rect.bottom > top) return { key: `${r.dataset.f}:${r.dataset.r}`, y: Math.round(rect.top) };
+    }
+    return null;
+  });
+/** The code at the top of the focused buffer, and where it is: survives rows and files being renumbered. */
+const topLine = (page) =>
+  page.evaluate(() => {
+    const buf = document.querySelector(".buffer.focused");
+    const top = buf.getBoundingClientRect().top + 34;
+    for (const r of buf.querySelectorAll(".row")) {
+      if (r.closest(".gap-body[hidden]")) continue;
+      const rect = r.getBoundingClientRect();
+      if (rect.bottom > top) return { text: r.innerText, y: Math.round(rect.top) };
     }
     return null;
   });
@@ -393,6 +405,23 @@ try {
     check((await page.locator(".num.since").count()) >= 2, "changed lines are marked since the last revision");
     check(await page.getByText("Revision 2").first().isVisible(), "the activity feed notes the revision");
     await shot(page, "live-update");
+
+    // Lines added above where you're reading, and a file ahead of this one, don't move you either.
+    await cursorTo(page, "src/lib.rs", 40);
+    await keys(page, "z", "t");
+    await sleep(200);
+    const before = await topLine(page);
+    const original = readFileSync(lib, "utf8");
+    writeFileSync(lib, `// Token buckets.\n// Two lines the agent added.\n${original}`);
+    writeFileSync(`${repo}/src/aaa.rs`, "pub fn first() {}\n");
+    await page.waitForFunction(() => document.querySelector("header").innerText.includes("rev 3"), null, { timeout: 15000 });
+    await sleep(300);
+    const after = await topLine(page);
+    check(before.text === after.text && Math.abs(before.y - after.y) < 3, `an edit above keeps the same code at the top (${before.y} → ${after.y})`);
+    check((await status(page)).includes("lib.rs:42"), "and the cursor on the same line of code");
+    writeFileSync(lib, original);
+    rmSync(`${repo}/src/aaa.rs`);
+    await page.waitForFunction(() => document.querySelector("header").innerText.includes("rev 4"), null, { timeout: 15000 });
   });
 
   await section("The agent adds notes, a fold and test marks later", async () => {
@@ -537,9 +566,9 @@ try {
   });
 
   await section("Files outside the diff", async () => {
-    await page.locator('[data-tree-file="web/src/api.ts"]').click();
+    await page.locator('[data-tree-file="web/src/api.ts"]').dblclick();
     await page.waitForSelector('[data-neighbour="web/src/format.ts"]');
-    check(true, "opening a file in the tree lists the other files in its folder");
+    check(true, "double-clicking a file in the tree lists the other files in its folder");
     check((await page.locator('[data-neighbour="web/src/api.ts"]').count()) === 0, "files in the diff aren't listed twice");
 
     await page.locator('[data-neighbour="web/src/format.ts"]').click();
@@ -1015,15 +1044,30 @@ try {
     const chat = page.getByRole("region", { name: /Chat with/ });
     const [panel, box] = await Promise.all([page.locator("#tabpanel-right").evaluate((e) => e.parentElement.getBoundingClientRect().height), chat.boundingBox()]);
     check(Math.abs(box.height / panel - 0.3) < 0.05, `the chat is 30% of the side panel (${Math.round((100 * box.height) / panel)}%)`);
+    const chatGrip = page.getByRole("separator", { name: "Resize the chat" });
+    const cg = await chatGrip.boundingBox();
+    await page.mouse.move(cg.x + cg.width / 2, cg.y + cg.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(cg.x + cg.width / 2, cg.y - panel * 0.2, { steps: 5 });
+    await page.mouse.up();
+    const taller = (await chat.boundingBox()).height;
+    check(Math.abs(taller / panel - 0.5) < 0.06, `dragging its top edge resizes it (${Math.round((100 * taller) / panel)}%)`);
+    await chatGrip.focus();
+    await keys(page, "ArrowDown", "ArrowDown", "ArrowDown", "ArrowDown");
+    check(Math.abs((await chat.boundingBox()).height / panel - 0.3) < 0.06, "and arrow keys on the edge shrink it back");
+    await page.evaluate(() => localStorage.removeItem("diffd:chat-share"));
 
-    // Clicking a file in the tree shows its folder's other files; clicking it again hides them.
+    // A single click opens a file; a double click shows its folder's other files, and hides them again.
     const file = page.locator('[data-tree-file$="bucket.rs"]');
     await file.click();
+    await sleep(300);
+    check((await page.locator("[data-neighbour]").count()) === 0, "a single click just opens the file");
+    await file.dblclick();
     await page.waitForSelector("[data-neighbour]", { timeout: 5000 });
-    check((await page.locator("[data-neighbour]").count()) > 0, "opening a file lists its neighbours");
-    await file.click();
+    check((await page.locator("[data-neighbour]").count()) > 0, "a double click lists its neighbours");
+    await file.dblclick();
     await sleep(200);
-    check((await page.locator("[data-neighbour]").count()) === 0, "clicking it again hides them");
+    check((await page.locator("[data-neighbour]").count()) === 0, "double-clicking again hides them");
 
     // The whole project, a click away; folders collapse and expand all at once.
     await page.getByRole("tab", { name: /^Project/ }).click();

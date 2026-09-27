@@ -1,11 +1,12 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
 import { match } from "ts-pattern";
 import type { ReviewState, Side } from "../api";
+import { carryRow } from "../lib/diffModel";
 import { rangeOf, spanLabel, spanOf } from "../lib/history";
 import { composing, KeyEngine, keyToken, type Mode } from "../lib/keymap";
 import { BINDINGS, type Ctx } from "../state/bindings";
 import { createCommands } from "../state/commands";
-import { bufferEl, keepViewport, readingPosition, restoreReadingPosition } from "../state/dom";
+import { bufferEl, readingPosition, restoreReadingPosition } from "../state/dom";
 import { createLayout } from "../state/layout";
 import type { SavedPane, SavedPlace } from "../state/persist";
 import { createReview } from "../state/review";
@@ -27,8 +28,28 @@ const SEQUENCE_TIMEOUT_MS = 1000;
 
 export function ReviewPage(props: { state: ReviewState }) {
   let view: View | undefined;
+  /**
+   * Keep each pane on the same line of code through a change from the agent.
+   * The window keeps its top item in place by itself, but a revision renumbers
+   * rows (lines added above) and files (a file added before): follow the code.
+   */
+  const keepPlace = (update: () => void) => {
+    const prev = review.snapshot();
+    const places = view ? view.panes().map((p) => [p.id, readingPosition(bufferEl(p.id))] as const) : [];
+    update();
+    const next = review.snapshot();
+    if (next === prev) return;
+    const byPath = new Map(next.files.map((f, i) => [f.path, i]));
+    for (const [pane, at] of places) {
+      const from = at ? prev.files[at.file] : undefined;
+      const file = from ? byPath.get(from.path) : undefined;
+      const to = file === undefined ? undefined : review.models()[file];
+      if (at && from && file !== undefined && to)
+        restoreReadingPosition({ file, row: carryRow(from, to, at.row), offset: at.offset }, bufferEl(pane));
+    }
+  };
   const review = createReview(props.state, {
-    layout: keepViewport,
+    layout: keepPlace,
     onRevision: (_, next) => view?.say(`Revision ${next.revision} arrived`),
     onShow: (request) => view?.setNudge(request),
     onSpan: () => {
