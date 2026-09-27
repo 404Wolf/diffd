@@ -24,13 +24,14 @@ public_url = ""
 
 [lsp]
 # Language servers power go to definition (gd), go to type definition (gt),
-# hover (K, or the mouse) and error/warning squiggles. They're started from the
-# reviewed repository when a review is open, and only for reviews of the
-# working tree. Without one, diffd falls back to its own symbol index.
+# hover (K, or the mouse) and error/warning squiggles. They're started in the
+# reviewed repository while a page shows the review, and stopped shortly after
+# the last page closes; only for reviews of the working tree. Without one,
+# diffd falls back to its own symbol index.
 enabled = true
 # Give up on a question after this many seconds.
 request_timeout_secs = 10
-# Stop a language server nobody has used for this long.
+# Also stop a language server nobody has used for this long, even while viewed.
 idle_timeout_secs = 900
 # Keep at most this many files open in each language server (the least
 # recently changed are closed first).
@@ -46,7 +47,9 @@ max_open_files = 300
 [lsp.servers.rust-analyzer]
 command = "rust-analyzer"
 languages = { rust = ["rs"] }
-root_markers = ["Cargo.toml"]
+# Cargo.lock, not Cargo.toml: it sits at the workspace root, so a workspace gets
+# one server rather than one per member crate (each loads the whole workspace).
+root_markers = ["Cargo.lock", "rust-project.json"]
 
 [lsp.servers.typescript]
 command = "typescript-language-server"

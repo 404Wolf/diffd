@@ -84,6 +84,8 @@ pub trait CodeIntel: Send + Sync {
     fn ask<'a>(&'a self, repo_root: &'a Path, path: &'a str, query: CodeQuery, line: u32, col: u32) -> BoxFuture<'a, CodeAnswer>;
     /// Diagnostics as servers publish them, for every file they have open.
     fn diagnostics(&self) -> broadcast::Receiver<FileDiagnostics>;
+    /// Stop the servers for the repository at `repo_root`: nobody is looking at it.
+    fn release<'a>(&'a self, repo_root: &'a Path) -> BoxFuture<'a, ()>;
 }
 
 /// Follows working trees, so reviews of them rebuild as files change.
