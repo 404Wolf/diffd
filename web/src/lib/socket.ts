@@ -32,7 +32,8 @@ function outboxKey(msg: ClientMsg): string | null {
     .with({ type: "comment" }, { type: "reply" }, { type: "chat" }, (m) => `m:${m.messageId}`)
     .with({ type: "resolve" }, (m) => `resolve:${m.threadId}`)
     .with({ type: "read" }, () => "read")
-    .with({ type: "drafting" }, () => null)
+    // Live-only: a stale draft flag or an old question is worth nothing after a reconnect.
+    .with({ type: "drafting" }, { type: "code" }, () => null)
     .exhaustive();
 }
 

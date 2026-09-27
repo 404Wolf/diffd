@@ -11,8 +11,10 @@ use diffd_server::App;
 use diffd_server::adapters::difft::{Difftastic, NoEngine};
 use diffd_server::adapters::git::GitCli;
 use diffd_server::adapters::http;
+use diffd_server::adapters::lsp::LspPool;
 use diffd_server::adapters::store::Store;
 use diffd_server::adapters::watch::Watcher;
+use diffd_server::config::{Config, DEFAULT_CONFIG};
 use diffd_server::ports::{DiffEngine, SystemClock};
 
 /// The review page, built by `web/` and embedded at compile time.
@@ -31,6 +33,8 @@ struct Cli {
 enum Command {
     /// Run the server (the default).
     Serve(ServeArgs),
+    /// Print the default configuration (a documented config.toml to start from).
+    Config,
     /// Register diffd as an MCP server with an agent.
     Setup {
         #[command(subcommand)]
@@ -52,12 +56,15 @@ enum Agent {
 
 #[derive(clap::Args, Clone)]
 struct ServeArgs {
-    /// Port to listen on (localhost only).
-    #[arg(long, env = "DIFFD_PORT", default_value_t = 3433)]
-    port: u16,
-    /// SQLite database file.
+    /// Port to listen on (localhost only); overrides the config.
+    #[arg(long, env = "DIFFD_PORT")]
+    port: Option<u16>,
+    /// SQLite database file; overrides the config.
     #[arg(long, env = "DIFFD_DB")]
     db: Option<PathBuf>,
+    /// Config file (default: $DIFFD_CONFIG, then ~/.config/diffd/config.toml).
+    #[arg(long)]
+    config: Option<PathBuf>,
 }
 
 fn default_db() -> anyhow::Result<PathBuf> {
@@ -78,15 +85,22 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Command::Setup { agent: Agent::Claude { print, port } }) => setup_claude(print, port),
+        Some(Command::Config) => {
+            print!("{DEFAULT_CONFIG}");
+            Ok(())
+        }
         Some(Command::Serve(args)) => serve(args).await,
         None => serve(cli.serve).await,
     }
 }
 
 async fn serve(args: ServeArgs) -> anyhow::Result<()> {
-    let db = match args.db {
-        Some(p) => p,
-        None => default_db()?,
+    let config = Arc::new(Config::load(args.config.as_deref())?);
+    let port = args.port.unwrap_or(config.server.port);
+    let db = match (args.db, config.server.db.as_str()) {
+        (Some(p), _) => p,
+        (None, "") => default_db()?,
+        (None, p) => PathBuf::from(p),
     };
     let store = Store::open(&format!("sqlite://{}", db.display())).await.with_context(|| format!("opening {}", db.display()))?;
     let engine: Arc<dyn DiffEngine> = match Difftastic::detect() {
@@ -96,8 +110,11 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
             Arc::new(NoEngine)
         }
     };
-    let base_url = format!("http://localhost:{}", args.port);
+    let base_url = format!("http://localhost:{port}");
     let app = App::new(store, Arc::new(GitCli), engine, Arc::new(SystemClock), base_url.clone()).await;
+    if config.lsp.enabled {
+        app.set_code_intel(LspPool::new(config.clone()));
+    }
     let watcher = Arc::new(Watcher::default());
     watcher.install(&app, tokio::runtime::Handle::current());
     app.resume_watches().await?;
@@ -112,10 +129,10 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         });
     }
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .with_context(|| format!("port {} is taken; is diffd already running? (--port to pick another)", args.port))?;
+        .with_context(|| format!("port {port} is taken; is diffd already running? (--port to pick another)"))?;
     tracing::info!(db = %db.display(), "diffd is running at {base_url}  ·  MCP: {base_url}/mcp");
     axum::serve(listener, http::router(app, PAGE))
         .with_graceful_shutdown(async {

@@ -28,6 +28,8 @@ globset = "0.4"
 notify = "8"
 notify-debouncer-mini = "0.7"
 rand = "0.9"
+toml = "0.9"
+url = "2"
 
 [dev-dependencies]
 rmcp = { version = "3.4", features = ["client", "transport-streamable-http-client-reqwest"] }

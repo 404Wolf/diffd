@@ -10,7 +10,10 @@ import type { ActivityItem } from "../gen/ActivityItem";
 import type { Anchor } from "../gen/Anchor";
 import type { ChatMessage } from "../gen/ChatMessage";
 import type { ClientMsg } from "../gen/ClientMsg";
+import type { CodeAnswer } from "../gen/CodeAnswer";
+import type { CodeQuery } from "../gen/CodeQuery";
 import type { CommitRange } from "../gen/CommitRange";
+import type { Diagnostic } from "../gen/Diagnostic";
 import type { FileDiff } from "../gen/FileDiff";
 import type { History } from "../gen/History";
 import type { Message } from "../gen/Message";
@@ -29,6 +32,8 @@ import { carrySpan, rangeOf, relocate, type Span } from "../lib/history";
 import { type Connection, connect, type Socket } from "../lib/socket";
 
 interface Conversation {
+  /** Language servers' diagnostics, by path. */
+  diagnostics: Partial<Record<string, Diagnostic[]>>;
   threads: Thread[];
   regions: Region[];
   chat: ChatMessage[];
@@ -47,12 +52,16 @@ export interface ReviewEvents {
   onSpan?: () => void;
 }
 
+/** A little longer than the server's own timeout, so its answer usually wins. */
+const CODE_TIMEOUT_MS = 12_000;
+
 export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
   const [meta, setMeta] = createSignal<ReviewMeta>(initial.review);
   /** The whole review's diff, as the server keeps it. */
   const [whole, setWhole] = createSignal<Snapshot>(initial.snapshot);
   const [history, setHistory] = createSignal<History>(initial.history);
   const [conv, setConv] = createStore<Conversation>({
+    diagnostics: initial.diagnostics,
     threads: initial.threads,
     regions: initial.regions,
     chat: initial.chat,
@@ -277,7 +286,12 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       }),
     );
 
-  const apply = (msg: ServerMsg) => (events.layout ?? ((f) => f()))(() => applyNow(msg));
+  /** Messages that move content around go through `layout`, so the reader's place is kept. */
+  const apply = (msg: ServerMsg) => {
+    const moves = msg.type === "state" || msg.type === "revision" || msg.type === "thread" || msg.type === "regions";
+    if (moves && events.layout) events.layout(() => applyNow(msg));
+    else applyNow(msg);
+  };
   const applyNow = (msg: ServerMsg) =>
     match(msg)
       .with({ type: "state" }, ({ state }) =>
@@ -291,6 +305,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
           }
           followHistory(state.history);
           setConv({
+            diagnostics: reconcile(state.diagnostics)(conv.diagnostics),
             threads: reconcile(state.threads, { key: "id" })(conv.threads),
             // A new array would re-render every file's rows; only replace real changes.
             regions: sameJson(conv.regions, state.regions) ? conv.regions : state.regions,
@@ -330,6 +345,11 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       .with({ type: "error" }, ({ message }) => setError(message))
       // The socket consumes acks itself; they never reach here.
       .with({ type: "ack" }, () => {})
+      .with({ type: "diagnostics" }, ({ path, diagnostics }) => setConv("diagnostics", path, diagnostics))
+      .with({ type: "code" }, ({ requestId, answer }) => {
+        codeRequests.get(requestId)?.(answer);
+        codeRequests.delete(requestId);
+      })
       .exhaustive();
 
   /** Files changed: diffs that end at the working tree are stale now. */
@@ -347,6 +367,27 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       setSpan(carried);
     });
     if (carried === null && spanSnapshot() !== null) void showSpan(null);
+  };
+
+  // -- Language servers ------------------------------------------------------------
+  const codeRequests = new Map<number, (answer: CodeAnswer) => void>();
+  let nextCodeRequest = 1;
+  /** Ask a language server about a position on the new side (line 1-based, column in UTF-16 units). */
+  const ask = (query: CodeQuery, path: string, line: number, col: number): Promise<CodeAnswer> => {
+    if (!socket || connection() !== "live")
+      return Promise.resolve({ type: "unavailable", reason: "not connected to diffd" });
+    const requestId = nextCodeRequest++;
+    return new Promise<CodeAnswer>((resolve) => {
+      const timer = setTimeout(() => {
+        codeRequests.delete(requestId);
+        resolve({ type: "unavailable", reason: "the language server took too long" });
+      }, CODE_TIMEOUT_MS);
+      codeRequests.set(requestId, (answer) => {
+        clearTimeout(timer);
+        resolve(answer);
+      });
+      socket?.send({ type: "code", requestId, query, path, line, col });
+    });
   };
 
   let socket: Socket | null = null;
@@ -386,6 +427,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     stop: () => socket?.close(),
     threads,
     chat,
+    ask,
     /** Whether a message is still waiting for the server to confirm it. */
     isPending: (id: MessageId) => pendingIds().has(id),
     pendingCount: () => pendingIds().size,

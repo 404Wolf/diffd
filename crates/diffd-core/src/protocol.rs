@@ -6,8 +6,11 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use std::collections::BTreeMap;
+
 use crate::model::{
-    ActivityItem, Anchor, ChatMessage, History, MessageId, Presence, Region, ReviewMeta, ShowRequest, Snapshot, Thread, ThreadId,
+    ActivityItem, Anchor, ChatMessage, CodeAnswer, CodeQuery, Diagnostic, History, MessageId, Presence, Region, ReviewMeta, ShowRequest,
+    Snapshot, Thread, ThreadId,
 };
 
 /// Everything the page needs to render a review. It's embedded in the HTML so
@@ -29,6 +32,8 @@ pub struct ReviewState {
     /// Activity up to this sequence number has been seen by the user.
     #[ts(type = "number")]
     pub read_seq: u64,
+    /// Language servers' diagnostics, by path (files in the diff and open for context).
+    pub diagnostics: BTreeMap<String, Vec<Diagnostic>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -60,6 +65,17 @@ pub enum ServerMsg {
     },
     Presence {
         presence: Presence,
+    },
+    /// A file's diagnostics changed (an empty list clears them).
+    Diagnostics {
+        path: String,
+        diagnostics: Vec<Diagnostic>,
+    },
+    /// The answer to a `ClientMsg::Code` question.
+    #[serde(rename_all = "camelCase")]
+    Code {
+        request_id: u32,
+        answer: CodeAnswer,
     },
     /// New commits landed in the review's range.
     History {
@@ -101,6 +117,10 @@ pub enum ClientMsg {
         #[ts(type = "number")]
         seq: u64,
     },
+    /// Ask a language server about a position in a file on the new side
+    /// (line 1-based, column in UTF-16 code units). Answered with `ServerMsg::Code`.
+    #[serde(rename_all = "camelCase")]
+    Code { request_id: u32, query: CodeQuery, path: String, line: u32, col: u32 },
 }
 
 /// A review in the recent list on the home page.
@@ -128,7 +148,7 @@ impl ClientMsg {
     pub fn ack_id(&self) -> Option<&MessageId> {
         match self {
             Self::Comment { message_id, .. } | Self::Reply { message_id, .. } | Self::Chat { message_id, .. } => Some(message_id),
-            Self::Resolve { .. } | Self::Drafting { .. } | Self::Read { .. } => None,
+            Self::Resolve { .. } | Self::Drafting { .. } | Self::Read { .. } | Self::Code { .. } => None,
         }
     }
 }

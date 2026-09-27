@@ -29,10 +29,21 @@ impl App {
     }
 
     /// A file as it is on the review's `to` side, highlighted, as an unchanged "diff".
+    /// An absolute path works too when a language server pointed there (a library's source).
     pub async fn context_file(&self, id: &ReviewId, path: &str) -> Result<FileDiff> {
         let (meta, spec) = self.meta(id).await?;
+        let external = path.starts_with('/');
+        if external && !self.external_allowed(id, path).await {
+            return Err(AppError::Invalid(format!("`{path}` is outside the repository")));
+        }
         let (source, path) = (self.repo.clone(), path.to_owned());
-        let bytes = {
+        let bytes = if external {
+            match tokio::fs::read(&path).await {
+                Ok(bytes) => Some(bytes),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(anyhow::anyhow!(e).into()),
+            }
+        } else {
             let path = path.clone();
             tokio::task::spawn_blocking(move || {
                 let repo = source.open(Path::new(&meta.repo_path))?;
@@ -44,6 +55,9 @@ impl App {
             .map_err(|e| AppError::Invalid(format!("{e:#}")))?
         };
         let bytes = bytes.ok_or_else(|| AppError::NotFound(format!("no file `{path}` in this repository")))?;
+        if !external {
+            self.watch_context(id, &path).await;
+        }
         let binary = bytes.len() > MAX_CONTEXT_BYTES || looks_binary(&bytes);
         let text = if binary { String::new() } else { String::from_utf8_lossy(&bytes).into_owned() };
         let input = FileInput {

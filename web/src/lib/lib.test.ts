@@ -234,7 +234,7 @@ describe("history", () => {
 describe("tree with neighbours", () => {
   it("lists other files beside the open ones, unopened", () => {
     const nodes = buildTree(["src/a.rs"], "", ["src/b.rs", "src/a.rs", "docs/x.md"]);
-    const flat = (ns: typeof nodes): string[] =>
+    const flat = (ns: readonly (typeof nodes)[number][]): string[] =>
       ns.flatMap((n) => (n.kind === "file" ? [`${n.path}:${n.index}`] : flat(n.children)));
     expect(flat(nodes)).toEqual(["docs/x.md:-1", "src/a.rs:0", "src/b.rs:-1"]);
     expect(treeOrder(nodes)).toEqual([0]);

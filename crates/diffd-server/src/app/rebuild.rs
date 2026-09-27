@@ -168,6 +168,7 @@ impl App {
             inner.snapshot = Arc::new(snap.clone());
             inner.fingerprint = fp;
         }
+        self.sync_code(id, &live, changed_paths.clone()).await;
         App::broadcast(&live, ServerMsg::Revision { review: meta, snapshot: Box::new(snap) });
         for t in moved {
             App::broadcast(&live, ServerMsg::Thread { thread: t });

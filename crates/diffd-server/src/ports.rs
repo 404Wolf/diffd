@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 use diffd_core::build::FileInput;
 use diffd_core::difft::EngineDiff;
-use diffd_core::model::{Commit, Millis};
+use diffd_core::model::{CodeAnswer, CodeQuery, Commit, Diagnostic, Millis};
+use futures::future::BoxFuture;
+use tokio::sync::broadcast;
 
 /// A repository the agent pointed us at.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,4 +57,21 @@ impl Clock for SystemClock {
     fn now(&self) -> Millis {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as Millis).unwrap_or_default()
     }
+}
+
+/// A file's diagnostics, by absolute path (as language servers report them).
+#[derive(Debug, Clone)]
+pub struct FileDiagnostics {
+    pub path: PathBuf,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+/// What language servers know about files on disk. Paths are relative to `repo_root`.
+pub trait CodeIntel: Send + Sync {
+    /// Open a file (or tell its server it changed), so its diagnostics arrive.
+    fn sync<'a>(&'a self, repo_root: &'a Path, path: &'a str) -> BoxFuture<'a, ()>;
+    /// Ask about a position: line 1-based, column in UTF-16 code units.
+    fn ask<'a>(&'a self, repo_root: &'a Path, path: &'a str, query: CodeQuery, line: u32, col: u32) -> BoxFuture<'a, CodeAnswer>;
+    /// Diagnostics as servers publish them, for every file they have open.
+    fn diagnostics(&self) -> broadcast::Receiver<FileDiagnostics>;
 }

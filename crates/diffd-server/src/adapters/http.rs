@@ -183,9 +183,16 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Resu
     let mut events = app.subscribe(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     let state = app.state(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     send(&mut tx, &ServerMsg::State { state: Box::new(state) }).await?;
+    {
+        let (app, id) = (app.clone(), id.clone());
+        tokio::spawn(async move { app.attach_code(&id).await });
+    }
+    // Answers for this page only (language server questions), as opposed to review-wide events.
+    let (direct, mut answers) = tokio::sync::mpsc::unbounded_channel::<ServerMsg>();
     let mut drafting = false;
     let result = loop {
         tokio::select! {
+            Some(msg) = answers.recv() => send(&mut tx, &msg).await?,
             event = events.recv() => match event {
                 Ok(msg) => send(&mut tx, &msg).await?,
                 Err(RecvError::Lagged(_)) => {
@@ -198,6 +205,17 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Resu
                 let Some(Ok(frame)) = incoming else { break Ok(()) };
                 let WsMessage::Text(text) = frame else { continue };
                 match serde_json::from_str::<ClientMsg>(&text) {
+                    // Language servers can take a while: answer in the background, in any order.
+                    Ok(ClientMsg::Code { request_id, query, path, line, col }) => {
+                        let (app, id, direct) = (app.clone(), id.clone(), direct.clone());
+                        tokio::spawn(async move {
+                            let answer = match app.code(&id, query, &path, line, col).await {
+                                Ok(answer) => answer,
+                                Err(e) => diffd_core::model::CodeAnswer::Unavailable { reason: e.to_string() },
+                            };
+                            let _ = direct.send(ServerMsg::Code { request_id, answer });
+                        });
+                    }
                     Ok(msg) => {
                         let ack = msg.ack_id().cloned();
                         match handle(&app, &id, msg, &mut drafting).await {
@@ -245,5 +263,7 @@ async fn handle(app: &App, id: &ReviewId, msg: ClientMsg, drafting: &mut bool) -
         }
         ClientMsg::Chat { message_id, body } => app.chat_user(id, Some(message_id), &body).await,
         ClientMsg::Read { seq } => app.mark_read(id, seq).await,
+        // Answered in `session`, off the message loop.
+        ClientMsg::Code { .. } => Ok(()),
     }
 }

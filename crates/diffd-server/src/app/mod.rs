@@ -1,5 +1,6 @@
 //! Use cases. Everything the page or the agent can do goes through [`App`].
 
+mod code;
 mod context;
 mod conversation;
 mod feedback;
@@ -21,7 +22,7 @@ pub use history::RangeEnd;
 pub use share::{ShareRequest, ShareResult};
 
 use crate::adapters::store::Store;
-use crate::ports::{Clock, DiffEngine, RepoSource};
+use crate::ports::{Clock, CodeIntel, DiffEngine, RepoSource};
 
 /// Agents that haven't called a tool for this long are shown as away.
 const AWAY_AFTER_MS: Millis = 10 * 60 * 1000;
@@ -50,6 +51,8 @@ pub struct App {
     live: Mutex<HashMap<ReviewId, Arc<Live>>>,
     /// Starts watching a review's worktree; set by whoever owns the watcher.
     watcher: Mutex<Option<WatchFn>>,
+    /// Language servers, when configured (see [`App::set_code_intel`]).
+    code: Mutex<Option<Arc<dyn CodeIntel>>>,
     me: Weak<App>,
 }
 
@@ -74,6 +77,13 @@ struct LiveInner {
     /// Read on first use; see [`history`].
     history: Option<History>,
     ranges: history::RangeCache,
+    /// The repository root language servers see, for reviews of the working tree.
+    code_root: Option<std::path::PathBuf>,
+    /// Files outside the diff the page opened, so their diagnostics are kept too.
+    context_paths: std::collections::HashSet<String>,
+    /// Files outside the repository a language server pointed at; only these can be opened.
+    external_paths: std::collections::HashSet<String>,
+    diagnostics: std::collections::BTreeMap<String, Vec<diffd_core::model::Diagnostic>>,
 }
 
 impl App {
@@ -92,6 +102,7 @@ impl App {
             base_url,
             live: Mutex::new(HashMap::new()),
             watcher: Mutex::new(None),
+            code: Mutex::new(None),
             me: me.clone(),
         })
     }
@@ -159,6 +170,10 @@ impl App {
                         fingerprint,
                         history: None,
                         ranges: history::RangeCache::default(),
+                        code_root: None,
+                        context_paths: Default::default(),
+                        external_paths: Default::default(),
+                        diagnostics: Default::default(),
                     }),
                 })
             })
@@ -178,7 +193,10 @@ impl App {
     pub async fn state(&self, id: &ReviewId) -> Result<ReviewState> {
         let live = self.live(id).await?;
         let (review, spec) = self.meta(id).await?;
-        let presence = live.inner.lock().expect("live lock").presence;
+        let (presence, diagnostics) = {
+            let inner = live.inner.lock().expect("live lock");
+            (inner.presence, inner.diagnostics.clone())
+        };
         let history = self.history(&live, &review, &spec).await;
         Ok(ReviewState {
             review,
@@ -190,6 +208,7 @@ impl App {
             activity: self.store.activity(id).await?,
             presence,
             read_seq: self.store.read_seq(id).await?,
+            diagnostics,
         })
     }
 

@@ -385,6 +385,73 @@ pub struct ReviewMeta {
     pub updated_at: Millis,
 }
 
+/// How bad a language server's diagnostic is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum Severity {
+    Error,
+    Warning,
+    Info,
+    Hint,
+}
+
+/// A language server's error or warning on the new side of a file.
+/// Lines are 1-based; columns count UTF-16 code units from 0, as in the page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Diagnostic {
+    pub line: u32,
+    pub col: u32,
+    pub end_line: u32,
+    pub end_col: u32,
+    pub severity: Severity,
+    pub message: String,
+    /// The tool that reported it, e.g. `rustc`, `pyright`.
+    pub source: Option<String>,
+}
+
+/// What the page can ask a language server about a position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CodeQuery {
+    Definition,
+    TypeDefinition,
+    Hover,
+}
+
+/// Where a language server points: a file in the repository (a relative
+/// path), or outside it (an absolute path, e.g. a library's source).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CodeLocation {
+    pub path: String,
+    pub external: bool,
+    /// 1-based.
+    pub line: u32,
+    pub col: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(export)]
+pub enum CodeAnswer {
+    Locations {
+        locations: Vec<CodeLocation>,
+    },
+    /// Markdown, as the server wrote it.
+    Hover {
+        markdown: String,
+    },
+    /// No language server for this file (or it couldn't answer): fall back to what the page knows.
+    Unavailable {
+        reason: String,
+    },
+}
+
 /// A commit between the review's two sides.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

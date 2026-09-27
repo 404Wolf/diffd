@@ -1,0 +1,64 @@
+# diffd configuration.
+#
+# diffd reads ~/.config/diffd/config.toml (or the file given with --config, or
+# $DIFFD_CONFIG). Anything you set there is merged over these defaults, so a
+# config only needs what it changes. `diffd config` prints this file.
+
+[server]
+# Where the review server listens (always on localhost).
+port = 3433
+# The SQLite database with your reviews. Empty means ~/.local/share/diffd/diffd.db.
+db = ""
+
+[lsp]
+# Language servers power go to definition (gd), go to type definition (gt),
+# hover (K, or the mouse) and error/warning squiggles. They're started from the
+# reviewed repository when a review is open, and only for reviews of the
+# working tree. Without one, diffd falls back to its own symbol index.
+enabled = true
+# Give up on a question after this many seconds.
+request_timeout_secs = 10
+# Stop a language server nobody has used for this long.
+idle_timeout_secs = 900
+# Open at most this many files per review with language servers (for diagnostics).
+max_open_files = 300
+
+# One table per language server. `languages` maps LSP language ids to the file
+# extensions they cover; `root_markers` are files that mark a project's root
+# (the nearest one above a file wins, else the repository root). Optional:
+# `env`, `initialization_options` and `settings` (answered to
+# workspace/configuration). Set `enabled = false` to turn one off, or add a new
+# table for any other server.
+
+[lsp.servers.rust-analyzer]
+command = "rust-analyzer"
+languages = { rust = ["rs"] }
+root_markers = ["Cargo.toml"]
+
+[lsp.servers.typescript]
+command = "typescript-language-server"
+args = ["--stdio"]
+languages = { typescript = ["ts", "mts", "cts"], typescriptreact = ["tsx"], javascript = ["js", "mjs", "cjs"], javascriptreact = ["jsx"] }
+root_markers = ["tsconfig.json", "jsconfig.json", "package.json"]
+
+[lsp.servers.pyright]
+command = "pyright-langserver"
+args = ["--stdio"]
+languages = { python = ["py", "pyi"] }
+root_markers = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "pyrightconfig.json"]
+
+[lsp.servers.gopls]
+command = "gopls"
+languages = { go = ["go"] }
+root_markers = ["go.mod", "go.work"]
+
+[lsp.servers.nil]
+command = "nil"
+languages = { nix = ["nix"] }
+root_markers = ["flake.nix"]
+
+[lsp.servers.yaml]
+command = "yaml-language-server"
+args = ["--stdio"]
+languages = { yaml = ["yaml", "yml"] }
+settings = { yaml = { validate = true, hover = true, schemaStore = { enable = true } } }
