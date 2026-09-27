@@ -34,6 +34,8 @@ tokio-tungstenite = { version = "0.27", default-features = false, features = ["h
 tungstenite = { version = "0.27", default-features = false, features = ["handshake", "deflate"] }
 hyper = "1"
 hyper-util = { version = "0.1", features = ["tokio"] }
+# Pages and JSON go out compressed: a big review is megabytes of code.
+tower-http = { version = "0.6", default-features = false, features = ["compression-gzip", "compression-zstd"] }
 url = "2"
 
 [dev-dependencies]
