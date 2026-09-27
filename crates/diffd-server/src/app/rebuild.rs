@@ -14,7 +14,17 @@ use rayon::prelude::*;
 
 use super::{App, AppError, Result};
 use crate::adapters::store::{CollapseRule, ReviewSpec};
-use crate::ports::{DiffEngine, Repo, RepoSource};
+use crate::ports::{DiffEngine, Repo, RepoSource, Resolved};
+
+/// A review's files, read and diffed.
+pub(super) struct Built {
+    pub repo: Repo,
+    pub resolved: Resolved,
+    pub inputs: Vec<FileInput>,
+    pub files: Vec<FileDiff>,
+    /// Changes whenever any file's contents do.
+    pub fingerprint: u64,
+}
 
 /// Read the repository and build every file's diff (blocking; run off the async runtime).
 pub(super) fn read_and_build(
@@ -24,9 +34,9 @@ pub(super) fn read_and_build(
     from: &str,
     to: Option<&str>,
     spec: &ReviewSpec,
-) -> anyhow::Result<(Repo, Vec<FileInput>, Vec<FileDiff>, u64)> {
+) -> anyhow::Result<Built> {
     let repo = repo_source.open(repo_path)?;
-    let resolved = repo_source.resolve(&repo, from, to, spec.merge_base)?;
+    let resolved = resolve(repo_source, &repo, from, to, spec)?;
     let mut inputs = repo_source.changes(&repo, &resolved, &spec.paths)?;
     apply_collapse(&mut inputs, &spec.collapse)?;
     let fingerprint = fingerprint(&inputs);
@@ -40,7 +50,15 @@ pub(super) fn read_and_build(
             build_file(input, engine_diff)
         })
         .collect();
-    Ok((repo, inputs, files, fingerprint))
+    Ok(Built { repo, resolved, inputs, files, fingerprint })
+}
+
+/// The review's two sides, using the base pinned at share time when there is one.
+pub(super) fn resolve(source: &dyn RepoSource, repo: &Repo, from: &str, to: Option<&str>, spec: &ReviewSpec) -> anyhow::Result<Resolved> {
+    match &spec.base {
+        Some(base) => source.resolve(repo, base, to, Some(false)),
+        None => source.resolve(repo, from, to, spec.merge_base),
+    }
 }
 
 fn apply_collapse(inputs: &mut [FileInput], rules: &[CollapseRule]) -> anyhow::Result<()> {
@@ -81,13 +99,15 @@ impl App {
         let (mut meta, spec) = self.meta(id).await?;
         let (repo, engine) = (self.repo.clone(), self.engine.clone());
         let (path, from, to, spec2) = (meta.repo_path.clone(), meta.from.clone(), meta.to.clone(), spec.clone());
-        let (_, inputs, mut files, fp) = tokio::task::spawn_blocking(move || {
+        let Built { inputs, mut files, fingerprint: fp, .. } = tokio::task::spawn_blocking(move || {
             read_and_build(repo.as_ref(), engine.as_ref(), Path::new(&path), &from, to.as_deref(), &spec2)
         })
         .await
         .map_err(|e| anyhow::anyhow!(e))?
         .map_err(|e| AppError::Invalid(format!("{e:#}")))?;
 
+        live.inner.lock().expect("live lock").ranges.clear_worktree();
+        self.refresh_history(&live, &meta, &spec).await;
         let prev = App::snapshot(&live);
         if live.inner.lock().expect("live lock").fingerprint == fp {
             return Ok(None);

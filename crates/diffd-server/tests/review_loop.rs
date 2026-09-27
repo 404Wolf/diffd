@@ -68,7 +68,7 @@ async fn share_comment_wait_reply_rebuild() {
         tokio::spawn(async move { app.wait_for_feedback(&id, Duration::from_secs(10)).await.unwrap() })
     };
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let anchor = Anchor { path: "src/lib.rs".into(), side: Side::New, start: 4, end: 5, text: String::new() };
+    let anchor = Anchor { path: "src/lib.rs".into(), side: Side::New, start: 4, end: 5, text: String::new(), range: None };
     let thread = app.comment(&id, None, anchor, "Why clamp here and not at the call site?").await.unwrap();
     app.chat_user(&id, None, "Also: is QUIET defined yet?").await.unwrap();
     let batch = waiter.await.unwrap();

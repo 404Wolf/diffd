@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
@@ -40,6 +40,7 @@ pub fn router(app: Arc<App>, template: &'static str) -> Router {
         .route("/r/{id}", get(review_page))
         .route("/api/reviews", get(list_reviews))
         .route("/api/reviews/{id}", get(review_state).delete(delete_review))
+        .route("/api/reviews/{id}/range", get(range))
         .route("/api/reviews/{id}/ws", get(ws))
         .with_state(web)
         .nest_service("/mcp", mcp)
@@ -113,6 +114,21 @@ async fn list_reviews(State(web): State<Web>) -> Response {
 async fn review_state(State(web): State<Web>, Path(id): Path<String>) -> Response {
     match web.app.state(&ReviewId(id)).await {
         Ok(s) => axum::Json(s).into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct RangeQuery {
+    from: String,
+    /// A commit; omitted for the working tree.
+    to: Option<String>,
+}
+
+/// The diff between two points in a review's history.
+async fn range(State(web): State<Web>, Path(id): Path<String>, Query(q): Query<RangeQuery>) -> Response {
+    match web.app.range(&ReviewId(id), &q.from, q.to).await {
+        Ok(snap) => axum::Json(&*snap).into_response(),
         Err(e) => error_response(e),
     }
 }

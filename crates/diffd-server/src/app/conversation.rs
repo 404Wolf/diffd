@@ -1,5 +1,6 @@
 //! Threads, notes, chat and "show me": everything said about a review.
 
+use diffd_core::anchor::{Reanchor, reanchor};
 use diffd_core::model::{
     ActivityKind, Anchor, Author, ChatMessage, Message, MessageId, NoteKind, Region, RegionKind, ReviewId, ShowRequest, Side, Snapshot,
     Thread, ThreadId, ThreadKind,
@@ -91,6 +92,29 @@ pub(super) fn anchor_text(snap: &Snapshot, path: &str, side: Side, start: u32, e
     Ok(text.lines[start as usize - 1..end as usize].join("\n"))
 }
 
+/// Place an anchor written on part of the history into the whole diff by
+/// its text, trying its own side first. Returns whether it couldn't be found.
+fn locate(snap: &Snapshot, anchor: Anchor) -> Result<(Anchor, bool)> {
+    let lines = anchor.end.checked_sub(anchor.start).map(|n| n as usize + 1).unwrap_or(0);
+    if anchor.start == 0 || lines == 0 || anchor.text.split('\n').count() != lines {
+        return Err(AppError::Invalid("the anchor's text doesn't match its lines".into()));
+    }
+    let file = snap.files.iter().find(|f| f.path == anchor.path);
+    let other = match anchor.side {
+        Side::Old => Side::New,
+        Side::New => Side::Old,
+    };
+    for side in [anchor.side, other] {
+        let Some(text) = file.and_then(|f| if side == Side::Old { f.old.as_ref() } else { f.new.as_ref() }) else { continue };
+        match reanchor(&anchor.text, anchor.start, &text.lines) {
+            Reanchor::Same => return Ok((Anchor { side, ..anchor }, false)),
+            Reanchor::Moved { start, end } => return Ok((Anchor { side, start, end, ..anchor }, false)),
+            Reanchor::Changed => {}
+        }
+    }
+    Ok((anchor, true))
+}
+
 impl App {
     fn message(&self, author: Author, body: &str) -> Result<Message> {
         self.message_with_id(MessageId(new_id("m")), author, body)
@@ -127,7 +151,15 @@ impl App {
                 return self.store.thread(thread_id).await?.map(|(_, t)| t).ok_or_else(|| AppError::NotFound("thread".into()));
             }
         }
-        let text = anchor_text(&App::snapshot(&live), &anchor.path, anchor.side, anchor.start, anchor.end)?;
+        let (anchor, outdated) = match anchor.range {
+            // Written against the whole diff: the lines are ours to check.
+            None => {
+                let text = anchor_text(&App::snapshot(&live), &anchor.path, anchor.side, anchor.start, anchor.end)?;
+                (Anchor { text, ..anchor }, false)
+            }
+            // Written on one commit: find the same code in the whole diff, if it's still there.
+            Some(_) => locate(&App::snapshot(&live), anchor)?,
+        };
         let (thread_id, message) = match ids {
             Some((t, m)) => (t, self.message_with_id(m, Author::User, body)?),
             None => (ThreadId(new_id("t")), self.message(Author::User, body)?),
@@ -135,10 +167,10 @@ impl App {
         let thread = Thread {
             id: thread_id,
             kind: ThreadKind::Comment,
-            anchor: Anchor { text, ..anchor },
+            anchor,
             resolved: false,
             changed_in: None,
-            outdated: false,
+            outdated,
             messages: vec![message],
             created_at: self.now(),
         };
@@ -268,7 +300,7 @@ impl App {
             threads.push(Thread {
                 id: ThreadId(new_id("n")),
                 kind: ThreadKind::Note { kind: n.kind.unwrap_or(NoteKind::Explain), order },
-                anchor: Anchor { path: n.file, side, start, end, text },
+                anchor: Anchor { path: n.file, side, start, end, text, range: None },
                 resolved: false,
                 changed_in: None,
                 outdated: false,

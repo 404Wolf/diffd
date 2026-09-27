@@ -224,6 +224,19 @@ pub struct Anchor {
     pub end: u32,
     /// The exact anchored text, used to follow the lines across revisions.
     pub text: String,
+    /// Set when the comment was written while looking at part of the review's
+    /// history (one commit, or a few) rather than the whole diff.
+    #[serde(default)]
+    pub range: Option<CommitRange>,
+}
+
+/// Two points in a review's history: commits, or the working tree for `to: null`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CommitRange {
+    pub from: String,
+    pub to: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
@@ -368,6 +381,34 @@ pub struct ReviewMeta {
     pub created_at: Millis,
     #[ts(type = "number")]
     pub updated_at: Millis,
+}
+
+/// A commit between the review's two sides.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Commit {
+    pub sha: String,
+    pub short: String,
+    pub subject: String,
+    pub author: String,
+    #[ts(type = "number")]
+    pub time: Millis,
+}
+
+/// The commits a review spans, oldest first along first parents, so the page
+/// can walk them one at a time or diff any two.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct History {
+    /// The commit the review compares against.
+    pub base: String,
+    pub commits: Vec<Commit>,
+    /// The review ends at the working tree, so uncommitted changes follow the last commit.
+    pub worktree: bool,
+    /// Only the newest commits are listed.
+    pub truncated: bool,
 }
 
 /// One entry in the page's activity feed.

@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::conversation::{NoteInput, RegionInput, regions_from};
-use super::rebuild::{build_snapshot, read_and_build};
+use super::rebuild::{Built, build_snapshot, read_and_build};
 use super::{App, AppError, Result, new_id};
 use crate::adapters::store::{CollapseRule, ReviewSpec};
 
@@ -70,6 +70,7 @@ impl App {
             return Err(AppError::Invalid("repo_path must be an absolute path".into()));
         }
         let spec = ReviewSpec {
+            base: None,
             merge_base: req.merge_base,
             paths: req.paths.clone(),
             collapse: req.collapse.clone(),
@@ -78,7 +79,7 @@ impl App {
         };
         let (source, engine, spec2) = (self.repo.clone(), self.engine.clone(), spec.clone());
         let (from, to) = (req.from.clone(), req.to.clone());
-        let (repo, inputs, files, fp) =
+        let Built { repo, resolved, inputs, files, fingerprint: fp } =
             tokio::task::spawn_blocking(move || read_and_build(source.as_ref(), engine.as_ref(), &repo_path, &from, to.as_deref(), &spec2))
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?
@@ -86,6 +87,7 @@ impl App {
 
         let snap = build_snapshot(1, &inputs, files);
         let mut spec = spec;
+        spec.base = Some(resolved.base);
         spec.regions = regions_from(&snap, req.regions)?;
         let id = ReviewId(new_id(""));
         let now = self.now();

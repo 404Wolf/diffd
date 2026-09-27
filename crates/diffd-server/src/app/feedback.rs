@@ -41,6 +41,14 @@ pub enum FeedbackItem {
         new: Vec<String>,
         /// The code changed after the thread started.
         code_changed_since_comment: bool,
+        /// Set when the user commented while looking at part of the history:
+        /// `<from>..<to>` commits (`to` may be `working tree`). `path`, `side` and
+        /// `lines` then point into the whole diff when the same code is still there.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        commented_on: Option<String>,
+        /// The commented code is no longer in the whole diff (it only existed in that part of the history).
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        not_in_current_diff: bool,
     },
     /// A message in the chat box, not tied to lines.
     Chat { message_id: String, body: String },
@@ -179,10 +187,15 @@ fn thread_item(t: &Thread, new_ids: &[MessageId], snap: &Snapshot) -> FeedbackIt
             .collect(),
         new: new.into_iter().map(|m| m.body.clone()).collect(),
         code_changed_since_comment: t.changed_in.is_some(),
+        commented_on: t.anchor.range.as_ref().map(|r| format!("{}..{}", r.from, r.to.as_deref().unwrap_or("working tree"))),
+        not_in_current_diff: t.outdated,
     }
 }
 
 fn context(t: &Thread, snap: &Snapshot) -> String {
+    if t.outdated {
+        return String::new();
+    }
     let Some(file) = snap.files.iter().find(|f| f.path == t.anchor.path) else { return String::new() };
     let side = match t.anchor.side {
         Side::Old => file.old.as_ref(),

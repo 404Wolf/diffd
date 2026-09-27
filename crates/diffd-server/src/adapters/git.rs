@@ -7,7 +7,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use anyhow::{Context, bail};
 use diffd_core::build::FileInput;
-use diffd_core::model::FileStatus;
+use diffd_core::model::{Commit, FileStatus, Millis};
 use diffd_core::text::looks_binary;
 
 use crate::ports::{Repo, RepoSource, Resolved};
@@ -90,6 +90,33 @@ impl RepoSource for GitCli {
         }
         Ok(inputs)
     }
+
+    fn commits(&self, repo: &Repo, resolved: &Resolved, limit: usize) -> anyhow::Result<(Vec<Commit>, bool)> {
+        let tip = resolved.to.as_deref().unwrap_or("HEAD");
+        let range = format!("{}..{tip}", resolved.base);
+        let max = format!("--max-count={}", limit + 1);
+        let out = git(&repo.root, &["log", "--first-parent", &max, "--format=%H%x1f%h%x1f%an%x1f%at%x1f%s%x1e", &range, "--"])?;
+        let mut commits: Vec<Commit> = out.split('\x1e').filter_map(parse_commit).collect();
+        let truncated = commits.len() > limit;
+        commits.truncate(limit);
+        commits.reverse();
+        Ok((commits, truncated))
+    }
+}
+
+fn parse_commit(record: &str) -> Option<Commit> {
+    let mut f = record.trim_start_matches('\n').splitn(5, '\x1f');
+    let (sha, short, author, time, subject) = (f.next()?, f.next()?, f.next()?, f.next()?, f.next()?);
+    if sha.is_empty() {
+        return None;
+    }
+    Some(Commit {
+        sha: sha.to_owned(),
+        short: short.to_owned(),
+        author: author.to_owned(),
+        time: time.trim().parse::<Millis>().ok()? * 1000,
+        subject: subject.trim_end().to_owned(),
+    })
 }
 
 /// Order paths the way the file tree shows them: at each level, folders

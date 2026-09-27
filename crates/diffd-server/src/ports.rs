@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use diffd_core::build::FileInput;
 use diffd_core::difft::EngineDiff;
-use diffd_core::model::Millis;
+use diffd_core::model::{Commit, Millis};
 
 /// A repository the agent pointed us at.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +30,9 @@ pub trait RepoSource: Send + Sync {
     fn resolve(&self, repo: &Repo, from: &str, to: Option<&str>, merge_base: Option<bool>) -> anyhow::Result<Resolved>;
     /// Every changed file between the two sides, with full contents.
     fn changes(&self, repo: &Repo, resolved: &Resolved, paths: &[String]) -> anyhow::Result<Vec<FileInput>>;
+    /// The commits after `base` up to `to` (or `HEAD`), oldest first along
+    /// first parents; at most `limit` of the newest. Also says whether more were left out.
+    fn commits(&self, repo: &Repo, resolved: &Resolved, limit: usize) -> anyhow::Result<(Vec<Commit>, bool)>;
 }
 
 /// A structural diff engine (difftastic). Returns `None` when it can't help,

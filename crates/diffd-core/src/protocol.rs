@@ -6,7 +6,9 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::model::{ActivityItem, Anchor, ChatMessage, MessageId, Presence, Region, ReviewMeta, ShowRequest, Snapshot, Thread, ThreadId};
+use crate::model::{
+    ActivityItem, Anchor, ChatMessage, History, MessageId, Presence, Region, ReviewMeta, ShowRequest, Snapshot, Thread, ThreadId,
+};
 
 /// Everything the page needs to render a review. It's embedded in the HTML so
 /// the page works offline, and re-sent when the socket (re)connects.
@@ -19,6 +21,8 @@ pub struct ReviewState {
     pub threads: Vec<Thread>,
     /// Tests and folds the agent marked.
     pub regions: Vec<Region>,
+    /// The commits in the review's range.
+    pub history: History,
     pub chat: Vec<ChatMessage>,
     pub activity: Vec<ActivityItem>,
     pub presence: Presence,
@@ -56,6 +60,10 @@ pub enum ServerMsg {
     },
     Presence {
         presence: Presence,
+    },
+    /// New commits landed in the review's range.
+    History {
+        history: History,
     },
     /// The agent wants to point the user at some code.
     Show {

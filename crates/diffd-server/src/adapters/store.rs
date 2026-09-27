@@ -15,6 +15,10 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 /// How a review was asked for; kept so it can be rebuilt the same way.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ReviewSpec {
+    /// The base commit, resolved once when the review was shared, so moving
+    /// refs (the agent committing on `HEAD`) don't shift what's reviewed.
+    #[serde(default)]
+    pub base: Option<String>,
     pub merge_base: Option<bool>,
     pub paths: Vec<String>,
     pub collapse: Vec<CollapseRule>,

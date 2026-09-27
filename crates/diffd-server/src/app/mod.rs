@@ -2,6 +2,7 @@
 
 mod conversation;
 mod feedback;
+mod history;
 mod rebuild;
 mod share;
 
@@ -9,12 +10,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
 use diffd_core::feedback::FeedbackGate;
-use diffd_core::model::{Millis, Presence, ReviewId, ReviewMeta, Snapshot};
+use diffd_core::model::{History, Millis, Presence, ReviewId, ReviewMeta, Snapshot};
 use diffd_core::protocol::{ReviewState, ServerMsg};
 use tokio::sync::{Notify, broadcast};
 
 pub use conversation::{NoteInput, RegionInput};
 pub use feedback::{FeedbackBatch, FeedbackItem, ThreadMessage};
+pub use history::RangeEnd;
 pub use share::{ShareRequest, ShareResult};
 
 use crate::adapters::store::Store;
@@ -68,6 +70,9 @@ struct LiveInner {
     presence: Presence,
     snapshot: Arc<Snapshot>,
     fingerprint: u64,
+    /// Read on first use; see [`history`].
+    history: Option<History>,
+    ranges: history::RangeCache,
 }
 
 impl App {
@@ -151,6 +156,8 @@ impl App {
                         presence: Presence::Away,
                         snapshot: Arc::new(snapshot),
                         fingerprint,
+                        history: None,
+                        ranges: history::RangeCache::default(),
                     }),
                 })
             })
@@ -171,11 +178,13 @@ impl App {
         let live = self.live(id).await?;
         let (review, spec) = self.meta(id).await?;
         let presence = live.inner.lock().expect("live lock").presence;
+        let history = self.history(&live, &review, &spec).await;
         Ok(ReviewState {
             review,
             snapshot: (*Self::snapshot(&live)).clone(),
             threads: self.store.threads(id).await?,
             regions: spec.regions,
+            history,
             chat: self.store.chat(id).await?,
             activity: self.store.activity(id).await?,
             presence,
