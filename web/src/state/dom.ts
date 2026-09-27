@@ -158,6 +158,24 @@ export const follows = (a: Node, b: Node): boolean =>
 /** Scroll a row into view if needed (`nearest`) or into the middle (`center`). */
 export function reveal(el: Element, how: "nearest" | "center" = "nearest"): void {
   el.scrollIntoView({ block: how });
+  // Chunks off screen are laid out at an estimated height (content-visibility);
+  // those coming into view get their real one, which can move the row (a long
+  // wrapped line, say). Follow it for a few frames, unless the reader scrolls.
+  const buf = el.closest<HTMLElement>(".buffer");
+  if (!buf) return;
+  let tries = 4;
+  let top = el.getBoundingClientRect().top;
+  let scrolled = buf.scrollTop;
+  const settle = () => {
+    if (!el.isConnected || buf.scrollTop !== scrolled) return;
+    const now = el.getBoundingClientRect().top;
+    if (Math.abs(now - top) < 1) return;
+    el.scrollIntoView({ block: how });
+    top = el.getBoundingClientRect().top;
+    scrolled = buf.scrollTop;
+    if (--tries > 0) requestAnimationFrame(settle);
+  };
+  requestAnimationFrame(settle);
 }
 
 export function flash(el: Element): void {

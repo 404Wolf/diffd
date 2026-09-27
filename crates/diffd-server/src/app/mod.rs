@@ -264,7 +264,11 @@ impl App {
     pub async fn delete(&self, id: &ReviewId) -> Result<()> {
         self.meta(id).await?;
         self.store.delete_review(id).await?;
-        self.live.lock().expect("live lock").remove(id);
+        let live = self.live.lock().expect("live lock").remove(id);
+        // Open pages hear it now, even while something else still holds the review.
+        if let Some(live) = live {
+            Self::broadcast(&live, ServerMsg::Gone { message: "This review was deleted.".into() });
+        }
         Ok(())
     }
 

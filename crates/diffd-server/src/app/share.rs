@@ -26,7 +26,7 @@ pub struct ShareRequest {
     #[serde(default)]
     pub to: Option<String>,
     /// Diff from the merge base of `from` and `to`, like a pull request.
-    /// Defaults to true when `from` is a branch.
+    /// Defaults to true when `from` is a branch name (not `HEAD`, a tag or a commit).
     #[serde(default)]
     pub merge_base: Option<bool>,
     /// Only include these paths (git pathspecs).
@@ -65,12 +65,26 @@ pub struct ShareResult {
     pub next_step: String,
 }
 
+/// Longer titles belong in the summary.
+const MAX_TITLE_CHARS: usize = 200;
+
 impl App {
     pub async fn share(&self, req: ShareRequest) -> Result<ShareResult> {
         let repo_path = PathBuf::from(&req.repo_path);
         if !repo_path.is_absolute() {
             return Err(AppError::Invalid("repo_path must be an absolute path".into()));
         }
+        let title = req.title.trim();
+        if title.is_empty() {
+            return Err(AppError::Invalid("the review needs a title".into()));
+        }
+        if title.chars().count() > MAX_TITLE_CHARS {
+            return Err(AppError::Invalid(format!(
+                "the title is {} characters; keep it under {MAX_TITLE_CHARS}, like a PR title, and put the rest in `summary`",
+                title.chars().count()
+            )));
+        }
+        let title = title.to_owned();
         let spec = ReviewSpec {
             base: None,
             merge_base: req.merge_base,
@@ -97,7 +111,7 @@ impl App {
         let now = self.now();
         let meta = ReviewMeta {
             id: id.clone(),
-            title: req.title,
+            title,
             summary: req.summary.filter(|s| !s.trim().is_empty()),
             repo_path: repo.root.to_string_lossy().into_owned(),
             repo_name: repo.name,
@@ -120,7 +134,11 @@ impl App {
             removed: snap.files.iter().map(|f| f.removed).sum(),
             collapsed: snap.files.iter().filter(|f| f.collapsed.is_some()).map(|f| f.path.clone()).collect(),
             live: spec.watch,
-            next_step: "Send the user the url. Then call wait_for_feedback to hear their comments; reply in threads with reply, and use say for anything not tied to lines.".into(),
+            next_step: if snap.files.is_empty() {
+                "The diff is empty: nothing changed between those two sides. If you meant the other direction, share again with `from` and `to` swapped; for a branch, `merge_base: false` compares directly.".into()
+            } else {
+                "Send the user the url. Then call wait_for_feedback to hear their comments; reply in threads with reply, and use say for anything not tied to lines.".into()
+            },
         };
         let live = self.insert_live(&id, snap, fp);
         let notes = self.save_notes(&id, &live, notes, false).await?;

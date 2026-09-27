@@ -4,7 +4,7 @@ use crate::difft::EngineDiff;
 use crate::highlight::highlight;
 use crate::lang::Lang;
 use crate::linediff;
-use crate::model::{FileDiff, FileStatus, Revision, Row, SideText, Snapshot};
+use crate::model::{FileDiff, FileStatus, Omitted, Revision, Row, SideText, Snapshot};
 use crate::symbols::definitions;
 use crate::text::{split_lines, utf16_col};
 
@@ -17,9 +17,15 @@ pub struct FileInput {
     /// `None` when the file doesn't exist on that side.
     pub old: Option<String>,
     pub new: Option<String>,
-    pub binary: bool,
+    /// Why the contents aren't shown; `old` and `new` are then empty.
+    pub omitted: Option<Omitted>,
+    /// Changes the rows can't show (see [`FileDiff::details`]).
+    pub details: Vec<String>,
     pub collapsed: Option<String>,
 }
+
+/// What difftastic calls a file in no language it knows.
+const PLAIN_TEXT: &str = "Text";
 
 /// Build a file's diff. `engine` is difftastic's result for modified files;
 /// without it (or when it has no alignment) a line diff is used.
@@ -29,7 +35,8 @@ pub fn build_file(input: &FileInput, engine: Option<EngineDiff>) -> FileDiff {
         old_path: input.old_path.clone(),
         status: input.status,
         language: None,
-        binary: input.binary,
+        omitted: input.omitted,
+        details: input.details.clone(),
         collapsed: input.collapsed.clone(),
         added: 0,
         removed: 0,
@@ -38,7 +45,7 @@ pub fn build_file(input: &FileInput, engine: Option<EngineDiff>) -> FileDiff {
         rows: Vec::new(),
         since: Vec::new(),
     };
-    if input.binary {
+    if input.omitted.is_some() {
         return file;
     }
     let old_lines = input.old.as_deref().map(split_lines);
@@ -48,12 +55,19 @@ pub fn build_file(input: &FileInput, engine: Option<EngineDiff>) -> FileDiff {
         (None, Some(new)) => one_sided(new.len(), new, false),
         (Some(old), None) => one_sided(old.len(), old, true),
         (Some(old), Some(new)) => match engine {
-            Some(e) if e.unchanged => EngineDiff {
+            // Unchanged to difftastic but not to git (whitespace, say): show
+            // the lines that differ rather than nothing.
+            Some(e) if e.unchanged && old == new => EngineDiff {
                 language: e.language,
                 novel_old: vec![Vec::new(); old.len()],
                 novel_new: vec![Vec::new(); new.len()],
                 ..linediff::diff(old, new)
             },
+            // Plain text, which difftastic diffs a whole line at a time: the
+            // line diff marks the words that changed.
+            Some(e) if e.unchanged || e.language.as_deref() == Some(PLAIN_TEXT) => {
+                EngineDiff { language: e.language, ..linediff::diff(old, new) }
+            }
             Some(e) if !e.rows.is_empty() || (old.is_empty() && new.is_empty()) => e,
             _ => linediff::diff(old, new),
         },
@@ -164,7 +178,8 @@ mod tests {
             },
             old: old.map(str::to_owned),
             new: new.map(str::to_owned),
-            binary: false,
+            omitted: None,
+            details: Vec::new(),
             collapsed: None,
         }
     }
@@ -190,9 +205,14 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_engine_result_shows_no_novelty() {
+    fn whitespace_changes_difftastic_ignores_still_show() {
         let e = EngineDiff { unchanged: true, ..Default::default() };
         let f = build_file(&input(Some("f(a,b)\n"), Some("f(a, b)\n")), Some(e));
+        assert_eq!((f.added, f.removed), (1, 1));
+        assert_eq!(f.new.unwrap().novel[0], vec![4, 5], "only the added space");
+
+        let e = EngineDiff { unchanged: true, ..Default::default() };
+        let f = build_file(&input(Some("same\n"), Some("same\n")), Some(e));
         assert_eq!((f.added, f.removed), (0, 0));
     }
 

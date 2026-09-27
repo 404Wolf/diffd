@@ -344,6 +344,7 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
       .with({ type: "presence" }, ({ presence }) => setConv("presence", presence))
       .with({ type: "show" }, ({ request }) => events.onShow?.(request))
       .with({ type: "error" }, ({ message }) => setError(message))
+      .with({ type: "gone" }, ({ message }) => setError(`${message} This page is now a read-only copy.`))
       // The socket consumes acks itself; they never reach here.
       .with({ type: "ack" }, () => {})
       .with({ type: "diagnostics" }, ({ path, diagnostics }) => setConv("diagnostics", path, diagnostics))
@@ -396,7 +397,8 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     socket = connect(initial.review.id, { onMessage: apply, onStatus: setConnection, onOutbox: setOutbox });
   };
   const send = (msg: ClientMsg) => {
-    if (socket) socket.send(msg);
+    if (connection() === "gone") setError("This review was deleted; nothing more can be sent.");
+    else if (socket) socket.send(msg);
     else setError("Not connected to diffd; this page is a read-only copy.");
   };
 

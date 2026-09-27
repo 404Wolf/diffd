@@ -186,7 +186,13 @@ async fn a_bad_share_or_annotate_saves_nothing() {
     let id = diffd_core::model::ReviewId(app.share(share_request(&repo)).await.unwrap().review_id);
     let before = app.state(&id).await.unwrap().threads.len();
     let good = NoteInput { file: "src/lib.rs".into(), lines: [1, 1], side: None, body: "fine".into(), kind: None };
-    let bad_region = diffd_server::app::RegionInput { file: "nope.rs".into(), lines: None, side: None, kind: diffd_core::model::RegionKind::Test, summary: None };
+    let bad_region = diffd_server::app::RegionInput {
+        file: "nope.rs".into(),
+        lines: None,
+        side: None,
+        kind: diffd_core::model::RegionKind::Test,
+        summary: None,
+    };
     assert!(app.annotate(&id, vec![good], vec![bad_region]).await.is_err());
     assert_eq!(app.state(&id).await.unwrap().threads.len(), before, "the good note wasn't saved either");
 }

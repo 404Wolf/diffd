@@ -124,8 +124,10 @@ def main() -> None:
     state = get(a.port, f"/api/reviews/{rid}")
     to = git(repo, "rev-parse", f"{a.to}^{{commit}}").decode().strip() if a.to else None
     # The review's base, resolved the way diffd does: branches from their merge base.
-    full = git(repo, "rev-parse", "--symbolic-full-name", a.frm).decode().strip()
-    if full.startswith(("refs/heads/", "refs/remotes/")):
+    def is_branch(name: str) -> bool:
+        refs = [name] if name.startswith(("refs/heads/", "refs/remotes/")) else [f"refs/heads/{name}", f"refs/remotes/{name}"]
+        return any(subprocess.run(["git", "-C", repo, "show-ref", "--verify", "--quiet", r]).returncode == 0 for r in refs)
+    if is_branch(a.frm):
         base = git(repo, "merge-base", a.frm, to or "HEAD").decode().strip()
     else:
         base = git(repo, "rev-parse", f"{a.frm}^{{commit}}").decode().strip()

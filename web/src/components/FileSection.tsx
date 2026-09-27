@@ -1,5 +1,6 @@
 import { createMemo, createRenderEffect, For, Match, Show, Switch } from "solid-js";
 import type { FileDiff } from "../gen/FileDiff";
+import type { Omitted } from "../gen/Omitted";
 import type { Thread } from "../gen/Thread";
 import { type Block, blocks, gapContext, regionRows, rowOf } from "../lib/diffModel";
 import { announceRows, lazyChunks, placeholderHtml } from "../lib/lazyRows";
@@ -22,6 +23,12 @@ interface Props {
 
 /** Rows per lazily laid-out chunk in long runs of rows. */
 const CHUNK_ROWS = 80;
+
+const OMITTED: Record<Omitted, string> = {
+  binary: "Binary file, not shown.",
+  tooLarge: "Too large to show (over 3 MB).",
+  submodule: "A submodule: its commits aren't shown here.",
+};
 
 export function FileSection(props: Props) {
   const file = (): FileDiff => props.review.snapshot().files[props.index] as FileDiff;
@@ -233,10 +240,15 @@ export function FileSection(props: Props) {
           </Show>
         }
       >
+        <Show when={file().details.length > 0}>
+          <div class="border-line border-b bg-panel px-3 py-1 text-xs text-muted">
+            {file().details.join(" · ")}
+          </div>
+        </Show>
         <Show
-          when={!file().binary}
+          when={file().omitted === null}
           fallback={
-            <div class="bg-panel px-3 py-2 text-xs text-muted">Binary or very large file, not shown.</div>
+            <div class="bg-panel px-3 py-2 text-xs text-muted">{OMITTED[file().omitted ?? "binary"]}</div>
           }
         >
           <div class="rows">

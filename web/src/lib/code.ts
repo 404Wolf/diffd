@@ -5,8 +5,11 @@
 import type { Diagnostic } from "../gen/Diagnostic";
 import type { Severity } from "../gen/Severity";
 
-/** An identifier in most languages diffd highlights (with `$` for JS, `-` excluded). */
-export const IDENT = /[A-Za-z_$][\w$]*/g;
+/**
+ * An identifier in most languages diffd highlights: letters in any script,
+ * digits after the first character, `_`, and `$` for JS (`-` excluded).
+ */
+export const IDENT = /[\p{L}\p{Nl}_$][\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$]*/gu;
 
 export interface WordAt {
   readonly text: string;

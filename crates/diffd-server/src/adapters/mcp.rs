@@ -138,7 +138,7 @@ pub struct SayParams {
 pub struct ShowParams {
     #[serde(default)]
     pub review_id: Option<String>,
-    /// Path of a file in the diff.
+    /// Path of any file in the repository: files outside the diff open too.
     pub file: String,
     /// First and last line, 1-based.
     pub lines: [u32; 2],

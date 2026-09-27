@@ -230,7 +230,14 @@ async fn send(tx: &mut futures::stream::SplitSink<WebSocket, WsMessage>, msg: &S
 /// One page's connection: push review events, apply what the page sends.
 async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Result<()> {
     let (mut tx, mut rx) = socket.split();
-    let mut events = app.subscribe(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut events = match app.subscribe(&id).await {
+        Ok(events) => events,
+        Err(e @ AppError::NotFound(_)) => {
+            send(&mut tx, &ServerMsg::Gone { message: e.to_string() }).await?;
+            return Ok(());
+        }
+        Err(e) => return Err(anyhow::anyhow!("{e}")),
+    };
     let state = app.state(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
     send(&mut tx, &ServerMsg::State { state: Box::new(state) }).await?;
     {
@@ -244,12 +251,21 @@ async fn session(app: Arc<App>, id: ReviewId, socket: WebSocket) -> anyhow::Resu
         tokio::select! {
             Some(msg) = answers.recv() => send(&mut tx, &msg).await?,
             event = events.recv() => match event {
-                Ok(msg) => send(&mut tx, &msg).await?,
+                Ok(msg) => {
+                    send(&mut tx, &msg).await?;
+                    if matches!(msg, ServerMsg::Gone { .. }) {
+                        break Ok(());
+                    }
+                }
                 Err(RecvError::Lagged(_)) => {
                     let state = app.state(&id).await.map_err(|e| anyhow::anyhow!("{e}"))?;
                     send(&mut tx, &ServerMsg::State { state: Box::new(state) }).await?;
                 }
-                Err(RecvError::Closed) => break Ok(()),
+                // The review's events end only when it's deleted.
+                Err(RecvError::Closed) => {
+                    send(&mut tx, &ServerMsg::Gone { message: "This review was deleted.".into() }).await?;
+                    break Ok(());
+                }
             },
             incoming = rx.next() => {
                 let Some(Ok(frame)) = incoming else { break Ok(()) };
@@ -302,9 +318,13 @@ async fn handle(app: &App, id: &ReviewId, msg: ClientMsg, drafting: &mut bool) -
             app.comment(id, Some((thread_id, message_id)), anchor, &body).await.map(drop)
         }
         ClientMsg::Reply { thread_id, message_id, body } => {
+            app.check_thread_in(id, &thread_id).await?;
             app.reply(&thread_id, Some(message_id), Author::User, &body, None).await.map(drop)
         }
-        ClientMsg::Resolve { thread_id, resolved } => app.resolve(&thread_id, resolved).await.map(drop),
+        ClientMsg::Resolve { thread_id, resolved } => {
+            app.check_thread_in(id, &thread_id).await?;
+            app.resolve(&thread_id, resolved).await.map(drop)
+        }
         ClientMsg::Drafting { drafting: on } => {
             if on == *drafting {
                 return Ok(());

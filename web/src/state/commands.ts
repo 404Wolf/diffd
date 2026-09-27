@@ -264,7 +264,14 @@ export function createCommands(review: Review, view: View) {
   };
 
   const order = () => treeOrder(buildTree(review.paths()));
+  /**
+   * The last file `]f` scrolled to that has no rows to put the cursor on (a
+   * binary file), with the file the cursor stayed in, so the next `]f` goes on
+   * from there instead of back to the same file.
+   */
+  let rowless: { readonly file: number; readonly cursorFile: number | undefined } | null = null;
   const openFile = (file: number, rememberIt = true) => {
+    rowless = null;
     completeRows();
     if (rememberIt) remember();
     const m = view.mode();
@@ -283,13 +290,23 @@ export function createCommands(review: Review, view: View) {
     const first =
       section.querySelector<HTMLElement>('.row[data-chg="1"]') ?? section.querySelector<HTMLElement>(".row");
     if (first) place(first, { scroll: false });
+    else {
+      rowless = { file, cursorFile: view.cursor()?.file };
+      view.say(`${review.paths()[file] ?? "This file"} has nothing to show`);
+    }
   };
   /** `]f` / `[f`, in tree order, skipping collapsed and viewed files. */
   const fileJump = (dir: 1 | -1) => {
     completeRows();
     const list = order();
     const mode = view.mode();
-    const current = mode.kind === "file" ? mode.file : (view.cursor()?.file ?? list[0] ?? 0);
+    const cursorFile = view.cursor()?.file;
+    const current =
+      mode.kind === "file"
+        ? mode.file
+        : rowless && rowless.cursorFile === cursorFile
+          ? rowless.file
+          : (cursorFile ?? list[0] ?? 0);
     let at = list.indexOf(current);
     for (;;) {
       at += dir;
@@ -576,7 +593,8 @@ export function createCommands(review: Review, view: View) {
   };
   const references = (name = wordAtCursor()) => {
     if (!name) return view.say("No symbol here · press w to pick one");
-    const re = new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`);
+    const word = "[\\p{L}\\p{N}\\p{Mn}\\p{Mc}\\p{Pc}$]";
+    const re = new RegExp(`(?<!${word})${name.replace(/\$/g, "\\$")}(?!${word})`, "u");
     const items: PickerItem[] = [];
     files().forEach((f, file) => {
       f.new?.lines.forEach((l, i) => {

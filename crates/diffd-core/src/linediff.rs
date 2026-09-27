@@ -106,30 +106,38 @@ fn word_diff(a: &str, b: &str) -> (Ranges, Ranges) {
     let (ta, tb) = (tokens(a), tokens(b));
     let wa: Vec<&str> = ta.iter().map(|t| t.1).collect();
     let wb: Vec<&str> = tb.iter().map(|t| t.1).collect();
-    let (mut na, mut nb) = (Vec::new(), Vec::new());
-    let mark = |out: &mut Ranges, toks: &[(usize, &str)], from: usize, len: usize| {
-        for &(at, text) in &toks[from..from + len] {
-            if text.trim().is_empty() {
-                continue;
+    let ops = capture_diff_slices(Algorithm::Myers, &wa, &wb);
+    // Whitespace is marked only when nothing else changed: otherwise it's noise.
+    let marked = |blanks: bool| {
+        let (mut na, mut nb) = (Vec::new(), Vec::new());
+        let mark = |out: &mut Ranges, toks: &[(usize, &str)], from: usize, len: usize| {
+            for &(at, text) in &toks[from..from + len] {
+                if !blanks && text.trim().is_empty() {
+                    continue;
+                }
+                match out.last_mut() {
+                    Some(last) if last.1 == at => last.1 = at + text.len(),
+                    _ => out.push((at, at + text.len())),
+                }
             }
-            match out.last_mut() {
-                Some(last) if last.1 == at => last.1 = at + text.len(),
-                _ => out.push((at, at + text.len())),
+        };
+        for op in &ops {
+            match *op {
+                DiffOp::Equal { .. } => {}
+                DiffOp::Delete { old_index, old_len, .. } => mark(&mut na, &ta, old_index, old_len),
+                DiffOp::Insert { new_index, new_len, .. } => mark(&mut nb, &tb, new_index, new_len),
+                DiffOp::Replace { old_index, old_len, new_index, new_len } => {
+                    mark(&mut na, &ta, old_index, old_len);
+                    mark(&mut nb, &tb, new_index, new_len);
+                }
             }
         }
+        (na, nb)
     };
-    for op in capture_diff_slices(Algorithm::Myers, &wa, &wb) {
-        match op {
-            DiffOp::Equal { .. } => {}
-            DiffOp::Delete { old_index, old_len, .. } => mark(&mut na, &ta, old_index, old_len),
-            DiffOp::Insert { new_index, new_len, .. } => mark(&mut nb, &tb, new_index, new_len),
-            DiffOp::Replace { old_index, old_len, new_index, new_len } => {
-                mark(&mut na, &ta, old_index, old_len);
-                mark(&mut nb, &tb, new_index, new_len);
-            }
-        }
+    match marked(false) {
+        (na, nb) if na.is_empty() && nb.is_empty() && a != b => marked(true),
+        words => words,
     }
-    (na, nb)
 }
 
 #[cfg(test)]

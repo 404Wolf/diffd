@@ -24,6 +24,10 @@ export function TopBar(props: { review: Review }) {
   };
   const presence = () =>
     match([props.review.connection(), props.review.conv.presence] as const)
+      .with(["gone", "listening"], ["gone", "working"], ["gone", "away"], () => ({
+        dot: "bg-del",
+        text: "This review was deleted",
+      }))
       .with(["offline", "listening"], ["offline", "working"], ["offline", "away"], () => ({
         dot: "bg-subtle",
         text: `Offline${queued() || " · reconnecting"}`,

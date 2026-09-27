@@ -190,7 +190,9 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
 
 function DiffBar(props: { added: number; removed: number }) {
   const blocks = () => {
-    const total = props.added + props.removed || 1;
+    const total = props.added + props.removed;
+    // Nothing to count (a rename, a mode change, a binary): neutral blocks.
+    if (total === 0) return [0, 1, 2, 3, 4].map(() => "bg-line-strong");
     const add = Math.round((props.added / total) * 5);
     return [0, 1, 2, 3, 4].map((i) => (i < add ? "bg-add" : "bg-del"));
   };

@@ -38,7 +38,17 @@ pub trait RepoSource: Send + Sync {
     /// Every file on the `to` side (the working tree: tracked and untracked, minus ignored), tree-ordered.
     fn files(&self, repo: &Repo, resolved: &Resolved) -> anyhow::Result<Vec<String>>;
     /// One file on the `to` side, or `None` when there's no such file. Paths are repository-relative.
-    fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Vec<u8>>>;
+    fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Contents>>;
+}
+
+/// Files larger than this are listed but never read.
+pub const MAX_FILE_BYTES: u64 = 3 * 1024 * 1024;
+
+/// A file's contents, unless it's over [`MAX_FILE_BYTES`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Contents {
+    Bytes(Vec<u8>),
+    TooLarge,
 }
 
 /// A structural diff engine (difftastic). Returns `None` when it can't help,

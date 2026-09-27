@@ -72,13 +72,11 @@ export function lineHtml(
       const name = SYNTAX_CLASSES[runs[si + 2] as number];
       if (name) classes.push(`s-${name}`);
     }
-    if (
-      ni + 1 < nov.length &&
-      (nov[ni] as number) <= a &&
-      b <= (nov[ni + 1] as number) &&
-      segment.trim() !== ""
-    ) {
-      classes.push(opts.novelClass as string);
+    if (ni + 1 < nov.length && (nov[ni] as number) <= a && b <= (nov[ni + 1] as number)) {
+      // Blank segments inside a change aren't emphasised, but a change that
+      // is only whitespace is.
+      const blankChange = text.slice(nov[ni] as number, nov[ni + 1] as number).trim() === "";
+      if (segment.trim() !== "" || blankChange) classes.push(opts.novelClass as string);
     }
     if (ri + 1 < refs.length && (refs[ri] as number) <= a && b <= (refs[ri + 1] as number))
       classes.push("ref");

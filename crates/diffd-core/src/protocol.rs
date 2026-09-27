@@ -93,6 +93,10 @@ pub enum ServerMsg {
     Error {
         message: String,
     },
+    /// The review no longer exists (it was deleted): stop reconnecting.
+    Gone {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

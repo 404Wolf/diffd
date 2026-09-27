@@ -44,7 +44,9 @@ pub(super) fn read_and_build(
         .par_iter()
         .map(|input| {
             let engine_diff = match (&input.old, &input.new) {
-                (Some(old), Some(new)) if !input.binary && input.status != FileStatus::Added => engine.diff(&input.path, old, new),
+                (Some(old), Some(new)) if input.omitted.is_none() && input.status != FileStatus::Added => {
+                    engine.diff(&input.path, old, new)
+                }
                 _ => None,
             };
             build_file(input, engine_diff)
@@ -81,7 +83,7 @@ fn apply_collapse(inputs: &mut [FileInput], rules: &[CollapseRule]) -> anyhow::R
 fn fingerprint(inputs: &[FileInput]) -> u64 {
     let mut h = DefaultHasher::new();
     for i in inputs {
-        (&i.path, &i.old_path, &i.old, &i.new, &i.collapsed, i.binary).hash(&mut h);
+        (&i.path, &i.old_path, &i.old, &i.new, &i.collapsed, i.omitted, &i.details).hash(&mut h);
     }
     h.finish()
 }

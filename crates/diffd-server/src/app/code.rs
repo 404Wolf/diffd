@@ -62,7 +62,7 @@ impl App {
         let paths: Vec<String> = App::snapshot(&live)
             .files
             .iter()
-            .filter(|f| !f.binary && f.new.is_some() && f.status != FileStatus::Deleted)
+            .filter(|f| f.omitted.is_none() && f.new.is_some() && f.status != FileStatus::Deleted)
             .map(|f| f.path.clone())
             .take(MAX_SYNCED_FILES)
             .collect();

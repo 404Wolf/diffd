@@ -35,12 +35,49 @@ export function resolveRef(ref: string, paths: readonly string[]): CodeLink | nu
   return { file, line: Number.parseInt(line, 10) };
 }
 
-const REF = /(?:[\w.-]+\/)*[\w.-]+\.\w+:\d+(?:-\d+)?/g;
+/** `path/to/file.ext:12` or `:12-20`, with letters in any script. Paths with spaces work in `code`. */
+const REF = /(?:[\p{L}\p{N}_.-]+\/)*[\p{L}\p{N}_.-]+\.[\p{L}\p{N}]+:\d+(?:-\d+)?/gu;
+
+/** A link to `path:line` in the review; the page handles the click. */
+function refLink(text: string, link: CodeLink, paths: readonly string[]): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.href = "#";
+  // By path: file indexes change between revisions.
+  a.dataset.go = `${paths[link.file]}:${link.line}`;
+  a.textContent = text;
+  return a;
+}
+
+/** Images would load from anywhere the agent names (a tracking pixel, say): links instead. */
+function imagesToLinks(root: DocumentFragment) {
+  for (const img of root.querySelectorAll("img")) {
+    const src = img.getAttribute("src") ?? "";
+    const label = img.getAttribute("alt") || src;
+    if (!/^https?:/i.test(src)) {
+      img.replaceWith(label);
+      continue;
+    }
+    const a = document.createElement("a");
+    a.href = src;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = `🖼 ${label}`;
+    img.replaceWith(a);
+  }
+}
 
 export function renderMarkdown(text: string, paths: readonly string[]): string {
   const html = DOMPurify.sanitize(md.render(text));
   const tpl = document.createElement("template");
   tpl.innerHTML = html;
+  imagesToLinks(tpl.content);
+  // A whole `code` span naming a place, spaces and all.
+  for (const code of tpl.content.querySelectorAll("code")) {
+    if (code.closest("pre, a")) continue;
+    const text = code.textContent ?? "";
+    const link = resolveRef(text, paths);
+    if (link) code.replaceWith(refLink(text, link, paths));
+  }
   const walker = document.createTreeWalker(tpl.content, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
   while (walker.nextNode()) nodes.push(walker.currentNode as Text);
@@ -52,13 +89,7 @@ export function renderMarkdown(text: string, paths: readonly string[]): string {
     for (const m of value.matchAll(REF)) {
       const link = resolveRef(m[0], paths);
       if (!link) continue;
-      frag.append(value.slice(last, m.index));
-      // By path (file indexes change between revisions); the page handles the click.
-      const a = document.createElement("a");
-      a.href = "#";
-      a.dataset.go = `${paths[link.file]}:${link.line}`;
-      a.textContent = m[0];
-      frag.append(a);
+      frag.append(value.slice(last, m.index), refLink(m[0], link, paths));
       last = m.index + m[0].length;
     }
     if (last === 0) continue;

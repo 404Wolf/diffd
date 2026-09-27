@@ -80,16 +80,33 @@ pub(super) fn anchor_text(snap: &Snapshot, path: &str, side: Side, start: u32, e
         let paths: Vec<&str> = snap.files.iter().map(|f| f.path.as_str()).collect();
         AppError::Invalid(format!("`{path}` is not in this diff. Files: {}", paths.join(", ")))
     })?;
+    if let Some(why) = file.omitted {
+        return Err(AppError::Invalid(format!("`{path}` isn't shown in the review ({why}), so it can't have comments")));
+    }
     let text = match side {
         Side::Old => file.old.as_ref(),
         Side::New => file.new.as_ref(),
     }
-    .ok_or_else(|| AppError::Invalid(format!("`{path}` has no {side:?} side (it was added or deleted)")))?;
-    let n = text.lines.len() as u32;
-    if start == 0 || start > end || end > n {
+    .ok_or_else(|| {
+        let why = if side == Side::Old { "it was added" } else { "it was deleted" };
+        AppError::Invalid(format!("`{path}` has no {side:?} side ({why})"))
+    })?;
+    pick_lines(&text.lines, path, start, end)
+}
+
+/// Lines `start..=end` (1-based) of a file's lines, or what's wrong with the range.
+pub(super) fn pick_lines(lines: &[String], path: &str, start: u32, end: u32) -> Result<String> {
+    let n = lines.len() as u32;
+    if start == 0 {
+        return Err(AppError::Invalid("line numbers start at 1".into()));
+    }
+    if start > end {
+        return Err(AppError::Invalid(format!("lines {start}-{end} are reversed: give the first line first")));
+    }
+    if end > n {
         return Err(AppError::Invalid(format!("lines {start}-{end} are outside `{path}` ({n} lines on that side)")));
     }
-    Ok(text.lines[start as usize - 1..end as usize].join("\n"))
+    Ok(lines[start as usize - 1..end as usize].join("\n"))
 }
 
 /// Place an anchor written on part of the history into the whole diff by
@@ -229,6 +246,14 @@ impl App {
             Author::Agent => self.agent_seen(&live),
         }
         Ok(thread)
+    }
+
+    /// Fail unless the thread belongs to review `id`: a page may only touch its own review's threads.
+    pub async fn check_thread_in(&self, id: &ReviewId, thread_id: &ThreadId) -> Result<()> {
+        match self.store.thread(thread_id).await? {
+            Some((owner, _)) if &owner == id => Ok(()),
+            _ => Err(AppError::NotFound(format!("no thread with id `{thread_id}` in this review"))),
+        }
     }
 
     pub async fn resolve(&self, thread_id: &ThreadId, resolved: bool) -> Result<Thread> {

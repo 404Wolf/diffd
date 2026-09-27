@@ -4,14 +4,12 @@
 use std::path::Path;
 
 use diffd_core::build::{FileInput, build_file};
-use diffd_core::model::{FileDiff, FileStatus, ReviewId};
+use diffd_core::model::{FileDiff, FileStatus, Omitted, ReviewId};
 use diffd_core::text::looks_binary;
 
 use super::rebuild::resolve;
 use super::{App, AppError, Result};
-
-/// Larger files are listed but not opened.
-const MAX_CONTEXT_BYTES: usize = 3 * 1024 * 1024;
+use crate::ports::{Contents, MAX_FILE_BYTES};
 
 impl App {
     /// Every file in the repository on the review's `to` side.
@@ -37,9 +35,12 @@ impl App {
             return Err(AppError::Invalid(format!("`{path}` is outside the repository")));
         }
         let (source, path) = (self.repo.clone(), path.to_owned());
-        let bytes = if external {
-            match tokio::fs::read(&path).await {
-                Ok(bytes) => Some(bytes),
+        let contents = if external {
+            // A path a language server points at can be anything: check before reading.
+            match tokio::fs::metadata(&path).await {
+                Ok(m) if !m.is_file() => None,
+                Ok(m) if m.len() > MAX_FILE_BYTES => Some(Contents::TooLarge),
+                Ok(_) => Some(Contents::Bytes(tokio::fs::read(&path).await.map_err(|e| anyhow::anyhow!(e))?)),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
                 Err(e) => return Err(anyhow::anyhow!(e).into()),
             }
@@ -54,19 +55,23 @@ impl App {
             .map_err(|e| anyhow::anyhow!(e))?
             .map_err(|e| AppError::Invalid(format!("{e:#}")))?
         };
-        let bytes = bytes.ok_or_else(|| AppError::NotFound(format!("no file `{path}` in this repository")))?;
+        let contents = contents.ok_or_else(|| AppError::NotFound(format!("no file `{path}` in this repository")))?;
         if !external {
             self.watch_context(id, &path).await;
         }
-        let binary = bytes.len() > MAX_CONTEXT_BYTES || looks_binary(&bytes);
-        let text = if binary { String::new() } else { String::from_utf8_lossy(&bytes).into_owned() };
+        let (omitted, text) = match contents {
+            Contents::TooLarge => (Some(Omitted::TooLarge), String::new()),
+            Contents::Bytes(bytes) if looks_binary(&bytes) => (Some(Omitted::Binary), String::new()),
+            Contents::Bytes(bytes) => (None, String::from_utf8_lossy(&bytes).into_owned()),
+        };
         let input = FileInput {
             path,
             old_path: None,
             status: FileStatus::Unchanged,
             old: Some(text.clone()),
             new: Some(text),
-            binary,
+            omitted,
+            details: Vec::new(),
             collapsed: None,
         };
         Ok(tokio::task::spawn_blocking(move || build_file(&input, None)).await.map_err(|e| anyhow::anyhow!(e))?)
@@ -87,11 +92,9 @@ impl App {
             return super::conversation::anchor_text(snap, path, side, start, end);
         }
         let file = self.context_file(id, path).await?;
-        let lines = file.new.map(|t| t.lines).unwrap_or_default();
-        let n = lines.len() as u32;
-        if start == 0 || start > end || end > n {
-            return Err(AppError::Invalid(format!("lines {start}-{end} are outside `{path}` ({n} lines)")));
+        if let Some(why) = file.omitted {
+            return Err(AppError::Invalid(format!("`{path}` can't be shown ({why})")));
         }
-        Ok(lines[start as usize - 1..end as usize].join("\n"))
+        super::conversation::pick_lines(&file.new.map(|t| t.lines).unwrap_or_default(), path, start, end)
     }
 }

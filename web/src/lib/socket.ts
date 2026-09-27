@@ -17,7 +17,8 @@ import type { ClientMsg } from "../gen/ClientMsg";
 import type { ServerMsg } from "../gen/ServerMsg";
 import { liveTabs, tabId } from "./tabs";
 
-export type Connection = "connecting" | "live" | "offline";
+/** `gone`: the review was deleted; nothing more will be sent or received. */
+export type Connection = "connecting" | "live" | "offline" | "gone";
 
 export interface SocketEvents {
   onMessage: (msg: ServerMsg) => void;
@@ -119,6 +120,13 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
         return;
       }
       events.onMessage(msg);
+      if (msg.type === "gone") {
+        // Nothing queued can be delivered now; stop for good.
+        stop();
+        outbox.clear();
+        changed();
+        events.onStatus("gone");
+      }
     };
     socket.onclose = () => {
       if (ws !== socket) return;
@@ -169,6 +177,15 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
     flush();
     void adopt();
   });
+  function stop() {
+    closed = true;
+    clearTimeout(retry);
+    window.removeEventListener("online", nudge);
+    window.removeEventListener("focus", nudge);
+    document.removeEventListener("visibilitychange", nudge);
+    ws?.close();
+  }
+
   events.onOutbox([]);
   open();
 
@@ -184,14 +201,7 @@ export function connect(reviewId: string, events: SocketEvents): Socket {
         if (key !== null && !needsAck(msg)) changed();
       }
     },
-    close() {
-      closed = true;
-      clearTimeout(retry);
-      window.removeEventListener("online", nudge);
-      window.removeEventListener("focus", nudge);
-      document.removeEventListener("visibilitychange", nudge);
-      ws?.close();
-    },
+    close: stop,
   };
 }
 

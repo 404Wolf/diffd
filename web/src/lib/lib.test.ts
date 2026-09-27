@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FileDiff } from "../gen/FileDiff";
 import { fromRuns, toRuns } from "../state/persist";
-import { diagnosticSpan, diagnosticsOn, wordAt } from "./code";
+import { diagnosticSpan, diagnosticsOn, IDENT, wordAt } from "./code";
 import { blocks, expandGap, fileModel, initialVisible, nearestGap } from "./diffModel";
 import { carrySpan, locate, points, rangeOf, spanLabel, step, steps } from "./history";
 import { JumpList } from "./jumps";
@@ -16,7 +16,8 @@ const file = (): FileDiff => ({
   oldPath: null,
   status: "modified",
   language: "Rust",
-  binary: false,
+  omitted: null,
+  details: [],
   collapsed: null,
   added: 2,
   removed: 1,
@@ -49,12 +50,12 @@ describe("lineHtml", () => {
     });
     expect(html).toBe('<span class="wc">foo</span>(<span class="ref">bar</span>)');
   });
-  it("never colors whitespace-only segments", () => {
-    expect(lineHtml("a  b", [0, 1, 0], [0, 4], { novelClass: "nv-add" })).toBe(
-      '<span class="s-keyword nv-add">a</span><span class="nv-add">  b</span>',
+  it("colors blanks inside a change only when the change is all blanks", () => {
+    expect(lineHtml("a  b", [0, 1, 0, 3, 4, 0], [0, 4], { novelClass: "nv-add" })).toBe(
+      '<span class="s-keyword nv-add">a</span>  <span class="s-keyword nv-add">b</span>',
     );
     expect(lineHtml("x   ", [0, 1, 0], [1, 4], { novelClass: "nv-add" })).toBe(
-      '<span class="s-keyword">x</span>   ',
+      '<span class="s-keyword">x</span><span class="nv-add">   </span>',
     );
   });
 });
@@ -185,6 +186,16 @@ describe("markdown", () => {
       'target="_blank" rel="noopener noreferrer"',
     );
     expect(html).not.toContain("<img");
+  });
+  it("links paths in any script, and code spans with spaces", () => {
+    const odd = ["ünï/f.txt", "docs/my notes.md"];
+    expect(renderMarkdown("see ünï/f.txt:2", odd)).toContain('data-go="ünï/f.txt:2">ünï/f.txt:2</a>');
+    expect(renderMarkdown("see `my notes.md:3`", odd)).toContain('data-go="docs/my notes.md:3"');
+  });
+  it("turns images into links, so nothing loads", () => {
+    const html = renderMarkdown("![pixel](https://tracker.example/p.gif)", paths);
+    expect(html).not.toContain("<img");
+    expect(html).toContain('href="https://tracker.example/p.gif"');
   });
 });
 
@@ -369,5 +380,11 @@ describe("jump list remapping", () => {
     j.remap((n) => (n === 2 ? null : n * 10));
     expect(j.position).toEqual({ at: 1, length: 4 }); // still at what was 3, now 30
     expect(j.forward()).toBe(40);
+  });
+});
+
+describe("identifiers in any script", () => {
+  it("finds words the way `w` walks them", () => {
+    expect("let 名前 = é_1 + $x".match(IDENT)).toEqual(["let", "名前", "é_1", "$x"]);
   });
 });

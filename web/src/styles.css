@@ -431,6 +431,9 @@
   .gap-body[hidden] {
     display: none;
   }
+  .md {
+    overflow-wrap: anywhere;
+  }
   .md p {
     margin: 0;
   }

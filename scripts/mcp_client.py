@@ -3,9 +3,12 @@
 
     python3 scripts/mcp_client.py share_diff '{"repo_path": "/tmp/diffd-demo", "from": "HEAD", "title": "Demo"}'
 
+Set DIFFD_MCP to talk to another server (default http://localhost:3433/mcp).
+
 As a library: `Mcp("http://localhost:3433/mcp").call("wait_for_feedback", {...})`.
 """
 import json
+import os
 import sys
 import urllib.request
 
@@ -67,5 +70,5 @@ class Mcp:
 
 
 if __name__ == "__main__":
-    mcp = Mcp()
+    mcp = Mcp(os.environ.get("DIFFD_MCP", "http://localhost:3433/mcp"))
     print(json.dumps(mcp.call(sys.argv[1], json.loads(sys.argv[2] if len(sys.argv) > 2 else "{}")), indent=2))

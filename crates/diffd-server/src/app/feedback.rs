@@ -169,8 +169,8 @@ fn thread_item(t: &Thread, new_ids: &[MessageId], snap: &Snapshot) -> FeedbackIt
         thread_id: t.id.0.clone(),
         path: t.anchor.path.clone(),
         side: match t.anchor.side {
-            Side::Old => "old (removed version)".into(),
-            Side::New => "new".into(),
+            Side::Old => "old (before the change)".into(),
+            Side::New => "new (after the change)".into(),
         },
         lines: [t.anchor.start, t.anchor.end],
         code: t.anchor.text.clone(),
