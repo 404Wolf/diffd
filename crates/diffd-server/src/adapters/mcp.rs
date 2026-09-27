@@ -204,6 +204,12 @@ struct ReviewOverview {
     title: String,
     revision: u32,
     files: Vec<FileOverview>,
+    /// Your tour's chapters, as you gave them (`annotate` with `groups` replaces them).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tour: Vec<Group>,
+    /// Your labels, as you gave them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    labels: Vec<Label>,
     threads: Vec<ThreadOverview>,
     pending_feedback: usize,
 }
@@ -215,6 +221,9 @@ struct FileOverview {
     removed: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     collapsed: Option<String>,
+    /// What diffd found it to be: `test`, `generated`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    kinds: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -337,8 +346,16 @@ is waiting. Use it to catch up after losing context.")]
                 .snapshot
                 .files
                 .iter()
-                .map(|f| FileOverview { path: f.path.clone(), added: f.added, removed: f.removed, collapsed: f.collapsed.clone() })
+                .map(|f| FileOverview {
+                    path: f.path.clone(),
+                    added: f.added,
+                    removed: f.removed,
+                    collapsed: f.collapsed.clone(),
+                    kinds: f.labels.clone(),
+                })
                 .collect(),
+            tour: state.layout.groups,
+            labels: state.layout.labels,
             threads: state
                 .threads
                 .iter()

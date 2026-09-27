@@ -1013,6 +1013,9 @@ try {
       labels: [{ name: "frontend", files: ["web"] }],
     });
     check(shared.collapsed.includes("Cargo.lock"), "a lockfile starts collapsed without being asked");
+    const overview = await codex.call("get_review", { review_id: shared.review_id });
+    check(overview.tour.length === 3 && overview.labels[0].name === "frontend", "get_review gives the agent back its tour and labels");
+    check(overview.files.find((f) => f.path === "tests/limiter.rs").kinds.includes("test"), "and what diffd found each file to be");
     await page.goto(shared.url);
     await page.waitForSelector(".buffer.focused [data-file-section]");
     check((await page.getByRole("region", { name: "Chat with Codex" }).count()) === 1, "the page calls the agent Codex");
