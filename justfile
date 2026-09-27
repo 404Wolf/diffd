@@ -69,3 +69,20 @@ e2e port="3433": build
     trap "sh -c '$stop' || true" EXIT
     url=$(python3 scripts/demo-share.py {{scratch}} {{port}})
     DIFFD_E2E_STOP="$stop" DIFFD_E2E_START="$start" node web/e2e/full.mjs "$url" {{scratch}} target/e2e-shots
+
+# A review with a real agent: Claude Code does a small task in a clone of
+# `requests` and talks it through with a scripted reviewer. Uses real model calls.
+e2e-agent port="3433": build
+    #!/usr/bin/env sh
+    set -eu
+    repo={{scratch}}-agent
+    rm -rf "$repo" && git clone -q https://github.com/psf/requests "$repo"
+    git -C "$repo" config user.email dev@example.com && git -C "$repo" config user.name Dev
+    target/release/diffd --port {{port}} --db target/e2e-agent.db >> target/e2e-agent.log 2>&1 & echo $! > target/e2e-agent.pid
+    trap 'kill $(cat target/e2e-agent.pid) || true' EXIT
+    sleep 1
+    node web/e2e/agent.mjs "$repo" {{port}} target/e2e-agent-shots
+
+# Check reviews of real repositories against git: `just verify ~/src/ripgrep 13.0.0 14.0.0`.
+verify repo from to="" port="3433":
+    python3 scripts/verify-review.py {{repo}} {{from}} {{to}} --port {{port}}
