@@ -210,10 +210,10 @@ share_diff({
   repo_path: string,        // absolute path of the repo/worktree (the agent's cwd)
   from: string,             // any rev: a branch ("main"), tag, commit, "HEAD~3"
   to?: string,              // any rev; omitted = the working tree (uncommitted + untracked files), watched live
-  merge_base?: boolean,     // default true when `from` is a branch: diff from merge-base(from, to), like a PR
+  merge_base?: boolean,     // default true when `from` names a branch (not HEAD, a tag or a commit): diff from merge-base(from, to), like a PR
   paths?: string[],         // limit to these pathspecs
   collapse?: { glob: string, reason: string }[],  // start these collapsed: generated code, lockfiles, vendored files
-  title: string,
+  title: string,            // like a PR title: at most 200 characters
   summary?: string,         // markdown: what changed and why, shown at the top
   annotations?: Annotation[],
   regions?: Region[],
@@ -239,6 +239,10 @@ Region = {
 Any two revisions can be compared: `from: "main"` with `to` omitted is "my
 branch plus what I haven't committed"; `from: "v1.2.0", to: "v1.3.0"` compares
 two tags. A review with a fixed `to` doesn't watch anything.
+
+In a repository with no commits yet, `from: "HEAD"` compares against the empty
+tree. An empty diff isn't an error, but the answer says so and suggests
+swapping `from` and `to`.
 
 **The base is pinned at share time.** `from` is resolved once (after the merge
 base, if any) and stored. When the agent commits afterwards, the new commits
@@ -289,7 +293,7 @@ We use **sqlx + SQLite** (`~/.local/share/diffd/diffd.db`, or `$XDG_DATA_HOME`).
 reviews    id, title, summary, repo_path, repo_name, from_rev, to_rev (NULL = working tree),
            spec (json: pinned base, merge_base, paths, collapse rules, watch, regions),
            revision, status, created_at, updated_at
-revisions  review_id, number, snapshot (zstd-compressed JSON), created_at
+revisions  review_id, number, snapshot (zstd-compressed JSON), created_at   (the last 3 per review)
 threads    id, review_id, kind (json: comment | note{kind, order}), anchor (json),
            resolved, changed_in, outdated, created_at
 messages   id, review_id, thread_id (NULL = chat), author(user|agent), body, created_at, delivered_at
@@ -333,17 +337,26 @@ definitions found in them. It's built in Rust, in parallel across cores
 
 ### 7.1 Source: git
 
-- **Which files:** `git diff --name-status -z -M <base>`, plus untracked files
+- **Which files:** `git diff --raw -z -M <base>`, plus untracked files
   (`git ls-files --others --exclude-standard`) when the review ends at the
   working tree. Agents create new files, and they must show up.
-- **Contents:** old sides come from one `git cat-file --batch` process. New
-  sides are read from the worktree, or from `cat-file` for a fixed `to`.
+- **Contents:** read by blob id (so no path is ever misparsed) from one
+  `git cat-file --batch` process; oversized blobs are skipped in the stream,
+  never loaded. New sides are read from the worktree (the ids git prints for
+  it can be hashes it never stored), or from `cat-file` for a fixed `to`.
+  Worktree symlinks show their target path and are never followed; sizes are
+  checked before reading.
 - **Branch bases** use `git merge-base`, like a PR.
 - **Commits:** `git log --first-parent` between the base and `to` (or `HEAD`),
   at most 300 of the newest.
 - **Special files:**
-  - Binary files are listed and not rendered.
-  - Files over 3 MB are listed as "too large to diff".
+  - Binary files, files over 3 MB and submodules are listed with the reason
+    their contents aren't shown (`omitted`).
+  - Changes the rows can't show are listed as `details` on the file: a mode
+    change, CRLF ↔ LF, the newline at the end of the file, a submodule's
+    commits.
+  - Whitespace-only changes that difftastic ignores still show, via the line
+    diff; plain text gets the line diff's word highlights, not whole lines.
   - Files matching the agent's `collapse` globs start collapsed, with its
     reason on the header.
 
@@ -439,14 +452,17 @@ diagnostics (`crates/diffd-server/src/adapters/lsp/`).
 - **Pool:** one process per (server, project root). The root is the nearest
   directory above the file with one of the server's root markers, else the
   repository root. Servers start on first use, stop when idle (15 min by
-  default), and are restarted after a crash, up to three times. A server that
+  default), and are restarted after a crash, up to three times (an exit is
+  noticed as soon as its output ends, so nothing waits out a timeout). A server that
   isn't installed is remembered as broken, with the reason, and the page falls
   back quietly.
 - **Only reviews of the working tree** get language servers: servers see files
   on disk, which is exactly the new side of such a review.
-- **Files:** when a page connects, the review's new-side files (up to 300) are
-  opened in their servers, and re-synced when a revision changes them. Files
-  opened for context (§8.9) are opened too.
+- **Files:** when a page connects, the review's new-side files are opened in
+  their servers, and re-synced when a revision changes them. Files opened for
+  context (§8.9) are opened too. Each server keeps at most `max_open_files`
+  (300) open, closing the least recently synced first; deleted files are
+  closed, so their diagnostics go away.
 - **Over the page's WebSocket:** `ClientMsg::Code { request_id, query, path,
   line, col }` asks for a definition, type definition or hover, answered out of
   order by `ServerMsg::Code`. Diagnostics arrive as `ServerMsg::Diagnostics`
@@ -463,9 +479,15 @@ diagnostics (`crates/diffd-server/src/adapters/lsp/`).
 
 ### 7.6 Rebuilds (watch)
 
-Reviews of the working tree are watched with `notify`, debounced 300 ms.
-Churn under `.git/objects`, `.git/logs`, `node_modules`, `target` and
-`.direnv` is ignored. A rebuild:
+Reviews of the working tree are watched with `notify`: one watcher per
+repository, shared by its reviews, with a watch per directory. Directories that
+never matter aren't watched at all (`.git/objects`, `.git/logs`,
+`node_modules`, `target`, `.direnv`, `.venv`, and whatever the repository
+ignores), which keeps big repositories within the system's limit on watches;
+new directories are picked up as they appear. Only writes count: reads (a
+rebuild reading the files, a language server opening them) are ignored, or
+every rebuild would set off the next. Changes are debounced 300 ms, and a burst
+during a rebuild leads to one more rebuild, not one per change. A rebuild:
 
 1. re-reads the changed-file list and contents, and re-diffs them in parallel;
 2. compares a fingerprint of all inputs with the last one, and stops if nothing
@@ -476,8 +498,9 @@ Churn under `.git/objects`, `.git/logs`, `node_modules`, `target` and
 5. sends the new snapshot to open pages, and logs a "rev N · paths" activity
    item.
 
-Watches resume after a server restart. `refresh` runs the same rebuild on
-demand.
+After a restart, reviews touched in the last week are watched again at once;
+older ones when someone opens them. Deleting a review stops its watch and tells
+open pages, which stop reconnecting. `refresh` runs the same rebuild on demand.
 
 ## 8. The page
 
