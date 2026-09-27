@@ -12,9 +12,7 @@
  */
 
 import { type Accessor, createMemo, createRoot, onCleanup, untrack } from "solid-js";
-import type { FileDiff } from "../gen/FileDiff";
-import type { Side } from "../gen/Side";
-import type { Thread } from "../gen/Thread";
+import type { FileDiff, Side, Thread } from "../api";
 import { blocks, type FileModel, regionRows, rowOf } from "../lib/diffModel";
 import type { RowMarks } from "../lib/render";
 import type { Review } from "./review";

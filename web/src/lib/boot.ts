@@ -1,6 +1,7 @@
 /** Reading the state the server embedded in the page. */
+
+import type { Boot } from "../api";
 import { listReviews, reviewState } from "../api";
-import type { Boot } from "../gen/Boot";
 
 export async function readBoot(): Promise<Boot> {
   const el = document.getElementById("diffd-boot");

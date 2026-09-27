@@ -13,8 +13,7 @@
  * if two do at once, the server's idempotency makes the double send harmless.
  */
 import { match } from "ts-pattern";
-import type { ClientMsg } from "../gen/ClientMsg";
-import type { ServerMsg } from "../gen/ServerMsg";
+import type { ClientMsg, ServerMsg } from "../api";
 import { liveTabs, tabId } from "./tabs";
 
 /** `gone`: the review was deleted; nothing more will be sent or received. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileDiff } from "../gen/FileDiff";
+import type { FileDiff } from "../api";
 import { labelsOf, matches, OTHER_GROUP, resolveGroups } from "./kinds";
 
 /** The same cases as `crates/diffd-core/src/kinds.rs`. */

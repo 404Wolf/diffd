@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { match } from "ts-pattern";
-import type { Diagnostic } from "../gen/Diagnostic";
+import type { Diagnostic } from "../api";
 import { columnAtPoint, diagnosticSpan, diagnosticsOn, rank, textRange, wordAt } from "../lib/code";
 import { allBuffers, rowEl, rowsRenderedEvent } from "../state/dom";
 import type { Review } from "../state/review";

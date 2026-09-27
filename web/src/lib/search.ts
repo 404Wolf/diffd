@@ -4,8 +4,7 @@
  * browser's find could only see the rows near the screen.
  */
 
-import type { FileDiff } from "../gen/FileDiff";
-import type { Side } from "../gen/Side";
+import type { FileDiff, Side } from "../api";
 import type { FileModel } from "./diffModel";
 
 export interface Match {

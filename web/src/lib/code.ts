@@ -2,8 +2,7 @@
  * Positions in code, the way language servers count them: lines from 1,
  * columns in UTF-16 code units (which is also how JS strings index).
  */
-import type { Diagnostic } from "../gen/Diagnostic";
-import type { Severity } from "../gen/Severity";
+import type { Diagnostic, Severity } from "../api";
 
 /**
  * An identifier in most languages diffd highlights: letters in any script,

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileDiff } from "../gen/FileDiff";
-import type { Snapshot } from "../gen/Snapshot";
+import type { FileDiff, Snapshot } from "../api";
 import { applyDelta } from "./review";
 
 const file = (path: string, text: string): FileDiff => ({

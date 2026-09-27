@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
+import type { ReviewSummary } from "../api";
 import { deleteReview } from "../api";
-import type { ReviewSummary } from "../gen/ReviewSummary";
 import { ago } from "../lib/time";
 
 /** The landing page: recent reviews, newest first. */

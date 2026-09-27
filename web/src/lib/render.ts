@@ -4,9 +4,7 @@
  * the diff body is plain HTML while everything around it is Solid.
  */
 
-import type { FileDiff } from "../gen/FileDiff";
-import type { Row } from "../gen/Row";
-import type { SideText } from "../gen/SideText";
+import type { FileDiff, Row, SideText } from "../api";
 import { SYNTAX_CLASSES } from "../gen/syntaxClasses";
 import { IDENT } from "./code";
 

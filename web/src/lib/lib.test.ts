@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileDiff } from "../gen/FileDiff";
+import type { FileDiff } from "../api";
 import { fromRuns, toRuns } from "../state/persist";
 import { diagnosticSpan, diagnosticsOn, IDENT, wordAt } from "./code";
 import {

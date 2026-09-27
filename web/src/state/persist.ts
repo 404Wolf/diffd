@@ -9,7 +9,7 @@
  * Everything is keyed by file path and checked against the file's current
  * shape before use, so a new revision never restores nonsense.
  */
-import type { Side } from "../gen/Side";
+import type { Side } from "../api";
 import type { Composer } from "./view";
 
 /** Visible rows of a file, as `[start, end)` runs, for a file with `rows` rows. */

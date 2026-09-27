@@ -2,9 +2,7 @@
  * Derived, per-file facts about a diff, and the excerpt layout: which rows are
  * shown, which are folded into gaps, and where threads sit.
  */
-import type { FileDiff } from "../gen/FileDiff";
-import type { Region } from "../gen/Region";
-import type { Side } from "../gen/Side";
+import type { FileDiff, Region, Side } from "../api";
 import { rowChanged } from "./render";
 
 export interface FileModel {

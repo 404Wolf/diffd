@@ -5,12 +5,7 @@
 import { type Accessor, createEffect, createSignal, on, onCleanup, type Setter, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { match } from "ts-pattern";
-import type { Anchor } from "../gen/Anchor";
-import type { Diagnostic } from "../gen/Diagnostic";
-import type { ShowRequest } from "../gen/ShowRequest";
-import type { Side } from "../gen/Side";
-import type { Snapshot } from "../gen/Snapshot";
-import type { ThreadId } from "../gen/ThreadId";
+import type { Anchor, Diagnostic, ShowRequest, Side, Snapshot, ThreadId } from "../api";
 import { applyFolds, initialVisible, regionRows, rowOf } from "../lib/diffModel";
 import { JumpList } from "../lib/jumps";
 import type { Match } from "../lib/search";

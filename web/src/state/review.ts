@@ -6,30 +6,32 @@
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 import { match } from "ts-pattern";
+import type {
+  ActivityItem,
+  Anchor,
+  ClientMsg,
+  CodeAnswer,
+  CodeQuery,
+  CommitRange,
+  Diagnostic,
+  FileDiff,
+  History,
+  Layout,
+  LiveState,
+  Message,
+  MessageId,
+  Presence,
+  Region,
+  ReviewMeta,
+  ReviewState,
+  ServerMsg,
+  ShowRequest,
+  Snapshot,
+  SnapshotDelta,
+  Thread,
+  ThreadId,
+} from "../api";
 import * as api from "../api";
-import type { ActivityItem } from "../gen/ActivityItem";
-import type { Anchor } from "../gen/Anchor";
-import type { ClientMsg } from "../gen/ClientMsg";
-import type { CodeAnswer } from "../gen/CodeAnswer";
-import type { CodeQuery } from "../gen/CodeQuery";
-import type { CommitRange } from "../gen/CommitRange";
-import type { Diagnostic } from "../gen/Diagnostic";
-import type { FileDiff } from "../gen/FileDiff";
-import type { History } from "../gen/History";
-import type { Layout } from "../gen/Layout";
-import type { LiveState } from "../gen/LiveState";
-import type { Message } from "../gen/Message";
-import type { MessageId } from "../gen/MessageId";
-import type { Presence } from "../gen/Presence";
-import type { Region } from "../gen/Region";
-import type { ReviewMeta } from "../gen/ReviewMeta";
-import type { ReviewState } from "../gen/ReviewState";
-import type { ServerMsg } from "../gen/ServerMsg";
-import type { ShowRequest } from "../gen/ShowRequest";
-import type { Snapshot } from "../gen/Snapshot";
-import type { SnapshotDelta } from "../gen/SnapshotDelta";
-import type { Thread } from "../gen/Thread";
-import type { ThreadId } from "../gen/ThreadId";
 import { setAgentName } from "../lib/agent";
 import { ok } from "../lib/api";
 import { type FileModel, fileModel } from "../lib/diffModel";

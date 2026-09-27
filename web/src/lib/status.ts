@@ -1,5 +1,5 @@
 /** How a file's status shows: a letter and its color, in the tree and on file headers. */
-import type { FileStatus } from "../gen/FileStatus";
+import type { FileStatus } from "../api";
 
 export const STATUS: Record<FileStatus, { readonly letter: string; readonly color: string }> = {
   added: { letter: "A", color: "text-add" },

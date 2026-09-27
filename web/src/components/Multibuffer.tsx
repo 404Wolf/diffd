@@ -7,9 +7,7 @@
 
 import { createRenderEffect, createSignal, For, type JSX, Show } from "solid-js";
 import { match } from "ts-pattern";
-import type { FileDiff } from "../gen/FileDiff";
-import type { Omitted } from "../gen/Omitted";
-import type { Thread } from "../gen/Thread";
+import type { FileDiff, Omitted, Thread } from "../api";
 import { gapContext, regionRows } from "../lib/diffModel";
 import { rowHtml, soloSide } from "../lib/render";
 import { STATUS } from "../lib/status";

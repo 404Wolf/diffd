@@ -1,5 +1,5 @@
 import { createMemo, For, type JSX, Show } from "solid-js";
-import type { Commit } from "../gen/Commit";
+import type { Commit } from "../api";
 import { type Span, step, steps } from "../lib/history";
 import { ago } from "../lib/time";
 import { bufferEl } from "../state/dom";

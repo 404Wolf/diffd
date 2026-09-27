@@ -958,9 +958,12 @@ There's no automated 100k-line benchmark yet (§15).
 
 - **One source of truth.** Every type the page shares with the server is
   defined once, in Rust (`diffd-core/src/model.rs`, `protocol.rs`): snapshot,
-  state, WebSocket messages, boot data. `ts-rs` generates `web/src/gen/`
-  (`just types`), including the syntax class table. MCP tool schemas come from
-  Rust types too (`schemars`, via `rmcp`).
+  state, WebSocket messages, boot data. The server describes them, and its
+  JSON API, in OpenAPI (utoipa, utoipa-axum; served at `/api/openapi.json`,
+  checked in as `web/openapi.json`), and hey-api generates the page's types
+  and typed API client from that (`web/src/api/`, `just types`). The syntax
+  class table is generated too (`web/src/gen/`). CI fails when any of them
+  drift. MCP tool schemas come from Rust types too (`schemars`, via `rmcp`).
 - **Messages are tagged unions** (`#[serde(tag = "type")]` becomes a TS
   discriminated union), handled with ts-pattern's exhaustive `match`, so
   adding a message type is a compile error until every consumer handles it.
@@ -1012,7 +1015,7 @@ The server is laid out **hexagonally (ports and adapters)**:
 diffd/
 ├── Cargo.toml                   workspace: shared deps, lints, release profile, tungstenite patch
 ├── crates/
-│   ├── diffd-core/              pure: model + protocol (→ TS via ts-rs), snapshot building,
+│   ├── diffd-core/              pure: model + protocol (→ OpenAPI → TS), snapshot building,
 │   │                            tree-sitter highlighting + tags, line diff, anchoring, feedback gate
 │   ├── diffd-server/            app: use cases over ports, adapters, config
 │   │   ├── src/app/             share, conversation, feedback, rebuild, history, context, code

@@ -2,12 +2,7 @@
  * Walking a review's commits: the points you can diff between, and placing
  * threads and regions (anchored in the whole diff) into part of the history.
  */
-import type { Anchor } from "../gen/Anchor";
-import type { Commit } from "../gen/Commit";
-import type { CommitRange } from "../gen/CommitRange";
-import type { History } from "../gen/History";
-import type { Side } from "../gen/Side";
-import type { Snapshot } from "../gen/Snapshot";
+import type { Anchor, Commit, CommitRange, History, Side, Snapshot } from "../api";
 
 /** A point in the history: a commit, or `null` for the working tree. */
 export type Point = string | null;

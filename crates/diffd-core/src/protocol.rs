@@ -4,7 +4,6 @@
 //! handles them with an exhaustive `match`.
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use utoipa::ToSchema;
 
 use std::collections::{BTreeMap, HashMap};
@@ -17,9 +16,8 @@ use crate::model::{
 /// Everything the page needs to render a review. It's embedded in the HTML so
 /// the page works offline, and sent again when the socket (re)connects from a
 /// page without the current revision (otherwise it gets [`LiveState`]).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-#[ts(export)]
 pub struct ReviewState {
     pub review: ReviewMeta,
     pub snapshot: Snapshot,
@@ -34,7 +32,6 @@ pub struct ReviewState {
     pub activity: Vec<ActivityItem>,
     pub presence: Presence,
     /// Activity up to this sequence number has been seen by the user.
-    #[ts(type = "number")]
     pub read_seq: u64,
     /// Language servers' diagnostics, by path (files in the diff and open for context).
     pub diagnostics: BTreeMap<String, Vec<Diagnostic>>,
@@ -43,9 +40,8 @@ pub struct ReviewState {
 /// [`ReviewState`] without the snapshot: what a page that already has the
 /// current revision needs when its socket (re)connects. A big review's
 /// snapshot is megabytes, and the page already holds it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-#[ts(export)]
 pub struct LiveState {
     pub review: ReviewMeta,
     pub threads: Vec<Thread>,
@@ -55,7 +51,6 @@ pub struct LiveState {
     pub chat: Vec<Message>,
     pub activity: Vec<ActivityItem>,
     pub presence: Presence,
-    #[ts(type = "number")]
     pub read_seq: u64,
     pub diagnostics: BTreeMap<String, Vec<Diagnostic>>,
 }
@@ -69,9 +64,8 @@ impl ReviewState {
 
 /// A revision as changes to the one before it. An agent editing one file of
 /// a big review would otherwise resend every file (megabytes) on each save.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-#[ts(export)]
 pub struct SnapshotDelta {
     /// The revision this applies to.
     pub base: Revision,
@@ -133,9 +127,8 @@ impl SnapshotDelta {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
-#[ts(export)]
 pub enum ServerMsg {
     /// Full state, sent on connect, and to a page that can't apply a `revision`.
     State {
@@ -205,9 +198,8 @@ pub enum ServerMsg {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-#[ts(export)]
 pub enum ClientMsg {
     /// Start a thread on a selection. The page picks the ids, so sending the
     /// same message twice (e.g. after a reconnect) has no extra effect.
@@ -223,10 +215,7 @@ pub enum ClientMsg {
     #[serde(rename_all = "camelCase")]
     Chat { message_id: MessageId, body: String },
     /// The user has seen activity up to `seq`.
-    Read {
-        #[ts(type = "number")]
-        seq: u64,
-    },
+    Read { seq: u64 },
     /// Ask a language server about a position in a file on the new side
     /// (line 1-based, column in UTF-16 code units). Answered with `ServerMsg::Code`.
     #[serde(rename_all = "camelCase")]
@@ -234,9 +223,8 @@ pub enum ClientMsg {
 }
 
 /// A review in the recent list on the home page.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-#[ts(export)]
 pub struct ReviewSummary {
     pub review: ReviewMeta,
     /// Agent activity the user hasn't seen.
@@ -244,9 +232,8 @@ pub struct ReviewSummary {
 }
 
 /// What the server embeds in each page it serves; the page renders from it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "page", rename_all = "camelCase")]
-#[ts(export)]
 pub enum Boot {
     Home { reviews: Vec<ReviewSummary> },
     Review { state: Box<ReviewState> },

@@ -1,7 +1,6 @@
 import { For, Show } from "solid-js";
 import { match } from "ts-pattern";
-import type { Message } from "../gen/Message";
-import type { Thread } from "../gen/Thread";
+import type { Message, Thread } from "../api";
 import { agentName } from "../lib/agent";
 import { ago } from "../lib/time";
 import type { Commands } from "../state/commands";

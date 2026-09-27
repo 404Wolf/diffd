@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { match } from "ts-pattern";
-import type { ReviewState } from "../gen/ReviewState";
+import type { ReviewState } from "../api";
 import { spanLabel } from "../lib/history";
 import { composing, KeyEngine, keyToken, type Mode } from "../lib/keymap";
 import { BINDINGS, type Ctx } from "../state/bindings";

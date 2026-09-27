@@ -6,12 +6,7 @@
 import { batch } from "solid-js";
 import { produce } from "solid-js/store";
 import { match } from "ts-pattern";
-import type { ActivityItem } from "../gen/ActivityItem";
-import type { CodeLocation } from "../gen/CodeLocation";
-import type { ShowRequest } from "../gen/ShowRequest";
-import type { Side } from "../gen/Side";
-import type { Symbol as Definition } from "../gen/Symbol";
-import type { Thread } from "../gen/Thread";
+import type { ActivityItem, CodeLocation, Symbol as Definition, ShowRequest, Side, Thread } from "../api";
 import { diagnosticsOn, IDENT, textRange, type WordAt } from "../lib/code";
 import {
   type ExpandDirection,

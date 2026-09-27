@@ -226,9 +226,10 @@ the config file). `nix flake check` runs a NixOS VM test of the module.
 
 One Rust binary with the page baked in:
 
-- `crates/diffd-core`: the model and wire protocol (exported to TypeScript
-  with ts-rs), highlighting, symbols, difftastic parsing, the fallback line
-  diff, anchoring.
+- `crates/diffd-core`: the model and wire protocol (described in OpenAPI
+  with utoipa; the page's types and API client are generated from it with
+  hey-api), highlighting, symbols, difftastic parsing, the fallback line diff,
+  anchoring.
 - `crates/diffd-server`: use cases (`app/`) over ports (`ports.rs`) with
   adapters for git, difftastic, SQLite (sqlx), language servers, the file
   watcher, and the HTTP / WebSocket / MCP front doors.

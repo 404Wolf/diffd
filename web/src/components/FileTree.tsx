@@ -12,7 +12,7 @@ import {
   untrack,
 } from "solid-js";
 import { createStore } from "solid-js/store";
-import type { FileDiff } from "../gen/FileDiff";
+import type { FileDiff } from "../api";
 import type { FileGroup } from "../lib/kinds";
 import { STATUS } from "../lib/status";
 import { buildTree, parentDir, type TreeDir, type TreeFile, type TreeNode } from "../lib/tree";

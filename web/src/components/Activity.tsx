@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import { match } from "ts-pattern";
-import type { ActivityItem } from "../gen/ActivityItem";
+import type { ActivityItem } from "../api";
 import { agentName } from "../lib/agent";
 import { ago } from "../lib/time";
 import type { Commands } from "../state/commands";

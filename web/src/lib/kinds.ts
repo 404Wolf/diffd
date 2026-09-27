@@ -3,9 +3,7 @@
  * match as on the server (`crates/diffd-core/src/kinds.rs`), which checks them
  * when the agent sends them; the tests share their cases.
  */
-import type { FileDiff } from "../gen/FileDiff";
-import type { Layout } from "../gen/Layout";
-import type { Region } from "../gen/Region";
+import type { FileDiff, Layout, Region } from "../api";
 
 /** Whether an agent's pattern names a path: a path, a directory, or a glob (`*`, `**`, `?`). */
 export function matches(pattern: string, path: string): boolean {

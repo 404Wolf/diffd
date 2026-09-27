@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For, onCleanup } from "solid-js";
-import type { ActivityItem } from "../gen/ActivityItem";
+import type { ActivityItem } from "../api";
 import { agentName } from "../lib/agent";
 import type { Commands } from "../state/commands";
 import type { Review } from "../state/review";

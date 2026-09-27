@@ -1,3 +1,0 @@
-[env]
-# ts-rs writes generated TypeScript types here when `cargo test` runs the export tests.
-TS_RS_EXPORT_DIR = { value = "web/src/gen", relative = true }
