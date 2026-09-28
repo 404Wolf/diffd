@@ -43,7 +43,7 @@ jobs:
         run: |
           bin=target/${{ matrix.arch }}-unknown-linux-musl/release/diffd
           file "$bin"
-          file "$bin" | grep -Eq 'static(-pie)? linked'
+          file "$bin" | grep -Eq 'statically linked|static-pie linked'
           if [ ${{ matrix.arch }} = x86_64 ]; then "$bin" --version; "$bin" config | head -3; fi
           mkdir dist && cp "$bin" dist/diffd-linux-${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
@@ -75,8 +75,10 @@ jobs:
           lipo -create -output dist/diffd-macos \
             target/aarch64-apple-darwin/release/diffd target/x86_64-apple-darwin/release/diffd
           lipo -info dist/diffd-macos
-          # Only system libraries: it runs on any Mac without Homebrew.
-          otool -L dist/diffd-macos | tail -n +2 | grep -Ev '^\s+(/usr/lib/|/System/)' && exit 1 || true
+          # Only system libraries: it runs on any Mac without Homebrew. (Library lines are
+          # indented; the others name the file and architecture.)
+          others=$(otool -L dist/diffd-macos | grep -E '^\s' | grep -Ev '^\s+(/usr/lib/|/System/)' || true)
+          [ -z "$others" ] || { echo "links outside the system: $others"; exit 1; }
           dist/diffd-macos --version
           dist/diffd-macos config | head -3
       - uses: actions/upload-artifact@v4

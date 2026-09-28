@@ -28,7 +28,8 @@ case $(uname -s) in
 esac
 echo "service manager: $service"
 
-"$diffd" install --print --agents codex,claude | grep -q 'nothing is changed' || fail "--print didn't preview"
+preview=$("$diffd" install --print --agents codex,claude)
+[[ $preview == *"nothing is changed"* ]] || fail "--print didn't preview: $preview"
 [ -e "$bin" ] && fail "--print changed something: $bin exists"
 ok "--print changes nothing"
 
