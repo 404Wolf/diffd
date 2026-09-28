@@ -219,7 +219,8 @@ const Spinner = () => (
 /** The review's language servers at the end of the status line: starting, busy (indexing 40%), ready, or why not. */
 function LanguageServers(props: { servers: readonly LanguageServerStatus[] }) {
   return (
-    <span class="flex flex-none items-center gap-2.5" role="group" aria-label="Language servers">
+    <span class="flex flex-none items-center gap-2.5">
+      <span class="sr-only">Language servers:</span>
       <For each={props.servers}>
         {(s) => {
           const view = (): ServerShown =>
