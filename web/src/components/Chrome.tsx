@@ -219,8 +219,7 @@ const Spinner = () => (
 /** The review's language servers at the end of the status line: starting, busy (indexing 40%), ready, or why not. */
 function LanguageServers(props: { servers: readonly LanguageServerStatus[] }) {
   return (
-    <span class="flex flex-none items-center gap-2.5">
-      <span class="sr-only">Language servers:</span>
+    <ul class="flex flex-none items-center gap-2.5" aria-label="Language servers">
       <For each={props.servers}>
         {(s) => {
           const view = (): ServerShown =>
@@ -242,7 +241,7 @@ function LanguageServers(props: { servers: readonly LanguageServerStatus[] }) {
               }))
               .exhaustive();
           return (
-            <span
+            <li
               class={`flex max-w-[44ch] items-center gap-1 ${view().tone}`}
               title={view().tip ?? view().text}
               data-language-server={s.name}
@@ -253,11 +252,11 @@ function LanguageServers(props: { servers: readonly LanguageServerStatus[] }) {
                 <Spinner />
               </Show>
               <span class="truncate">{view().text}</span>
-            </span>
+            </li>
           );
         }}
       </For>
-    </span>
+    </ul>
   );
 }
 
