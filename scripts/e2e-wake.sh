@@ -81,10 +81,13 @@ EOF
     tmux new-session -d -s "$session" -x 220 -y 50 "cd '$repo' && env CODEX_HOME='$CODEX_HOME' PATH='$PATH' codex; sleep 600"
     # Codex runs new hooks only once the user trusts them: it asks at startup
     # (older versions: through /hooks).
-    until_screen 'Ask Codex|Trust all and continue' 60 || fail "Codex didn't start"
+    # Started: its screen names the model (the composer's placeholder text varies).
+    until_screen 'mock-model|Trust all and continue' 60 || fail "Codex didn't start"
+    # Newer versions ask about the hooks a moment after the composer shows.
+    until_screen 'Trust all and continue' 8 || true
     if screen | grep -q 'Trust all and continue'; then
       tmux send-keys -t "$session" Down; sleep 0.5; tmux send-keys -t "$session" Enter
-      until_screen 'Ask Codex' 30 || fail "Codex didn't start after trusting the hooks"
+      until_screen 'mock-model' 30 || fail "Codex didn't start after trusting the hooks"
     else
       tmux send-keys -t "$session" -l "/hooks"; sleep 2
       for _ in 1 2 3; do screen | grep -q 'trust all' && break; tmux send-keys -t "$session" Enter; sleep 2; done
@@ -94,8 +97,11 @@ EOF
       # Back out of the menu (it can be a level or two deep) to the composer.
       for _ in 1 2 3 4; do
         tmux send-keys -t "$session" Escape; sleep 1
-        screen | grep -q 'hooks' || break
+        screen | grep -qE 'esc back|trust all' || break
       done
+      # Newer Codex keeps "/hooks" in the composer after the menu closes: clear it.
+      for _ in 1 2 3 4 5 6 7 8; do tmux send-keys -t "$session" BSpace; done
+      sleep 0.5
     fi
     # The hooks run from the next event on: a first message arms them.
     type_line "hello"
