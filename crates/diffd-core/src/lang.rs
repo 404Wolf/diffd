@@ -22,12 +22,13 @@ pub enum Lang {
     Java,
     Ruby,
     Lua,
+    Sql,
     Markdown,
     MarkdownInline,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 20] = [
+    pub const ALL: [Lang; 21] = [
         Lang::Rust,
         Lang::TypeScript,
         Lang::Tsx,
@@ -46,6 +47,7 @@ impl Lang {
         Lang::Java,
         Lang::Ruby,
         Lang::Lua,
+        Lang::Sql,
         Lang::Markdown,
         Lang::MarkdownInline,
     ];
@@ -86,6 +88,7 @@ impl Lang {
             "java" => Lang::Java,
             "rb" => Lang::Ruby,
             "lua" => Lang::Lua,
+            "sql" | "psql" | "pgsql" | "ddl" => Lang::Sql,
             "md" | "markdown" => Lang::Markdown,
             _ => return None,
         })
@@ -112,6 +115,7 @@ impl Lang {
             "java" => Lang::Java,
             "ruby" | "rb" => Lang::Ruby,
             "lua" => Lang::Lua,
+            "sql" | "postgres" | "postgresql" | "psql" | "pgsql" | "mysql" | "sqlite" | "plpgsql" => Lang::Sql,
             "markdown" | "md" => Lang::Markdown,
             "markdown_inline" => Lang::MarkdownInline,
             _ => return None,
@@ -138,6 +142,7 @@ impl Lang {
             Lang::Java => "Java",
             Lang::Ruby => "Ruby",
             Lang::Lua => "Lua",
+            Lang::Sql => "SQL",
             Lang::Markdown | Lang::MarkdownInline => "Markdown",
         }
     }
@@ -162,6 +167,7 @@ impl Lang {
             Lang::Java => tree_sitter_java::LANGUAGE.into(),
             Lang::Ruby => tree_sitter_ruby::LANGUAGE.into(),
             Lang::Lua => tree_sitter_lua::LANGUAGE.into(),
+            Lang::Sql => tree_sitter_sequel::LANGUAGE.into(),
             Lang::Markdown => tree_sitter_md::LANGUAGE.into(),
             Lang::MarkdownInline => tree_sitter_md::INLINE_LANGUAGE.into(),
         }
@@ -207,6 +213,7 @@ impl Lang {
             Lang::Java => (h(tree_sitter_java::HIGHLIGHTS_QUERY), "", ""),
             Lang::Ruby => (h(tree_sitter_ruby::HIGHLIGHTS_QUERY), "", tree_sitter_ruby::LOCALS_QUERY),
             Lang::Lua => (h(tree_sitter_lua::HIGHLIGHTS_QUERY), tree_sitter_lua::INJECTIONS_QUERY, tree_sitter_lua::LOCALS_QUERY),
+            Lang::Sql => (sql_highlights(), "", ""),
             Lang::Markdown => (h(tree_sitter_md::HIGHLIGHT_QUERY_BLOCK), tree_sitter_md::INJECTION_QUERY_BLOCK, ""),
             Lang::MarkdownInline => (h(tree_sitter_md::HIGHLIGHT_QUERY_INLINE), tree_sitter_md::INJECTION_QUERY_INLINE, ""),
         }
@@ -231,6 +238,19 @@ impl Lang {
             _ => return None,
         })
     }
+}
+
+/// tree-sitter-sequel's highlights, adapted: the query is written for Neovim, which
+/// tree-sitter-highlight reads differently. Its `#match?` takes Lua patterns (`%d`),
+/// so those become `[0-9]` (no backslashes: query strings unescape them first). Its
+/// catch-all `(literal) @string` wins over the number rules here, so it skips numbers.
+/// And the Neovim-only `@spell` capture goes: a second capture on comments hid them.
+fn sql_highlights() -> String {
+    const STRING: &str = "(literal) @string\n";
+    const NOT_A_NUMBER: &str = "((literal) @string (#not-match? @string \"^[-+]?[0-9]*[.]?[0-9]+$\"))\n";
+    let query = tree_sitter_sequel::HIGHLIGHTS_QUERY;
+    debug_assert!(query.contains(STRING), "tree-sitter-sequel's query changed: check sql_highlights");
+    query.replacen(STRING, NOT_A_NUMBER, 1).replace("%d", "[0-9]").replace("@comment @spell", "@comment")
 }
 
 #[cfg(test)]

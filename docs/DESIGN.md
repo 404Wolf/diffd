@@ -463,7 +463,7 @@ We ship runs rather than ready-made HTML because:
 - **Engine:** `tree-sitter-highlight`, the same approach as GitHub, Zed, Helix
   and Neovim, with injections (e.g. code fences in Markdown).
 - **Languages:** Rust, TypeScript, TSX, JavaScript, Python, Go, JSON, Bash,
-  TOML, YAML, C, C++, CSS, HTML, Nix, Java, Ruby, Lua and Markdown, from the
+  TOML, YAML, C, C++, CSS, HTML, Nix, Java, Ruby, Lua, SQL and Markdown, from the
   grammar crates in `diffd-core/Cargo.toml`. Others render as plain text.
 - **Classes:** capture names map to 17 token classes (`SyntaxClass`, exported
   to the page by index), styled by Tailwind theme tokens, light and dark.

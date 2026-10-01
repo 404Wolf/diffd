@@ -176,6 +176,20 @@ mod tests {
     }
 
     #[test]
+    fn highlights_sql() {
+        let src = "-- watchdog state\nSELECT ticker, count(*) AS n\nFROM watchdog.ticker_intent\nWHERE trader_id = $1 AND state = 'live' LIMIT 10;\n";
+        let got = classes(Lang::Sql, src);
+        assert!(got[0].contains(&("-- watchdog state".into(), "comment")), "{:?}", got[0]);
+        assert!(got[1].contains(&("SELECT".into(), "keyword")), "{:?}", got[1]);
+        assert!(got[2].contains(&("FROM".into(), "keyword")), "{:?}", got[2]);
+        assert!(got[3].contains(&("'live'".into(), "string")), "{:?}", got[3]);
+        assert!(got[3].contains(&("10".into(), "number")), "{:?}", got[3]);
+        assert!(classes(Lang::Sql, "SELECT 1.5;\n")[0].contains(&("1.5".into(), "number")));
+        assert_eq!(Lang::from_path("migrations/0001_init.sql"), Some(Lang::Sql));
+        assert_eq!(Lang::from_name("postgresql"), Some(Lang::Sql));
+    }
+
+    #[test]
     fn highlights_every_language() {
         for lang in Lang::ALL {
             assert!(config(lang).is_some(), "{lang:?} queries failed to load");

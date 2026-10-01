@@ -36,6 +36,7 @@ tree-sitter-nix = "0.3"
 tree-sitter-java = "0.23"
 tree-sitter-ruby = "0.23"
 tree-sitter-lua = "0.5"
+tree-sitter-sequel = "0.3"
 tree-sitter-md = "0.5"
 
 [dev-dependencies]
