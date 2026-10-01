@@ -206,6 +206,11 @@ export function createLayout(review: Review, view: View) {
         items.push(item);
       };
       if (review.groupAt(f.path)) add("group", () => ({ kind: "group", file: index }));
+      // A collapsed chapter is only its header.
+      if (view.inClosedChapter(index)) {
+        cache = next;
+        return { items, rowItem };
+      }
       add("head", () => ({ kind: "head", file: index }));
       if (view.hidden(index)) {
         if (f.collapsed && !view.flags.viewed[f.path])
@@ -315,9 +320,19 @@ export function createLayout(review: Review, view: View) {
     return head < l.items.length ? head : -1;
   };
 
-  /** Where a file's header is: its first item, after its group's header if it starts one. */
+  /**
+   * Where a file's header is: its first item, after its group's header if it
+   * starts one. In a collapsed chapter, the chapter's header stands in.
+   */
   const headIndex = (file: number): number => {
     const l = layout();
+    if (view.inClosedChapter(file)) {
+      const chapterOf = (f: number) => review.groupOf(review.paths()[f] ?? "");
+      for (let f = file; f >= 0 && chapterOf(f) === chapterOf(file); f--) {
+        const at = l.fileStart[f] ?? l.items.length;
+        if (l.items[at]?.kind === "group") return at;
+      }
+    }
     const start = l.fileStart[file] ?? l.items.length;
     return l.items[start]?.kind === "group" ? start + 1 : start;
   };

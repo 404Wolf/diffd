@@ -300,6 +300,8 @@ export function createCommands(review: Review, view: View) {
     const path = files()[file]?.path;
     if (!path || !view.hidden(file)) return;
     batch(() => {
+      const chapter = review.groups()[review.groupOf(path)];
+      if (chapter) view.setChapterOpen(chapter.title, true);
       view.setFlags("collapsed", path, false);
       view.setFlags("viewed", path, false);
     });
@@ -577,6 +579,14 @@ export function createCommands(review: Review, view: View) {
     });
   };
 
+  /** Collapse or expand the tour chapter a file is in: collapsed, only its header shows. */
+  const toggleChapter = (file: number) => {
+    const chapter = review.groups()[review.groupOf(files()[file]?.path ?? "")];
+    if (!chapter) return view.say("This file isn't in a chapter of the tour");
+    if (!review.grouped()) return view.say("Chapters fold when reading the tour");
+    view.setChapterOpen(chapter.title, !view.chapterOpen(chapter.title));
+  };
+
   const setViewed = (file: number, viewed: boolean) => {
     const path = files()[file]?.path;
     if (path) view.setFlags("viewed", path, viewed);
@@ -584,6 +594,7 @@ export function createCommands(review: Review, view: View) {
 
   const expandAll = () =>
     batch(() => {
+      for (const g of review.groups()) view.setChapterOpen(g.title, true);
       files().forEach((f, i) => {
         view.setVisible(i, new Uint8Array(f.rows.length).fill(1));
         view.setFlags("collapsed", f.path, false);
@@ -1432,6 +1443,7 @@ export function createCommands(review: Review, view: View) {
     expandAround,
     contractAround,
     toggleFold,
+    toggleChapter,
     setViewed,
     expandAll,
     collapseAll,

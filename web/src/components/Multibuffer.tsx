@@ -117,7 +117,9 @@ export function Multibuffer(props: Props) {
   const render = (item: Item): JSX.Element =>
     match(item)
       .with({ kind: "row" }, (r) => <RowView item={r} review={props.review} layout={props.layout} />)
-      .with({ kind: "group" }, ({ file }) => <ChapterHeader file={file} review={props.review} />)
+      .with({ kind: "group" }, ({ file }) => (
+        <ChapterHeader file={file} review={props.review} view={props.view} />
+      ))
       .with({ kind: "head" }, ({ file }) => (
         <div class="pt-1.5">
           <Card review={props.review} file={file} class="overflow-clip rounded-t-md border-t">
@@ -200,32 +202,65 @@ function RowView(props: { item: RowItem; review: Review; layout: LayoutState }) 
   return el;
 }
 
-/** Where a chapter of the agent's tour starts: its number, title and what it's about. */
-function ChapterHeader(props: { file: number; review: Review }) {
+/**
+ * Where a chapter of the agent's tour starts: its number, title and what it's
+ * about. It folds the chapter: folded, it's all that shows of it.
+ */
+function ChapterHeader(props: { file: number; review: Review; view: View }) {
   const group = () => props.review.groupAt(props.review.paths()[props.file] ?? "");
   const number = () => {
     const g = group();
     return g ? props.review.groups().indexOf(g) + 1 : 0;
+  };
+  const open = () => props.view.chapterOpen(group()?.title ?? "");
+  const toggle = () => {
+    const g = group();
+    if (g) props.view.setChapterOpen(g.title, !open());
   };
   return (
     <div class="px-2.5 pt-3 pb-0.5">
       <header
         class="flex items-baseline gap-2 border-t border-line pt-2 font-sans text-[12.5px] whitespace-normal"
         data-group={group()?.title}
+        data-open={open()}
       >
+        <button
+          type="button"
+          class="size-[18px] shrink-0 cursor-pointer self-start rounded text-[9px] text-subtle hover:bg-hover hover:text-fg"
+          classList={{ "-rotate-90": !open() }}
+          aria-expanded={open()}
+          aria-label={open() ? `Collapse chapter ${group()?.title}` : `Expand chapter ${group()?.title}`}
+          title={`${open() ? "Collapse" : "Expand"} this chapter (z c)`}
+          onClick={toggle}
+        >
+          ▼
+        </button>
         <span class="shrink-0 font-mono text-[11px] text-subtle">
           {number()}/{props.review.groups().length}
         </span>
         <div class="min-w-0">
-          <h2 class="inline font-semibold text-fg">{group()?.title}</h2>
-          <Show when={group()?.summary}>
-            {(summary) => (
-              <Markdown
-                text={summary()}
-                paths={props.review.paths()}
-                class="max-w-[90ch] text-xs text-muted"
-              />
-            )}
+          <h2 class="inline font-semibold text-fg">
+            <button type="button" class="cursor-pointer text-left hover:underline" onClick={toggle}>
+              {group()?.title}
+            </button>
+          </h2>
+          <Show
+            when={open()}
+            fallback={
+              <span class="ml-2 text-xs text-subtle">
+                {group()?.paths.filter((p) => props.review.paths().includes(p)).length} files
+              </span>
+            }
+          >
+            <Show when={group()?.summary}>
+              {(summary) => (
+                <Markdown
+                  text={summary()}
+                  paths={props.review.paths()}
+                  class="max-w-[90ch] text-xs text-muted"
+                />
+              )}
+            </Show>
           </Show>
         </div>
       </header>

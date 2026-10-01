@@ -205,6 +205,14 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     },
     help: ["Context", "Collapse / expand this file"],
   },
+  {
+    keys: "z c",
+    run: ({ cmd, view }) => {
+      const f = view.cursor()?.file;
+      if (f !== undefined) cmd.toggleChapter(f);
+    },
+    help: ["Context", "Collapse / expand this chapter of the tour"],
+  },
   { keys: "z R", run: ({ cmd }) => cmd.expandAll(), help: ["Context", "Show everything / back to hunks"] },
   { keys: "z M", run: ({ cmd }) => cmd.collapseAll() },
   { keys: "g enter", run: ({ cmd }) => cmd.fileView(), help: ["Context", "The plain file here, no diff"] },

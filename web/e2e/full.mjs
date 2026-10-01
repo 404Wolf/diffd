@@ -1220,6 +1220,19 @@ try {
     check((await blurb.innerText()).includes("Burst capacity"), "the sidebar shows each chapter's description under it");
     await blurb.locator("[data-go]").first().click();
     check(await statusSoon(page, "bucket.rs:2"), "and its links go to the spots that matter");
+    // A chapter folds down to its header, and opening one of its files unfolds it.
+    const limiter = page.locator('.buffer.focused header[data-group="The limiter"]');
+    await limiter.getByRole("button", { name: "Collapse chapter The limiter" }).click();
+    now = await sections();
+    check(!now.includes("src/lib.rs") && !now.includes("src/bucket.rs"), "collapsing a chapter hides its files");
+    check((await limiter.getAttribute("data-open")) === "false" && (await limiter.innerText()).includes("2 files"), "and leaves its header, with how many files");
+    await page.locator('[data-tree-file="src/bucket.rs"]').click();
+    check((await limiter.getAttribute("data-open")) === "true" && (await sections()).includes("src/bucket.rs"), "opening one of its files unfolds it");
+    await page.locator(".buffer.focused").focus();
+    await keys(page, "z", "c");
+    check((await limiter.getAttribute("data-open")) === "false", "z c folds the chapter the cursor is in");
+    await keys(page, "z", "c");
+    check((await limiter.getAttribute("data-open")) === "true", "and unfolds it again");
     await page.locator(".buffer.focused").focus();
     await keys(page, "Space", "t", "g");
     check((await page.locator(".buffer.focused header[data-group]").count()) === 0, "space t g goes back to the plain diff, in tree order");

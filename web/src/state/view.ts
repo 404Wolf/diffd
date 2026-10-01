@@ -325,8 +325,19 @@ export function createView(review: Review) {
         if (f.collapsed && !(f.path in flags.collapsed)) setFlags("collapsed", f.path, true);
     }),
   );
+  // Tour chapters collapsed in the buffer, by title: only their header shows.
+  const [chapters, setChapters] = createStore<Record<string, boolean>>(loadJson(`diffd:chapters:${id}`, {}));
+  createEffect(() => saveJson(`diffd:chapters:${id}`, { ...chapters }));
+  /** Whether a file is in a collapsed chapter, when reading by chapter. */
+  const inClosedChapter = (file: number): boolean => {
+    if (!review.grouped()) return false;
+    const chapter = review.groups()[review.groupOf(review.snapshot().files[file]?.path ?? "")];
+    return chapter !== undefined && Boolean(chapters[chapter.title]);
+  };
+  const chapterOpen = (title: string): boolean => !chapters[title];
+  const setChapterOpen = (title: string, open: boolean) => setChapters(title, !open);
   const hidden = (file: number): boolean => {
-    if (review.isContext(file)) return true;
+    if (review.isContext(file) || inClosedChapter(file)) return true;
     const path = review.snapshot().files[file]?.path ?? "";
     return Boolean(flags.collapsed[path] || flags.viewed[path]);
   };
@@ -484,6 +495,9 @@ export function createView(review: Review) {
     flags,
     setFlags,
     hidden,
+    inClosedChapter,
+    chapterOpen,
+    setChapterOpen,
     cursor,
     setCursor,
     visual,
