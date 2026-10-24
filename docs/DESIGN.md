@@ -923,7 +923,10 @@ How we get there:
   stood in for by its height: rows from how their code wraps in the current
   column width, the rest from typical sizes. Once rendered, items are
   measured, and an item above the viewport that differs from its estimate
-  moves the scroll position by the difference, so nothing on screen moves.
+  moves the list the other way by the difference, so nothing on screen moves.
+  The scroll position only takes the difference over once scrolling has
+  stopped (or near the top of the list): writing it mid-scroll would cancel
+  the browser's smooth scroll, and scrolling up used to stutter or stop dead.
   Heights are kept in a Fenwick tree (`web/src/lib/windower.ts`): the item at
   a scroll position and an item's offset are O(log n).
 - **The reader's place is kept by the window.** Every layout change (a gap

@@ -6,10 +6,11 @@
  * (`lib/windower.ts`), so finding the items at a scroll position is O(log n).
  *
  * The reader never sees anything move: items rendered above the viewport that
- * come out taller or shorter than estimated shift the scroll position by the
- * difference, and every layout change (a gap expanding, a file collapsing, a
- * thread arriving, a revision) keeps the item at the top of the screen where
- * it was.
+ * come out taller or shorter than estimated shift the list by the difference
+ * (and the scroll position takes it over once scrolling stops, so a smooth
+ * scroll isn't cut short), and every layout change (a gap expanding, a file
+ * collapsing, a thread arriving, a revision) keeps the item at the top of the
+ * screen where it was.
  *
  * The multibuffer (`Multibuffer.tsx`) and file view (`Buffer.tsx`) are both
  * such lists; the pane registers the one it shows (`state/dom.ts`), and
@@ -44,6 +45,8 @@ const JUMP_MARGIN_PX = 200;
  * would save little, and every row being in the page keeps things simple.
  */
 const RENDER_ALL_PX = 12_000;
+/** A scroll has come to rest after this long without scroll events. */
+const REST_MS = 120;
 /** Keep the cursor this far from the edges when scrolling it into view (like `scroll-margin`). */
 const MARGIN_TOP_PX = 10;
 const MARGIN_BOTTOM_PX = 20;
@@ -98,12 +101,38 @@ export function WindowedList(props: Props) {
   let started = false;
 
   const sizeOf = (item: Item) => measured.get(item) ?? props.estimate(item);
+  /**
+   * How far the list is drawn below its place in the sizer. Items measured
+   * above the viewport while the reader scrolls change what's above them, and
+   * moving the scroll position to make up for it would cancel the browser's
+   * smooth scroll (a wheel notch, page down) halfway: scrolling up stuttered
+   * or stopped dead. So the list moves by the difference instead, and the
+   * scroll position takes it back once the scroll comes to rest (`settle`).
+   */
+  let slack = 0;
+  /** Whether the reader is scrolling: from a scroll event until it comes to rest. */
+  let scrolling = false;
   /** Where the list starts in the buffer's scrolling content (below a file view's header, say). */
   const origin = () => sizer.offsetTop;
   /** The viewport's top in the list's coordinates. */
-  const viewTop = (buf: HTMLElement) => buf.scrollTop - origin();
+  const viewTop = (buf: HTMLElement) => buf.scrollTop - origin() - slack;
   const scrollTo = (buf: HTMLElement, y: number) => {
-    buf.scrollTop = y + origin();
+    const next = y + origin() + slack;
+    // Only when it moves: any write cancels a smooth scroll in progress.
+    if (Math.abs(buf.scrollTop - next) >= 0.5) buf.scrollTop = next;
+  };
+  const place = () => {
+    sizer.style.height = `${heights.total() + slack}px`;
+    win.style.transform = `translateY(${heights.offset(range.start) + slack}px)`;
+  };
+  /** Give the slack back to the scroll position, which leaves everything on screen where it is. */
+  const settle = () => {
+    const buf = props.buf();
+    if (!buf || slack === 0) return;
+    const by = slack;
+    slack = 0;
+    place();
+    buf.scrollTop -= by;
   };
 
   const measureWidth = (buf: HTMLElement): boolean => {
@@ -155,7 +184,7 @@ export function WindowedList(props: Props) {
     const into = top - heights.offset(index);
     heights = heightsFor(next, resized);
     list = next;
-    sizer.style.height = `${heights.total()}px`;
+    sizer.style.height = `${heights.total() + slack}px`;
     if (held) {
       const at = props.nav.relocate(held);
       // The item itself keeps its offset; one standing in for it (its file's header) goes to the top.
@@ -197,6 +226,8 @@ export function WindowedList(props: Props) {
   const update = (force = false) => {
     const buf = props.buf();
     if (!buf) return;
+    // Near the start of the list the slack would show as a gap above it, or put its first lines out of reach.
+    if (slack !== 0 && Math.min(viewTop(buf), viewTop(buf) + slack) < buf.clientHeight) settle();
     const top = viewTop(buf);
     const bottom = top + buf.clientHeight;
     const total = heights.total();
@@ -245,7 +276,7 @@ export function WindowedList(props: Props) {
         end = Math.max(end, pin + 1);
       }
       range = { start, end };
-      win.style.transform = `translateY(${heights.offset(start)}px)`;
+      place();
       setShown(list.slice(start, end));
       measure();
     }
@@ -286,7 +317,8 @@ export function WindowedList(props: Props) {
   /**
    * Measure what's rendered; false when the DOM hasn't caught up yet. Items
    * above the top of the viewport that differ from their estimate move the
-   * scroll position by the difference, so the reader sees nothing move.
+   * list the other way by the difference, so the reader sees nothing move:
+   * the scroll position itself only takes it while nothing is scrolling.
    */
   const measureNow = (): boolean => {
     const buf = props.buf();
@@ -314,8 +346,9 @@ export function WindowedList(props: Props) {
       changed = true;
       if (index < first && top > 0) shift += delta;
     }
-    if (changed) sizer.style.height = `${heights.total()}px`;
-    if (shift !== 0) scrollTo(buf, top + shift);
+    slack -= shift;
+    if (changed) place();
+    if (!scrolling) settle();
     measuring = false;
     announceRows();
     // Shorter than estimated: what's rendered may no longer reach past the viewport.
@@ -419,7 +452,27 @@ export function WindowedList(props: Props) {
     ready();
     const buf = props.buf();
     if (!buf) return;
-    const onScroll = () => update();
+    // A scroll has come to rest when no scroll event follows for a moment and it
+    // hasn't moved since the last one (a busy page can delay the events, not the
+    // scroll). Not `scrollend`: Firefox can fire it as a smooth scroll starts.
+    let resting: ReturnType<typeof setTimeout> | undefined;
+    let seen = buf.scrollTop;
+    const rest = () => {
+      if (buf.scrollTop !== seen) {
+        seen = buf.scrollTop;
+        resting = setTimeout(rest, REST_MS);
+        return;
+      }
+      scrolling = false;
+      settle();
+    };
+    const onScroll = () => {
+      scrolling = true;
+      seen = buf.scrollTop;
+      clearTimeout(resting);
+      resting = setTimeout(rest, REST_MS);
+      update();
+    };
     buf.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("selectionchange", onSelectionChange);
     let height = buf.clientHeight;
@@ -430,6 +483,7 @@ export function WindowedList(props: Props) {
     });
     resized.observe(buf);
     onCleanup(() => {
+      clearTimeout(resting);
       buf.removeEventListener("scroll", onScroll);
       document.removeEventListener("selectionchange", onSelectionChange);
       resized.disconnect();

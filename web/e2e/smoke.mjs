@@ -1,7 +1,8 @@
 // Drive the page over any review, e.g. one of a real repository shared by
-// scripts/verify-review.py: load it, walk every file and commit, expand
-// everything, open file views and splits, use symbols, and check nothing
-// breaks (no page errors, no failed requests) and that it stays quick.
+// scripts/verify-review.py: load it, scroll up through it smoothly, walk every
+// file and commit, expand everything, open file views and splits, use symbols,
+// and check nothing breaks (no page errors, no failed requests, no scroll cut
+// short) and that it stays quick.
 //
 //   node web/e2e/smoke.mjs <review-url> [<review-url> …]
 import { createRequire } from "node:module";
@@ -39,6 +40,29 @@ for (const url of process.argv.slice(2)) {
     timings[name] = Date.now() - s;
   };
   await page.locator(".buffer.focused").focus();
+
+  // Scrolling up into rows that haven't been measured yet: each smooth scroll
+  // must travel its whole distance (correcting the scroll position mid-scroll
+  // used to cut it short).
+  await time("smooth scroll up", async () => {
+    const short = await page.evaluate(async () => {
+      const buf = document.querySelector(".buffer.focused");
+      const box = buf.getBoundingClientRect();
+      const [x, y] = [box.left + box.width / 4, box.top + box.height / 2];
+      buf.scrollTop = buf.scrollHeight / 2;
+      await new Promise((r) => setTimeout(r, 300));
+      const moves = [];
+      for (let i = 0; i < 12 && buf.scrollTop > 1200; i++) {
+        const row = document.elementFromPoint(x, y)?.closest(".row");
+        const at = row?.getBoundingClientRect().top;
+        buf.scrollBy({ top: -600, behavior: "smooth" });
+        await new Promise((r) => setTimeout(r, 1000));
+        if (row?.isConnected && at !== undefined) moves.push(Math.round(row.getBoundingClientRect().top - at));
+      }
+      return moves.filter((m) => Math.abs(m - 600) > 1);
+    });
+    for (const m of short) problems.push(`a smooth scroll up moved ${m}px of 600`);
+  });
 
   const seen = new Set();
   await time("walk files", async () => {
