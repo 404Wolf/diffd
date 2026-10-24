@@ -12,7 +12,7 @@ import {
 import { match } from "ts-pattern";
 import { columnAtPoint, wordAt } from "../lib/code";
 import { rowOf } from "../lib/diffModel";
-import { changeMarks, fileViewRowHtml, lineHtml } from "../lib/render";
+import { changeMarks, fileViewRowHtml, lineHtml, novelClassOf } from "../lib/render";
 import { ROW_PX, wrappedLines } from "../lib/windower";
 import type { Commands } from "../state/commands";
 import { bufferEl, rowEl, rowsRenderedEvent } from "../state/dom";
@@ -313,9 +313,10 @@ function usePaintCursor(props: Props) {
       if (cursor.word && code) {
         const file = props.review.snapshot().files[cursor.file];
         const r = file?.rows[cursor.row];
-        const side = code.dataset.side === "old" ? file?.old : file?.new;
-        const line = r ? (code.dataset.side === "old" ? r[0] : r[1]) : null;
-        if (side && line !== null && line !== undefined) {
+        const which = code.dataset.side === "old" ? "old" : "new";
+        const side = which === "old" ? file?.old : file?.new;
+        const line = r ? (which === "old" ? r[0] : r[1]) : null;
+        if (file && side && line !== null && line !== undefined) {
           painted.word = { el: code, html: code.innerHTML };
           const inDiff = props.pane.mode().kind === "diff";
           code.innerHTML = lineHtml(
@@ -323,7 +324,7 @@ function usePaintCursor(props: Props) {
             side.syntax[line],
             inDiff ? side.novel[line] : undefined,
             {
-              novelClass: inDiff ? (code.dataset.side === "old" ? "nv-del" : "nv-add") : null,
+              novelClass: inDiff ? novelClassOf(file, which, line) : null,
               refs: props.review.definedNames(),
               word: cursor.word.range,
             },

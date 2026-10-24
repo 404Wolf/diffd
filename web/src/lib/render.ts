@@ -86,6 +86,69 @@ export function lineHtml(
   return html;
 }
 
+/**
+ * A run of more lines than this that are new (or gone) in their entirety
+ * reads as a line diff: ordinary syntax colors on a tinted line, not a wall
+ * of green (or red) tokens. Shorter runs keep difftastic's look.
+ */
+export const MAX_TOKEN_RUN = 3;
+
+/** Whether a change covers every non-blank character of a line. */
+function wholeLine(text: string, novel: readonly number[] | undefined): boolean {
+  if (!novel?.length || text.trim() === "") return false;
+  let at = 0;
+  for (let i = 0; i + 1 < novel.length; i += 2) {
+    if (text.slice(at, novel[i]).trim() !== "") return false;
+    at = Math.max(at, novel[i + 1] as number);
+  }
+  return text.slice(at).trim() === "";
+}
+
+const lineDiffs = new WeakMap<FileDiff, Record<"old" | "new", ReadonlySet<number>>>();
+
+/**
+ * The lines of one side shown as a line diff (see `MAX_TOKEN_RUN`). Blank
+ * lines added among a run's lines belong to it but don't count toward its length.
+ */
+export function lineDiffLines(file: FileDiff, side: "old" | "new"): ReadonlySet<number> {
+  let found = lineDiffs.get(file);
+  if (!found) {
+    found = { old: wholeRuns(file, "old"), new: wholeRuns(file, "new") };
+    lineDiffs.set(file, found);
+  }
+  return found[side];
+}
+
+function wholeRuns(file: FileDiff, side: "old" | "new"): Set<number> {
+  const text = side === "old" ? file.old : file.new;
+  const out = new Set<number>();
+  // A new or deleted file has no token colors to begin with (see `soloSide`).
+  if (!text || soloSide(file) !== null) return out;
+  let run: number[] = [];
+  let whole = 0;
+  /** The run up to its last whole line: blank lines after it aren't part of it. */
+  let kept = 0;
+  const end = () => {
+    if (whole > MAX_TOKEN_RUN) for (const line of run.slice(0, kept)) out.add(line);
+    run = [];
+    whole = 0;
+    kept = 0;
+  };
+  for (const [o, n] of file.rows) {
+    const mine = side === "old" ? o : n;
+    if (mine === null) continue;
+    const line = text.lines[mine] ?? "";
+    if (wholeLine(line, text.novel[mine])) {
+      run.push(mine);
+      whole++;
+      kept = run.length;
+    } else if (whole > 0 && (side === "old" ? n : o) === null && line.trim() === "") run.push(mine);
+    else end();
+  }
+  end();
+  return out;
+}
+
 /** Whether a row shows a change on either side. */
 export function rowChanged(file: FileDiff, row: Row): boolean {
   const [o, n] = row;
@@ -113,22 +176,35 @@ function cell(
   marks: RowMarks,
   /** Emphasise changed tokens (not in a file that's all new or all deleted). */
   novelty: boolean,
+  /** Part of a run of whole new or deleted lines, drawn as a line diff (`lineDiffLines`). */
+  lineDiff: boolean,
 ): string {
   if (text === null || line === null) return '<div class="num empty"></div><div class="code empty"></div>';
   const novel = text.novel[line];
   const changed = otherMissing || (novel?.length ?? 0) > 0;
   const n = line + 1;
+  const ld = lineDiff ? ` ld-${side === "old" ? "del" : "add"}` : "";
   let cls = `num ${side}`;
   if (changed) cls += side === "old" ? " del" : " add";
+  cls += ld;
   if (side === "new" && marks.noted.has(n)) cls += " noted";
   if (side === "new" && marks.since.has(n)) cls += " since";
   const body = lineHtml(text.lines[line] ?? "", text.syntax[line], novel, {
-    novelClass: novelty ? (side === "old" ? "nv-del" : "nv-add") : null,
+    novelClass: novelty && !lineDiff ? (side === "old" ? "nv-del" : "nv-add") : null,
     refs: marks.refs,
   });
   const mark = marks.named?.get(`${side}:${n}`);
   const markHtml = mark ? `<i class="mk">${escapeHtml(mark)}</i>` : "";
-  return `<div class="${cls}" data-n="${n}" data-side="${side}">${markHtml}</div><div class="code" data-side="${side}">${body}</div>`;
+  return `<div class="${cls}" data-n="${n}" data-side="${side}">${markHtml}</div><div class="code${ld}" data-side="${side}">${body}</div>`;
+}
+
+/**
+ * The class for one line's novel tokens, or null when they aren't emphasised:
+ * a new or deleted file, or a line in a run drawn as a line diff.
+ */
+export function novelClassOf(file: FileDiff, side: "old" | "new", line: number): string | null {
+  if (soloSide(file) !== null || lineDiffLines(file, side).has(line)) return null;
+  return side === "old" ? "nv-del" : "nv-add";
 }
 
 /**
@@ -150,11 +226,13 @@ export function rowHtml(fileIndex: number, rowIndex: number, file: FileDiff, mar
   const chg = rowChanged(file, row) ? 1 : 0;
   // A new or deleted file is one column of ordinary code (see `soloSide`).
   const solo = soloSide(file);
+  const ldOld = o !== null && lineDiffLines(file, "old").has(o);
+  const ldNew = n !== null && lineDiffLines(file, "new").has(n);
   return (
     `<div class="row${marks.tests.has(rowIndex) ? " test" : ""}" data-f="${fileIndex}" data-r="${rowIndex}" data-ol="${o === null ? "" : o + 1}" ` +
     `data-nl="${n === null ? "" : n + 1}" data-chg="${chg}">` +
-    (solo === "new" ? "" : cell("old", file.old, o, n === null, marks, solo === null)) +
-    (solo === "old" ? "" : cell("new", file.new, n, o === null, marks, solo === null)) +
+    (solo === "new" ? "" : cell("old", file.old, o, n === null, marks, solo === null, ldOld)) +
+    (solo === "old" ? "" : cell("new", file.new, n, o === null, marks, solo === null, ldNew)) +
     "</div>"
   );
 }

@@ -232,6 +232,23 @@
   .solo-old .num.del {
     box-shadow: inset -2px 0 var(--del-mark);
   }
+  /*
+   * A run of whole new (or deleted) lines in a modified file: a line diff,
+   * ordinary syntax colors on a tinted line with the same gutter line, rather
+   * than every token in green (`lineDiffLines` in lib/render.ts).
+   */
+  .num.ld-add {
+    box-shadow: inset -2px 0 var(--add-mark);
+  }
+  .num.ld-del {
+    box-shadow: inset -2px 0 var(--del-mark);
+  }
+  .code.ld-add {
+    background: color-mix(in srgb, var(--add-bg) 55%, transparent);
+  }
+  .code.ld-del {
+    background: color-mix(in srgb, var(--del-bg) 55%, transparent);
+  }
   .code {
     min-width: 0;
     padding: 0 10px 0 8px;

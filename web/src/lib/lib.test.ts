@@ -17,7 +17,7 @@ import { JumpList } from "./jumps";
 import { KeyEngine, keyToken } from "./keymap";
 import { Lru } from "./lru";
 import { renderMarkdown, resolveRef } from "./markdown";
-import { changeMarks, lineHtml, rowHtml, soloSide } from "./render";
+import { changeMarks, lineDiffLines, lineHtml, novelClassOf, rowHtml, soloSide } from "./render";
 import { findMatches, nextMatch, occurrences } from "./search";
 import { CLASS_KINDS, definition, FUNCTION_KINDS, pair, paragraph, tag } from "./textObjects";
 import { buildTree, parentDir, treeOrder } from "./tree";
@@ -114,6 +114,72 @@ describe("rows", () => {
   });
   it("marks changes for file view", () => {
     expect(changeMarks(file(), "new")).toEqual(["", "mod", "add", ""]);
+  });
+});
+
+describe("runs of whole new lines", () => {
+  /** A modified file: one kept line, then `added` lines, each new in its entirety. */
+  const withAdded = (added: readonly string[]): FileDiff => {
+    const lines = ["fn keep() {}", ...added];
+    return {
+      ...file(),
+      old: { lines: ["fn keep() {}"], syntax: [[0, 2, 0]], novel: [[]] },
+      new: {
+        lines,
+        syntax: lines.map(() => [0, 2, 0]),
+        novel: lines.map((l, i) =>
+          i === 0 || l.trim() === "" ? [] : [l.length - l.trimStart().length, l.length],
+        ),
+      },
+      rows: [[0, 0], ...added.map((_, i): [null, number] => [null, i + 1])],
+    };
+  };
+  const marks = {
+    noted: new Set<number>(),
+    since: new Set<number>(),
+    refs: new Set<string>(),
+    tests: new Set<number>(),
+  };
+
+  it("keeps token colors for up to three lines", () => {
+    const f = withAdded(["fn a() {}", "fn b() {}", "fn c() {}"]);
+    expect(lineDiffLines(f, "new").size).toBe(0);
+    expect(rowHtml(0, 1, f, marks)).toContain("nv-add");
+    expect(novelClassOf(f, "new", 1)).toBe("nv-add");
+  });
+  it("draws a longer run as a line diff, with syntax colors", () => {
+    const f = withAdded(["fn a() {}", "  fn b() {}", "", "fn c() {}", "fn d() {}", ""]);
+    // The blank line inside the run belongs to it; the one after it doesn't.
+    expect([...lineDiffLines(f, "new")]).toEqual([1, 2, 3, 4, 5]);
+    const html = rowHtml(0, 2, f, marks);
+    expect(html).not.toContain("nv-add");
+    expect(html).toContain('class="num new add ld-add"');
+    expect(html).toContain('class="code ld-add" data-side="new"><span class="s-keyword">');
+    expect(rowHtml(0, 6, f, marks)).not.toContain("ld-add");
+    expect(novelClassOf(f, "new", 2)).toBe(null);
+  });
+  it("is broken by a line that changed only in part, and blanks don't count", () => {
+    const f = withAdded(["fn a() {}", "fn b() {}", "fn c() {}", "fn d() {}"]);
+    (f.new?.novel as number[][])[3] = [3, 4];
+    expect(lineDiffLines(f, "new").size).toBe(0);
+    expect(lineDiffLines(withAdded(["fn a() {}", "", "fn b() {}", "", "fn c() {}"]), "new").size).toBe(0);
+  });
+  it("draws long deletions the same way", () => {
+    const added = withAdded(["fn a() {}", "fn b() {}", "fn c() {}", "fn d() {}"]);
+    const removed: FileDiff = {
+      ...added,
+      old: added.new,
+      new: added.old,
+      rows: added.rows.map(([o, n]) => [n, o]),
+    };
+    expect([...lineDiffLines(removed, "old")]).toEqual([1, 2, 3, 4]);
+    expect(rowHtml(0, 1, removed, marks)).toContain('class="code ld-del" data-side="old"');
+  });
+  it("leaves new files alone: they have no token colors", () => {
+    const f = withAdded(["fn a() {}", "fn b() {}", "fn c() {}", "fn d() {}"]);
+    const created: FileDiff = { ...f, status: "added", old: null, rows: f.rows.map(([, n]) => [null, n]) };
+    expect(lineDiffLines(created, "new").size).toBe(0);
+    expect(novelClassOf(created, "new", 1)).toBe(null);
   });
 });
 
