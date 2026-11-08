@@ -302,3 +302,23 @@ reloads). SQL queries are checked at compile time; after changing one, run
 ## License
 
 MIT
+
+### Pairing reviews with a Herdr terminal
+
+An HTTP MCP client can send `X-Herdr-Terminal: t2r` on its requests. On
+`share_diff`, diffd records that terminal and the local core's stable ID in
+`ReviewMeta.terminal` and `ReviewMeta.coreId`. Both fields are nullable;
+preexisting reviews and clients outside Herdr continue to work. Identity is
+transport metadata, not a tool argument. It is read per POST and never shared
+between clients. Terminal addresses are local to a core.
+
+After sharing, diffd best-effort runs `hc label t2r diffd.review=<review id>`.
+Missing `hc`, an offline core, or a stale terminal never fails the share; each
+hc call has a 500ms limit. The label names the latest review that terminal
+shared. Clients should prefer the live label over guessing from a repository
+path. `GET /api/reviews?terminal=t2r` filters reviews before applying the recent
+list limit; `coreId` distinguishes old reviews from a replaced core.
+
+Claude Code's HTTP MCP `headers` can use
+`"X-Herdr-Terminal": "${HC_TERMINAL_ID:-}"`. Codex's `env_http_headers` can use
+`"X-Herdr-Terminal" = "HC_TERMINAL_ID"`. No stdio proxy is needed.

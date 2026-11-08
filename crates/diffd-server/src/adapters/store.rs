@@ -15,6 +15,11 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 /// How a review was asked for; kept so it can be rebuilt the same way.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ReviewSpec {
+    // Stored in the extensible spec, so existing databases need no schema migration.
+    #[serde(default)]
+    pub terminal: Option<String>,
+    #[serde(default)]
+    pub core_id: Option<String>,
     /// The base commit, resolved once when the review was shared, so moving
     /// refs (the agent committing on `HEAD`) don't shift what's reviewed.
     #[serde(default)]
@@ -147,12 +152,15 @@ impl Store {
         .fetch_optional(&self.pool)
         .await?;
         row.map(|r| {
+            let spec: ReviewSpec = parse(&r.spec)?;
             let meta = ReviewMeta {
                 id: ReviewId(r.id),
                 title: r.title,
                 summary: r.summary,
                 repo_path: r.repo_path,
                 repo_name: r.repo_name,
+                terminal: spec.terminal.clone(),
+                core_id: spec.core_id.clone(),
                 from: r.from_rev,
                 to: r.to_rev,
                 revision: r.revision as Revision,
@@ -160,7 +168,7 @@ impl Store {
                 created_at: r.created_at as Millis,
                 updated_at: r.updated_at as Millis,
             };
-            Ok((meta, parse(&r.spec)?))
+            Ok((meta, spec))
         })
         .transpose()
     }
@@ -174,6 +182,24 @@ impl Store {
             if let Some((meta, _)) = self.review(&id).await? {
                 let unread = self.unread(&id).await?;
                 out.push((meta, unread));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Filter before limiting: an old terminal review must not disappear behind other agents' work.
+    pub async fn for_terminal(&self, terminal: &str, limit: i64) -> anyhow::Result<Vec<(ReviewMeta, u32)>> {
+        let ids: Vec<String> =
+            sqlx::query_scalar("SELECT id FROM reviews WHERE json_extract(spec, '$.terminal') = ? ORDER BY updated_at DESC LIMIT ?")
+                .bind(terminal)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            let id = ReviewId(id);
+            if let Some((meta, _)) = self.review(&id).await? {
+                out.push((meta, self.unread(&id).await?));
             }
         }
         Ok(out)

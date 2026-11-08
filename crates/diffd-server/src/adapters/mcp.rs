@@ -290,8 +290,24 @@ with `collapse` or the `generated` label.")]
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         req.agent = which_agent(&context);
+        // Each tool POST carries its own HTTP headers; never retain one client's
+        // terminal on the shared MCP service or infer it from the service's env.
+        req.terminal = context
+            .extensions
+            .get::<axum::http::request::Parts>()
+            .and_then(|p| p.headers.get("x-herdr-terminal"))
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| valid_terminal(v))
+            .map(str::to_owned);
+        if req.terminal.is_some() {
+            req.core_id = herdr_core_id().await;
+        }
+        let terminal = req.terminal.clone();
         let result = try_app!(self.app.share(req).await);
         self.remember(&ReviewId(result.review_id.clone()));
+        if let Some(terminal) = terminal {
+            label_terminal(&terminal, &result.review_id).await;
+        }
         ok(&result)
     }
 
@@ -434,5 +450,66 @@ mod tests {
         assert_eq!(agent_name("rmcp/0.9"), None);
         assert_eq!(known_agent("claude-cli/2.1.283 (external, cli)").as_deref(), Some("Claude"));
         assert_eq!(known_agent("Mozilla/5.0 (X11; Linux x86_64)"), None);
+    }
+}
+
+// Attribution is optional: a missing hc binary, offline core, or stale terminal
+// must never prevent sharing a review. No shell, and a short bounded wait.
+fn valid_terminal(value: &str) -> bool {
+    value.len() > 1
+        && value.len() <= 32
+        && value.starts_with('t')
+        && value[1..].bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+}
+
+async fn hc_output(args: &[&str]) -> Option<std::process::Output> {
+    hc_output_using(std::path::Path::new("hc"), args).await
+}
+
+async fn hc_output_using(program: &std::path::Path, args: &[&str]) -> Option<std::process::Output> {
+    tokio::time::timeout(Duration::from_millis(500), tokio::process::Command::new(program).args(args).kill_on_drop(true).output())
+        .await
+        .ok()?
+        .ok()
+        .filter(|o| o.status.success())
+}
+
+async fn herdr_core_id() -> Option<String> {
+    let output = hc_output(&["server", "status", "--json"]).await?;
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    value["core"]["id"].as_str().map(str::to_owned)
+}
+
+async fn label_terminal(terminal: &str, review: &str) {
+    if hc_output(&["label", terminal, &format!("diffd.review={review}")]).await.is_none() {
+        tracing::debug!(terminal, review, "could not label the sharing terminal");
+    }
+}
+
+#[cfg(test)]
+mod herdr_tests {
+    #[tokio::test]
+    async fn hc_failure_is_optional_and_its_wait_is_bounded() {
+        assert!(super::hc_output_using(std::path::Path::new("/no/such/hc"), &["label", "t1", "diffd.review=test"]).await.is_none());
+        let start = std::time::Instant::now();
+        assert!(super::hc_output_using(std::path::Path::new("sh"), &["-c", "exec sleep 10"]).await.is_none());
+        assert!(start.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn hc_arguments_are_passed_without_a_shell() {
+        let output =
+            super::hc_output_using(std::path::Path::new("printf"), &["%s\n", "label", "t2r", "diffd.review=example"]).await.unwrap();
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), "label\nt2r\ndiffd.review=example\n");
+    }
+
+    #[test]
+    fn only_local_terminal_addresses_are_accepted() {
+        for value in ["t1", "t2r", "tabc123"] {
+            assert!(super::valid_terminal(value));
+        }
+        for value in ["", "t", "--help", "server/t2r", "t2r\n", "${HC_TERMINAL_ID}", "t☃", "t;id"] {
+            assert!(!super::valid_terminal(value), "{value}");
+        }
     }
 }

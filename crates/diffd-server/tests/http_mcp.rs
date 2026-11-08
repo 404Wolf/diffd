@@ -225,3 +225,40 @@ async fn allowed_hosts_reach_the_pages_but_not_mcp() {
         .unwrap();
     assert_ne!(same.status(), 403);
 }
+
+#[tokio::test]
+async fn sharing_terminal_is_transport_scoped_persisted_and_filterable() {
+    use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+    let repo = common::Repo::new();
+    repo.write("file.txt", "before\n");
+    repo.commit("init");
+    repo.write("file.txt", "after\n");
+    let port = serve().await;
+    let base = format!("http://127.0.0.1:{port}");
+    let headers = std::collections::HashMap::from([(
+        axum::http::HeaderName::from_static("x-herdr-terminal"),
+        axum::http::HeaderValue::from_static("tcontract"),
+    )]);
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base}/mcp")).custom_headers(headers),
+    );
+    let client = ().serve(transport).await.unwrap();
+    let shared = call(&client, "share_diff", json!({"repo_path": repo.path(), "from": "HEAD", "title": "linked"})).await;
+    let id = shared["review_id"].as_str().unwrap();
+    let state: Value = reqwest::get(format!("{base}/api/reviews/{id}")).await.unwrap().json().await.unwrap();
+    assert_eq!(state["review"]["terminal"], "tcontract");
+    let filtered: Vec<Value> = reqwest::get(format!("{base}/api/reviews?terminal=tcontract")).await.unwrap().json().await.unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0]["review"]["id"], id);
+    let other: Vec<Value> = reqwest::get(format!("{base}/api/reviews?terminal=tother")).await.unwrap().json().await.unwrap();
+    assert!(other.is_empty());
+    // Another MCP session cannot inherit this terminal, including when hc failed.
+    let plain = ().serve(StreamableHttpClientTransport::from_uri(format!("{base}/mcp"))).await.unwrap();
+    let shared = call(&plain, "share_diff", json!({"repo_path": repo.path(), "from": "HEAD", "title": "unlinked"})).await;
+    let state: Value =
+        reqwest::get(format!("{base}/api/reviews/{}", shared["review_id"].as_str().unwrap())).await.unwrap().json().await.unwrap();
+    assert!(state["review"]["terminal"].is_null());
+    assert!(state["review"]["coreId"].is_null());
+    client.cancel().await.unwrap();
+    plain.cancel().await.unwrap();
+}

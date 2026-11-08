@@ -256,9 +256,26 @@ async fn highlight(axum::Json(req): axum::Json<HighlightRequest>) -> Response {
     axum::Json(Highlighted { lines }).into_response()
 }
 
-#[utoipa::path(get, path = "/api/reviews", responses((status = 200, body = Vec<ReviewSummary>)))]
-async fn list_reviews(State(web): State<Web>) -> Response {
-    match recent(&web.app).await {
+#[derive(Default, serde::Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ReviewQuery {
+    /// Reviews shared by this terminal on the server's core.
+    terminal: Option<String>,
+}
+
+#[utoipa::path(get, path = "/api/reviews", params(ReviewQuery), responses((status = 200, body = Vec<ReviewSummary>)))]
+async fn list_reviews(State(web): State<Web>, Query(q): Query<ReviewQuery>) -> Response {
+    let result = if let Some(terminal) = q.terminal {
+        web.app
+            .store()
+            .for_terminal(&terminal, 100)
+            .await
+            .map(|rows| rows.into_iter().map(|(review, unread)| ReviewSummary { review, unread }).collect())
+            .map_err(AppError::from)
+    } else {
+        recent(&web.app).await
+    };
+    match result {
         Ok(r) => axum::Json(r).into_response(),
         Err(e) => error_response(e),
     }

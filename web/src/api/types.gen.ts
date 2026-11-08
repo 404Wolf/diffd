@@ -417,6 +417,14 @@ export type ReviewMeta = {
     summary: string | null;
     repoPath: string;
     repoName: string;
+    /**
+     * The sharing terminal on `core_id`, when the MCP client supplied it.
+     */
+    terminal: string | null;
+    /**
+     * Stable herdr-core identity; terminal addresses alone are machine-local.
+     */
+    coreId: string | null;
     from: string;
     /**
      * `None` means the working tree.
@@ -702,7 +710,12 @@ export type HighlightResponse = HighlightResponses[keyof HighlightResponses];
 export type ListReviewsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Reviews shared by this terminal on the server's core.
+         */
+        terminal?: string;
+    };
     url: '/api/reviews';
 };
 

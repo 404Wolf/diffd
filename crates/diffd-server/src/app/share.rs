@@ -66,6 +66,13 @@ pub struct ShareRequest {
     #[serde(skip)]
     #[schemars(skip)]
     pub agent: Option<String>,
+    /// Set by the transport, never by the model.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub terminal: Option<String>,
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub core_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -105,6 +112,8 @@ impl App {
         }
         let title = title.to_owned();
         let spec = ReviewSpec {
+            terminal: req.terminal.clone(),
+            core_id: req.core_id.clone(),
             base: None,
             merge_base: req.merge_base,
             paths: req.paths.clone(),
@@ -131,6 +140,8 @@ impl App {
             summary: req.summary.filter(|s| !s.trim().is_empty()),
             repo_path: repo.root.to_string_lossy().into_owned(),
             repo_name: repo.name,
+            terminal: req.terminal,
+            core_id: req.core_id,
             from: req.from,
             to: req.to,
             revision: 1,

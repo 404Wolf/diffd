@@ -40,6 +40,17 @@
     "/api/reviews": {
       "get": {
         "operationId": "list_reviews",
+        "parameters": [
+          {
+            "name": "terminal",
+            "in": "query",
+            "description": "Reviews shared by this terminal on the server's core.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1633,6 +1644,8 @@
           "summary",
           "repoPath",
           "repoName",
+          "terminal",
+          "coreId",
           "from",
           "to",
           "revision",
@@ -1658,6 +1671,20 @@
           },
           "repoName": {
             "type": "string"
+          },
+          "terminal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The sharing terminal on `core_id`, when the MCP client supplied it."
+          },
+          "coreId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable herdr-core identity; terminal addresses alone are machine-local."
           },
           "from": {
             "type": "string"

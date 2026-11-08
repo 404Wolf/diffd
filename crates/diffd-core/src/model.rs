@@ -410,6 +410,12 @@ pub struct ReviewMeta {
     pub summary: Option<String>,
     pub repo_path: String,
     pub repo_name: String,
+    /// The sharing terminal on `core_id`, when the MCP client supplied it.
+    #[serde(default)]
+    pub terminal: Option<String>,
+    /// Stable herdr-core identity; terminal addresses alone are machine-local.
+    #[serde(default)]
+    pub core_id: Option<String>,
     pub from: String,
     /// `None` means the working tree.
     pub to: Option<String>,
