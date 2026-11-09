@@ -2,6 +2,7 @@
 
 pub mod difft;
 pub mod git;
+pub(crate) mod herdr;
 pub mod http;
 pub mod lsp;
 pub mod mcp;

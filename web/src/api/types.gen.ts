@@ -418,7 +418,7 @@ export type ReviewMeta = {
     repoPath: string;
     repoName: string;
     /**
-     * The sharing terminal on `core_id`, when the MCP client supplied it.
+     * The presentation terminal on `core_id`: explicit present_in, else the caller's terminal.
      */
     terminal: string | null;
     /**

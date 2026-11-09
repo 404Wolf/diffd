@@ -114,7 +114,8 @@ agent without installing the service.
 
 | Tool | What it's for |
 | --- | --- |
-| `share_diff` | Start a review: `from`/`to` revisions (default: the working tree), a title and summary, notes on tricky code, files to collapse, test regions and folds, groups of related changes and labels. |
+| `share_diff` | Start a review (optional `present_in` selects a Herdr reviewing pane): `from`/`to` revisions (default: the working tree), a title and summary, notes on tricky code, files to collapse, test regions and folds, groups of related changes and labels. |
+| `present_review` | Show an existing review beside a chosen Herdr terminal on this core (`review_id`, `present_in`), e.g. surface a worker's review in a manager's pane. |
 | `wait_for_feedback` | Wait (up to 50 s) for your comments and chat messages, batched once you pause. |
 | `reply` | Answer in a thread, where the code is. |
 | `say` | Answer in the chat. |
@@ -305,19 +306,43 @@ MIT
 
 ### Pairing reviews with a Herdr terminal
 
-An HTTP MCP client can send `X-Herdr-Terminal: t2r` on its requests. On
-`share_diff`, diffd records that terminal and the local core's stable ID in
-`ReviewMeta.terminal` and `ReviewMeta.coreId`. Both fields are nullable;
-preexisting reviews and clients outside Herdr continue to work. Identity is
-transport metadata, not a tool argument. It is read per POST and never shared
-between clients. Terminal addresses are local to a core.
+An HTTP MCP client can send `X-Herdr-Terminal: t2r` on each request. By
+default, `share_diff` presents the review beside that calling terminal. Set
+`present_in` to choose another terminal, for example a worker sending the
+review to a manager/deacon who is talking with the user:
 
-After sharing, diffd best-effort runs `hc label t2r diffd.review=<review id>`.
-Missing `hc`, an offline core, or a stale terminal never fails the share; each
-hc call has a 500ms limit. The label names the latest review that terminal
-shared. Clients should prefer the live label over guessing from a repository
-path. `GET /api/reviews?terminal=t2r` filters reviews before applying the recent
-list limit; `coreId` distinguishes old reviews from a replaced core.
+```json
+{"repo_path": "/work/project", "from": "main", "title": "Worker changes", "present_in": "t2r"}
+```
+
+For an existing review, call `present_review` with
+`{"review_id": "abc123", "present_in": "t2r"}`. Any terminal on the same core
+is allowed; the target does not need to have shared the review or run an agent.
+Diffd stores the **presentation target** in `ReviewMeta.terminal`, with the
+local core's stable ID in `ReviewMeta.coreId`. Both fields are nullable for
+older reviews and clients outside Herdr. The caller header is read per POST
+and never shared between clients; an explicit target takes precedence.
+
+After sharing, diffd best-effort sets `diffd.review=<review id>` on the target
+with `hc label`. `present_review` sets the new label first. On the old terminal,
+it preserves a label pointing to another review; if the label still points to
+the moved review, it restores that terminal's newest remaining review or
+clears the label when none remain. It never clears the destination when
+presenting in the same pane, nor changes an old terminal from a replaced core.
+Missing `hc`, an offline core, or a stale terminal does not lose the review;
+each hc call has a 500ms limit. `present_review` returns `labelled: false` if
+setting the destination failed, so callers can retry.
+
+Terminal addresses are local to a core. An unqualified `t2r` always means this
+diffd's core. A qualified address such as `server/t1c` is accepted only if
+`server` is this core's name and is normalized to `t1c` before calling hc.
+Other-machine targets are rejected: use that machine's diffd and repositories
+on that machine. `present_review` does not transfer a review between servers.
+The desktop follows the live label and opens beside the target when its pane
+is shown, even when that pane never shared the review. Clients should prefer
+the live label over guessing from a repository path.
+`GET /api/reviews?terminal=t2r` filters by the current presentation target before
+applying the recent list limit; `coreId` distinguishes replaced cores.
 
 Claude Code's HTTP MCP `headers` can use
 `"X-Herdr-Terminal": "${HC_TERMINAL_ID:-}"`. Codex's `env_http_headers` can use

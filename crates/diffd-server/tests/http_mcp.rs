@@ -59,7 +59,7 @@ async fn agent_and_page_talk_through_the_server() {
     let info = client.peer_info().unwrap();
     assert!(info.instructions.as_deref().unwrap_or("").contains("wait_for_feedback"));
     let tools: Vec<String> = client.list_all_tools().await.unwrap().into_iter().map(|t| t.name.into_owned()).collect();
-    for t in ["share_diff", "wait_for_feedback", "reply", "annotate", "say", "show", "refresh", "get_review"] {
+    for t in ["share_diff", "present_review", "wait_for_feedback", "reply", "annotate", "say", "show", "refresh", "get_review"] {
         assert!(tools.contains(&t.to_owned()), "missing tool {t}: {tools:?}");
     }
 
@@ -259,6 +259,63 @@ async fn sharing_terminal_is_transport_scoped_persisted_and_filterable() {
         reqwest::get(format!("{base}/api/reviews/{}", shared["review_id"].as_str().unwrap())).await.unwrap().json().await.unwrap();
     assert!(state["review"]["terminal"].is_null());
     assert!(state["review"]["coreId"].is_null());
+
+    // Explicit presentation is independent of the caller, including another MCP session.
+    let tools = client.list_all_tools().await.unwrap();
+    let share_tool = tools.iter().find(|t| t.name == "share_diff").unwrap();
+    assert!(share_tool.description.as_deref().unwrap().contains("present_in"));
+    assert!(share_tool.input_schema["properties"]["present_in"].is_object());
+    assert!(tools.iter().find(|t| t.name == "present_review").unwrap().description.as_deref().unwrap().contains("manager"));
+    let explicit = call(
+        &client,
+        "share_diff",
+        json!({
+            "repo_path": repo.path(), "from": "HEAD", "title": "for the manager", "present_in": "tmanagercontract",
+            "annotations": [{ "file": "file.txt", "lines": [1, 1], "body": "A note that survives moving." }]
+        }),
+    )
+    .await;
+    let explicit_id = explicit["review_id"].as_str().unwrap();
+    let before: Value = reqwest::get(format!("{base}/api/reviews/{explicit_id}")).await.unwrap().json().await.unwrap();
+    assert_eq!(before["review"]["terminal"], "tmanagercontract");
+    let filtered: Vec<Value> = reqwest::get(format!("{base}/api/reviews?terminal=tcontract")).await.unwrap().json().await.unwrap();
+    assert_eq!(filtered.len(), 1, "explicit target must not record the caller");
+    let moved = call(&plain, "present_review", json!({ "review_id": explicit_id, "present_in": "tothercontract" })).await;
+    assert_eq!(moved["present_in"], "tothercontract");
+    assert_eq!(moved["labelled"], false, "a nonexistent terminal doesn't prevent persisting the target");
+    let after: Value = reqwest::get(format!("{base}/api/reviews/{explicit_id}")).await.unwrap().json().await.unwrap();
+    assert_eq!(after["review"]["terminal"], "tothercontract");
+    assert_eq!(after["review"]["revision"], before["review"]["revision"]);
+    for field in ["snapshot", "threads", "layout", "chat"] {
+        assert_eq!(after[field], before[field], "moving must preserve {field}");
+    }
+    let filtered: Vec<Value> = reqwest::get(format!("{base}/api/reviews?terminal=tmanagercontract")).await.unwrap().json().await.unwrap();
+    assert!(filtered.is_empty(), "old terminal filter must no longer include this review");
+    let filtered: Vec<Value> = reqwest::get(format!("{base}/api/reviews?terminal=tothercontract")).await.unwrap().json().await.unwrap();
+    assert_eq!(filtered[0]["review"]["id"], explicit_id);
+
+    for tool in ["share_diff", "present_review"] {
+        for target in ["other-machine/t1", "--help", "t1\n", ""] {
+            let args = if tool == "share_diff" {
+                json!({"repo_path": repo.path(), "from": "HEAD", "title": "invalid target", "present_in": target})
+            } else {
+                json!({"review_id": explicit_id, "present_in": target})
+            };
+            let result =
+                client.call_tool(CallToolRequestParams::new(tool).with_arguments(args.as_object().unwrap().clone())).await.unwrap();
+            assert_eq!(result.is_error, Some(true), "{tool} must reject {target:?}");
+        }
+    }
+    let unchanged: Value = reqwest::get(format!("{base}/api/reviews/{explicit_id}")).await.unwrap().json().await.unwrap();
+    assert_eq!(unchanged["review"]["terminal"], "tothercontract", "invalid calls never move the review");
+    let missing = client
+        .call_tool(
+            CallToolRequestParams::new("present_review")
+                .with_arguments(json!({"review_id": "missing", "present_in": "tcontract"}).as_object().unwrap().clone()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing.is_error, Some(true));
     client.cancel().await.unwrap();
     plain.cancel().await.unwrap();
 }

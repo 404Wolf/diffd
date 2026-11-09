@@ -262,6 +262,20 @@ impl App {
         self.store.review(id).await?.ok_or_else(|| no_review(id))
     }
 
+    /// Repoint a review without rebuilding its diff or replacing its conversation/layout.
+    /// Return the old metadata so the transport can repair the previous pane's label.
+    pub async fn present(&self, id: &ReviewId, terminal: String, core_id: Option<String>) -> Result<ReviewMeta> {
+        let live = self.live(id).await?;
+        // Rebuild and annotate also write spec; don't let either overwrite this target.
+        let _guard = live.rebuild.lock().await;
+        let (meta, mut spec) = self.meta(id).await?;
+        spec.terminal = Some(terminal);
+        spec.core_id = core_id;
+        self.store.set_spec(id, &spec).await?;
+        self.store.touch_review(id, self.now()).await?;
+        Ok(meta)
+    }
+
     fn broadcast(live: &Live, msg: ServerMsg) {
         // No subscribers is fine: nobody has the page open.
         let _ = live.tx.send(msg);

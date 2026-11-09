@@ -14,12 +14,16 @@ use rmcp::{ErrorData, RoleServer, ServerHandler, tool, tool_handler, tool_router
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::adapters::herdr::{Herdr, target, valid_terminal};
 use crate::app::{App, AppError, LayoutInput, NoteInput, RegionInput, ShareRequest};
 
 const INSTRUCTIONS: &str = "\
 diffd shows your code changes to the user as a live review in their browser, and lets you talk about them there.
 
 When you've made a meaningful change, or the user asks to review something, call share_diff and give the user the url.
+In Herdr, set share_diff.present_in to choose the reviewing pane (e.g. a manager's t2r instead of a worker's).
+It defaults to your calling terminal. Use present_review to move an existing review to another pane on this core.
+For another machine, use that machine's diffd.
 Annotate the parts a reviewer would trip over, in plain language. Mark generated files, lockfiles and vendored code to collapse.
 For more than a few files, give a guided tour with `groups`: chapters of related changes in the order that explains the change
 best (types and data first, then logic, callers, UI, tests last), each with a short summary that points at the spots that
@@ -226,6 +230,17 @@ pub struct ReviewParams {
     pub review_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PresentParams {
+    /// The existing review to show; it need not be one you shared.
+    pub review_id: String,
+    /// Herdr terminal to show it beside, e.g. a manager's t2r. Any terminal on
+    /// this diffd's core is allowed, including this core's name/t2r. For a
+    /// different machine, call that machine's diffd instead.
+    pub present_in: String,
+}
+
 #[derive(Serialize)]
 struct ReviewOverview {
     review_id: String,
@@ -283,7 +298,10 @@ in the order that explains the change best, each with a short `summary` that nam
 first as `path:line` (links in the page). `labels` mark files a reviewer may want to \
 hide, e.g. `frontend` for web client code. \
 Tests, lockfiles and generated code (`.sqlx`, `@generated`, minified) are recognised by themselves; mark others \
-with `collapse` or the `generated` label.")]
+with `collapse` or the `generated` label. \
+In Herdr, `present_in` chooses which terminal pane shows the review, e.g. a deacon/manager's `t2r` instead of a \
+worker's pane. It defaults to the caller's X-Herdr-Terminal. The target must be on this diffd's core; use another \
+machine's diffd for that machine. Use present_review to move an already shared review.")]
     async fn share_diff(
         &self,
         Parameters(mut req): Parameters<ShareRequest>,
@@ -292,23 +310,59 @@ with `collapse` or the `generated` label.")]
         req.agent = which_agent(&context);
         // Each tool POST carries its own HTTP headers; never retain one client's
         // terminal on the shared MCP service or infer it from the service's env.
-        req.terminal = context
+        let header = context
             .extensions
             .get::<axum::http::request::Parts>()
             .and_then(|p| p.headers.get("x-herdr-terminal"))
             .and_then(|v| v.to_str().ok())
             .filter(|v| valid_terminal(v))
             .map(str::to_owned);
-        if req.terminal.is_some() {
-            req.core_id = herdr_core_id().await;
-        }
+        let hc = Herdr::default();
+        let core = if req.present_in.is_some() || header.is_some() { hc.core().await } else { None };
+        req.terminal = match req.present_in.as_deref() {
+            Some(value) => match target(value, core.as_ref()) {
+                Ok(terminal) => Some(terminal),
+                Err(error) => return fail(error),
+            },
+            None => header,
+        };
+        req.core_id = req.terminal.as_ref().and_then(|_| core.map(|c| c.id));
         let terminal = req.terminal.clone();
         let result = try_app!(self.app.share(req).await);
         self.remember(&ReviewId(result.review_id.clone()));
         if let Some(terminal) = terminal {
-            label_terminal(&terminal, &result.review_id).await;
+            hc.label(&terminal, &result.review_id).await;
         }
         ok(&result)
+    }
+
+    #[tool(description = "Show an existing review beside a chosen Herdr terminal pane. Use this when a manager/deacon \
+wants to present a worker's review in their own pane, or to move a review after sharing it. Pass review_id and \
+present_in (e.g. t2r, or this core's name/t2r). Any terminal on this diffd's core is allowed. Another machine needs \
+that machine's diffd; this tool does not transfer reviews between servers. Moves the diffd.review label to the \
+target and preserves unrelated labels on the old pane, restoring its newest remaining review when needed. \
+Labeling is best effort; labelled=false means hc was unavailable or the terminal was stale, so retry when ready.")]
+    async fn present_review(&self, Parameters(p): Parameters<PresentParams>) -> Result<CallToolResult, ErrorData> {
+        let hc = Herdr::default();
+        let core = hc.core().await;
+        let terminal = match target(&p.present_in, core.as_ref()) {
+            Ok(terminal) => terminal,
+            Err(error) => return fail(error),
+        };
+        let id = ReviewId(p.review_id);
+        let core_id = core.map(|c| c.id);
+        let old = try_app!(self.app.present(&id, terminal.clone(), core_id.clone()).await);
+        // Never touch a terminal from an earlier core whose short address got reused.
+        let old_terminal = old.terminal.as_deref().filter(|_| old.core_id.is_some() && old.core_id == core_id);
+        let replacement = match old_terminal.filter(|old| *old != terminal) {
+            Some(old) => try_app!(self.app.store().for_terminal(old, 200).await.map_err(AppError::from))
+                .into_iter()
+                .find(|(meta, _)| meta.core_id == core_id),
+            None => None,
+        };
+        let labelled = hc.move_label(old_terminal, &terminal, &id.0, replacement.as_ref().map(|(meta, _)| meta.id.0.as_str())).await;
+        self.remember(&id);
+        ok(&serde_json::json!({ "review_id": id.0, "present_in": terminal, "core_id": core_id, "labelled": labelled }))
     }
 
     #[tool(description = "Wait for the user's comments on the review, and return them. Returns as soon as the user has \
@@ -450,66 +504,5 @@ mod tests {
         assert_eq!(agent_name("rmcp/0.9"), None);
         assert_eq!(known_agent("claude-cli/2.1.283 (external, cli)").as_deref(), Some("Claude"));
         assert_eq!(known_agent("Mozilla/5.0 (X11; Linux x86_64)"), None);
-    }
-}
-
-// Attribution is optional: a missing hc binary, offline core, or stale terminal
-// must never prevent sharing a review. No shell, and a short bounded wait.
-fn valid_terminal(value: &str) -> bool {
-    value.len() > 1
-        && value.len() <= 32
-        && value.starts_with('t')
-        && value[1..].bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-}
-
-async fn hc_output(args: &[&str]) -> Option<std::process::Output> {
-    hc_output_using(std::path::Path::new("hc"), args).await
-}
-
-async fn hc_output_using(program: &std::path::Path, args: &[&str]) -> Option<std::process::Output> {
-    tokio::time::timeout(Duration::from_millis(500), tokio::process::Command::new(program).args(args).kill_on_drop(true).output())
-        .await
-        .ok()?
-        .ok()
-        .filter(|o| o.status.success())
-}
-
-async fn herdr_core_id() -> Option<String> {
-    let output = hc_output(&["server", "status", "--json"]).await?;
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-    value["core"]["id"].as_str().map(str::to_owned)
-}
-
-async fn label_terminal(terminal: &str, review: &str) {
-    if hc_output(&["label", terminal, &format!("diffd.review={review}")]).await.is_none() {
-        tracing::debug!(terminal, review, "could not label the sharing terminal");
-    }
-}
-
-#[cfg(test)]
-mod herdr_tests {
-    #[tokio::test]
-    async fn hc_failure_is_optional_and_its_wait_is_bounded() {
-        assert!(super::hc_output_using(std::path::Path::new("/no/such/hc"), &["label", "t1", "diffd.review=test"]).await.is_none());
-        let start = std::time::Instant::now();
-        assert!(super::hc_output_using(std::path::Path::new("sh"), &["-c", "exec sleep 10"]).await.is_none());
-        assert!(start.elapsed() < std::time::Duration::from_secs(2));
-    }
-
-    #[tokio::test]
-    async fn hc_arguments_are_passed_without_a_shell() {
-        let output =
-            super::hc_output_using(std::path::Path::new("printf"), &["%s\n", "label", "t2r", "diffd.review=example"]).await.unwrap();
-        assert_eq!(String::from_utf8(output.stdout).unwrap(), "label\nt2r\ndiffd.review=example\n");
-    }
-
-    #[test]
-    fn only_local_terminal_addresses_are_accepted() {
-        for value in ["t1", "t2r", "tabc123"] {
-            assert!(super::valid_terminal(value));
-        }
-        for value in ["", "t", "--help", "server/t2r", "t2r\n", "${HC_TERMINAL_ID}", "t☃", "t;id"] {
-            assert!(!super::valid_terminal(value), "{value}");
-        }
     }
 }

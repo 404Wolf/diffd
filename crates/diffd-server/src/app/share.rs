@@ -62,11 +62,17 @@ pub struct ShareRequest {
     /// files are recognised by themselves; label any the paths don't give away (`test`, `generated`).
     #[serde(default)]
     pub labels: Vec<Label>,
+    /// Show the review beside this Herdr terminal instead of the caller's pane,
+    /// e.g. a manager's `t2r`. Defaults to the caller's X-Herdr-Terminal header.
+    /// The target must be on this diffd's core; a local core-name prefix is accepted.
+    /// For another machine, call that machine's diffd instead.
+    #[serde(default)]
+    pub present_in: Option<String>,
     /// The agent's name, from its MCP client (not a tool argument).
     #[serde(skip)]
     #[schemars(skip)]
     pub agent: Option<String>,
-    /// Set by the transport, never by the model.
+    /// Presentation target resolved by the transport, from present_in or the caller's header.
     #[serde(skip)]
     #[schemars(skip)]
     pub terminal: Option<String>,

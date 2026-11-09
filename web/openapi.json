@@ -1677,7 +1677,7 @@
               "string",
               "null"
             ],
-            "description": "The sharing terminal on `core_id`, when the MCP client supplied it."
+            "description": "The presentation terminal on `core_id`: explicit present_in, else the caller's terminal."
           },
           "coreId": {
             "type": [
