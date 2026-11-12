@@ -103,7 +103,13 @@ impl App {
 
     /// Rebuild a review from the repository. Returns the new revision, or
     /// `None` when nothing changed.
+    /// How many rebuilds have run (for tests and metrics).
+    pub fn rebuild_count(&self) -> u64 {
+        self.rebuilds.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub async fn rebuild(&self, id: &ReviewId) -> Result<Option<Revision>> {
+        self.rebuilds.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let live = self.live(id).await?;
         let _guard = live.rebuild.lock().await;
         let (mut meta, spec) = self.meta(id).await?;

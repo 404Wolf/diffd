@@ -24,9 +24,30 @@ use crate::ports::TreeWatch;
 
 /// How long to wait for more changes before rebuilding.
 const DEBOUNCE: Duration = Duration::from_millis(300);
+/// While changes keep coming (a build or dev server writing), at least this
+/// long between one rebuild of a review and the next.
+const REBUILD_GAP: Duration = Duration::from_secs(2);
 
-/// Directory names whose contents never affect a review.
-const SKIPPED_DIRS: &[&str] = &["node_modules", "target", ".direnv", ".venv", "__pycache__"];
+/// Directory names whose contents never affect a review: dependencies,
+/// tool caches and build output.
+const SKIPPED_DIRS: &[&str] = &[
+    "node_modules",
+    "target",
+    ".direnv",
+    ".venv",
+    "__pycache__",
+    "dist",
+    ".next",
+    ".turbo",
+    ".vite",
+    ".parcel-cache",
+    ".svelte-kit",
+    ".nuxt",
+    ".output",
+    ".cache",
+    ".pytest_cache",
+    ".mypy_cache",
+];
 /// Inside `.git`, only what moves `HEAD`, branches or the index matters.
 const GIT_SKIPPED: &[&str] = &["objects", "logs", "lfs", "modules", "hooks"];
 
@@ -167,11 +188,18 @@ impl Watcher {
             let mut repos = self.repos.lock().expect("watch lock");
             let Some(repo) = repos.get_mut(root) else { return };
             let mut any = false;
-            for path in paths.iter().filter(|p| relevant(root, p)) {
-                any = true;
+            let wanted: Vec<&PathBuf> = paths.iter().filter(|p| relevant(root, p) && !repo.under_ignored(p)).collect();
+            for path in wanted {
                 if path.is_dir() && !repo.dirs.contains(path) {
+                    // Made after watching started (dist/, a cache): ignored by
+                    // the repository means never watched, and no rebuild.
+                    if git_ignores(root, path) {
+                        repo.ignored.insert(path.clone());
+                        continue;
+                    }
                     repo.add_tree(root, path);
                 }
+                any = true;
             }
             if !any {
                 return;
@@ -196,8 +224,9 @@ impl Watcher {
         }
         let (app, me) = (self.app.clone(), self.me.clone());
         self.runtime.spawn(async move {
+            let mut wait = DEBOUNCE;
             loop {
-                tokio::time::sleep(DEBOUNCE).await;
+                tokio::time::sleep(wait).await;
                 // Whatever changed while waiting, this rebuild covers.
                 if let Some(me) = me.upgrade() {
                     me.rebuilds.lock().expect("rebuild lock").again.remove(&id);
@@ -214,6 +243,8 @@ impl Watcher {
                     r.running.remove(&id);
                     return;
                 }
+                // Still changing: one rebuild per gap, not one per debounce.
+                wait = REBUILD_GAP;
             }
         });
     }
@@ -231,6 +262,11 @@ impl TreeWatch for Watcher {
 }
 
 impl RepoWatch {
+    /// Whether `path` is inside a directory the repository ignores.
+    fn under_ignored(&self, path: &Path) -> bool {
+        path.ancestors().any(|a| self.ignored.contains(a))
+    }
+
     /// Watch `dir` and every directory below it that can matter.
     fn add_tree(&mut self, root: &Path, dir: &Path) {
         let mut stack = vec![dir.to_owned()];
@@ -253,6 +289,11 @@ impl RepoWatch {
 /// Whether an event is a change to the files, not someone reading them.
 fn writes(kind: &EventKind) -> bool {
     !matches!(kind, EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(MetadataKind::AccessTime)))
+}
+
+/// Whether the repository at `root` ignores `path` (`.gitignore` and friends).
+fn git_ignores(root: &Path, path: &Path) -> bool {
+    Command::new("git").arg("-C").arg(root).args(["check-ignore", "-q", "--"]).arg(path).status().is_ok_and(|s| s.success())
 }
 
 /// Directories the repository ignores (`.gitignore` and friends), as absolute paths.
@@ -280,6 +321,9 @@ mod tests {
         assert!(relevant(root, Path::new("/home/me/target/demo/.git/refs/heads/main")), "commits count");
         assert!(relevant(root, Path::new("/home/me/target/demo/.git/index")), "staging counts");
         assert!(relevant(root, Path::new("/home/me/target/demo/src/targets.rs")), "only whole names match");
+        for out in ["dist/index.js", "apps/web/.next/cache/x", ".turbo/cookies/1", "apps/web/.vite/deps/a.js"] {
+            assert!(!relevant(root, &root.join(out)), "{out} is build output");
+        }
     }
 
     #[test]

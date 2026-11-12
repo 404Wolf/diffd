@@ -100,6 +100,7 @@ impl App {
         // don't see the agent stop and start listening each time.
         let mut listening: HashMap<ReviewId, Listening<'_>> = HashMap::new();
         loop {
+            self.wake_passes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let lives = self.reviews_around(&cwd).await?;
             listening.retain(|id, _| lives.iter().any(|(l, _)| l == id));
             for (id, live) in &lives {
@@ -113,7 +114,9 @@ impl App {
             if let Some(notice) = self.take_notice(&lives).await? {
                 return Ok(Some(notice));
             }
-            let recheck = lives.iter().map(|(_, live)| self.gate_wait(live)).min().unwrap_or(RESCAN).min(RESCAN);
+            // Only a quiet period still running needs a timer: anything else the
+            // user does (a comment, a draft opened or closed) wakes this loop.
+            let recheck = lives.iter().filter_map(|(_, live)| self.gate_wait(live)).min().unwrap_or(RESCAN).min(RESCAN);
             let until = (tokio::time::Instant::now() + recheck).min(deadline);
             let any_feedback = async move {
                 if wakes.is_empty() {
@@ -159,9 +162,19 @@ impl App {
         Ok(out)
     }
 
-    /// How long until a review's feedback could be ready (the quiet period after typing).
-    fn gate_wait(&self, live: &Live) -> Duration {
-        Duration::from_millis(live.inner.lock().expect("live lock").gate.wait_ms(self.now()).max(100))
+    /// How long until a review's feedback could be ready (the quiet period
+    /// after typing), or `None` when no quiet period is running. Before, that
+    /// was 100 ms: every hook of an agent near a review then re-read the
+    /// recent reviews ten times a second, which on a machine with ~100 agents
+    /// kept diffd at its CPU limit.
+    fn gate_wait(&self, live: &Live) -> Option<Duration> {
+        let ms = live.inner.lock().expect("live lock").gate.wait_ms(self.now());
+        (ms > 0).then(|| Duration::from_millis(ms.max(100)))
+    }
+
+    /// How many passes the hooks' wait loops have made (for tests and metrics).
+    pub fn wake_passes(&self) -> u64 {
+        self.wake_passes.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Feedback nobody was told about yet, if the user has paused; marks it told.

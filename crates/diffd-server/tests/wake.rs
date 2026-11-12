@@ -111,3 +111,28 @@ async fn feedback_isnt_lost_to_a_wait_the_agent_gave_up_on() {
     let batch = app.wait_for_feedback(&id, Duration::from_secs(5)).await.unwrap();
     assert_eq!(batch.items.len(), 1);
 }
+
+#[tokio::test]
+async fn idle_hooks_do_not_spin() {
+    // A machine full of agents near reviews, none with anything to say: their
+    // hooks must sleep until something happens, not poll (wolf-macro-google ran
+    // ~50 such hooks at 10 passes a second each, holding diffd at 140-200% CPU).
+    let (repo, app, id) = setup().await;
+    let before = app.wake_passes();
+    let waits: Vec<_> = (0..10).map(|i| spawn_wait(&app, repo.path(), &format!("claude:idle{i}"), 30)).collect();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let passes = app.wake_passes() - before;
+    assert!(passes <= 20, "10 idle hooks made {passes} passes in 2 s (each should make about one)");
+    // They still hear feedback promptly once the user pauses.
+    let started = Instant::now();
+    app.chat_user(&id, None, "still there?").await.unwrap();
+    // One message wakes one waiter (see the first test); the rest keep waiting.
+    let (first, _, rest) = tokio::time::timeout(Duration::from_secs(4), futures::future::select_all(waits))
+        .await
+        .expect("woken within the quiet period plus a little");
+    assert!(first.unwrap().is_some());
+    assert!(started.elapsed() >= Duration::from_millis(1400), "after the user pauses");
+    for w in rest {
+        w.abort();
+    }
+}

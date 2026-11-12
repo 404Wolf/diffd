@@ -44,6 +44,10 @@ pub type Result<T> = std::result::Result<T, AppError>;
 
 /// Reviews updated within this long are watched again right after a restart, and can wake agents.
 const RECENT_MS: Millis = 7 * 24 * 60 * 60 * 1000;
+/// After a restart, only reviews touched this recently follow the working tree
+/// again; older ones start when someone opens them. Each watched repository
+/// costs inotify watches and rebuilds while builds write to it.
+const WATCH_RESUME_MS: Millis = 24 * 60 * 60 * 1000;
 
 /// What open pages are told when their review is deleted.
 pub const DELETED_MESSAGE: &str = "This review was deleted.";
@@ -61,6 +65,10 @@ pub struct App {
     code: Mutex<Option<Arc<dyn CodeIntel>>>,
     /// Harness hooks waiting to wake their agent (see `wake`).
     waiters: Mutex<wake::Waiters>,
+    /// Passes of every hook's wait loop (see `wake`): what an idle agent costs.
+    wake_passes: std::sync::atomic::AtomicU64,
+    /// Working-tree rebuilds run (see `rebuild`).
+    rebuilds: std::sync::atomic::AtomicU64,
     /// Held while diffing commits ahead of time (see `history`), so background
     /// work never takes more than one diff's worth of the machine.
     prefetching: tokio::sync::Mutex<()>,
@@ -117,6 +125,8 @@ impl App {
             watcher: Mutex::new(None),
             code: Mutex::new(None),
             waiters: Mutex::default(),
+            wake_passes: std::sync::atomic::AtomicU64::new(0),
+            rebuilds: std::sync::atomic::AtomicU64::new(0),
             prefetching: tokio::sync::Mutex::new(()),
             me: me.clone(),
         })
@@ -130,7 +140,8 @@ impl App {
     /// Resume following the working tree for reviews touched lately (after a
     /// restart). Older ones resume when someone opens them.
     pub async fn resume_watches(&self) -> Result<()> {
-        for meta in self.recent_reviews().await? {
+        let since = self.now().saturating_sub(WATCH_RESUME_MS);
+        for meta in self.recent_reviews().await?.into_iter().take_while(|m| m.updated_at >= since) {
             match self.store.review(&meta.id).await {
                 Ok(Some((meta, spec))) if follows_worktree(&meta, &spec) => self.start_watch(&meta),
                 Ok(_) => {}

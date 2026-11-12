@@ -323,3 +323,55 @@ async fn groups_labels_and_generated_files() {
     let msg = pages.recv().await.unwrap();
     assert!(matches!(msg, diffd_core::protocol::ServerMsg::Layout { .. }), "{msg:?}");
 }
+
+#[tokio::test]
+async fn a_build_or_dev_server_write_storm_does_not_spin() {
+    // A cargo/vite build writing thousands of files must not keep diffd
+    // rebuilding (wolf-macro-google: ~100 agents' builds, diffd pinned at 200% CPU).
+    let repo = common::Repo::new();
+    // As in real repositories, build output is ignored (untracked files a review would show otherwise).
+    repo.write(".gitignore", "target/\nnode_modules/\ndist/\n.next/\n.turbo/\ngen/\n");
+    repo.write("a.txt", "one\n");
+    repo.commit("init");
+    repo.write("a.txt", "two\n");
+    let app = common::app().await;
+    diffd_server::adapters::watch::Watcher::install(&app, tokio::runtime::Handle::current());
+    let mut req = share_request(&repo);
+    req.annotations.clear();
+    let id = diffd_core::model::ReviewId(app.share(req).await.unwrap().review_id);
+    tokio::time::sleep(Duration::from_millis(1500)).await; // the watch is set up and its catch-up rebuild done
+    let revision = app.state(&id).await.unwrap().snapshot.revision;
+
+    // Build output, dependencies, tool caches and a gitignored folder made after sharing.
+    let before = app.rebuild_count();
+    let started = std::time::Instant::now();
+    let mut n = 0;
+    while started.elapsed() < Duration::from_secs(2) {
+        for dir in ["target/debug/deps", "node_modules/.vite/deps", "dist/assets", "apps/web/.next/cache", ".turbo/cookies", "gen/out"] {
+            repo.write(&format!("{dir}/f{}.js", n % 50), &format!("// {n}\n"));
+        }
+        n += 1;
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    let wasted = app.rebuild_count() - before;
+    assert!(wasted <= 1, "{n} rounds of ignored writes caused {wasted} rebuilds");
+    assert_eq!(app.state(&id).await.unwrap().snapshot.revision, revision, "nothing a review shows changed");
+
+    // A tracked file rewritten nonstop for 3 s (a formatter in watch mode):
+    // a rebuild per gap, not one per debounce, and the last state still lands.
+    let before = app.rebuild_count();
+    let started = std::time::Instant::now();
+    let mut n = 0;
+    while started.elapsed() < Duration::from_secs(3) {
+        repo.write("a.txt", &format!("{n}\n"));
+        n += 1;
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    repo.write("a.txt", "final\n");
+    tokio::time::sleep(Duration::from_millis(3000)).await;
+    let rebuilds = app.rebuild_count() - before;
+    assert!(rebuilds <= 4, "{n} writes over 3 s caused {rebuilds} rebuilds");
+    let got = app.state(&id).await.unwrap().snapshot;
+    assert_eq!(got.files.iter().find(|f| f.path == "a.txt").unwrap().new.as_ref().unwrap().lines, vec!["final"]);
+}
