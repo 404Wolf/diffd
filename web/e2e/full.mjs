@@ -1322,9 +1322,11 @@ try {
     check((await line()) < from + 1, "{ back up");
     await cursorTo(page, "src/lib.rs", 45);
     await keys(page, "$");
-    check((await status(page)).includes(" · "), "$ puts the cursor on the last word");
+    // Just the cursor's part of the status line: the key hints beside it have · too.
+    const cursorStatus = () => page.locator("[data-cursor-status]").innerText();
+    check((await cursorStatus()).includes(" · "), "$ puts the cursor on the last word");
     await keys(page, "0");
-    check(!(await status(page)).includes(" · "), "0 back on the whole line");
+    check(!(await cursorStatus()).includes(" · "), "0 back on the whole line");
     await keys(page, "_");
     const word = (await status(page)).split(" · ")[1]?.split(" ")[0];
     await keys(page, "*");

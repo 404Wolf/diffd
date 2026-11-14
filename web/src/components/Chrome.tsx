@@ -289,7 +289,7 @@ export function StatusLine(props: { review: Review; view: View; layout: LayoutSt
   return (
     <footer class="flex h-6 items-center gap-3 overflow-hidden border-t border-line bg-panel px-2.5 font-mono text-[11px] whitespace-nowrap text-muted">
       <span class={`rounded-[3px] px-1.5 font-semibold tracking-wide ${modeColor()}`}>{props.mode()}</span>
-      <span>{position()}</span>
+      <span data-cursor-status>{position()}</span>
       <Show when={hunk()}>
         <span>{hunk()}</span>
       </Show>
