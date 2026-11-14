@@ -199,6 +199,9 @@
     font-size: 11px;
     user-select: none;
     cursor: pointer;
+    /* Pressing and dragging a line number selects lines (Buffer.tsx), with a finger too. */
+    touch-action: none;
+    -webkit-touch-callout: none;
   }
   .num::before {
     content: attr(data-n);

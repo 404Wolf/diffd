@@ -1112,6 +1112,18 @@ export function createCommands(review: Review, view: View) {
     view.setComposer({ kind: "new", ...a });
     review.drafting(true);
   };
+  /**
+   * Tapping another line number while writing a new comment on that file and
+   * side: the range now runs from where the comment starts to that line (or
+   * from that line to where it ends, when it's above).
+   */
+  const extendComposer = (file: number, side: Side, line: number) => {
+    const c = view.composer();
+    if (c?.kind !== "new" || c.anchor.side !== side || files()[file]?.path !== c.anchor.path) return;
+    const { start, end } = c.anchor;
+    if (line >= start) openComposer(file, side, start, line);
+    else openComposer(file, side, line, end);
+  };
   /** `gcc`, or `gc` in visual mode: comment on the cursor line or selected lines. */
   const comment = () => {
     const c = view.cursor();
@@ -1488,6 +1500,7 @@ export function createCommands(review: Review, view: View) {
     jumpForward,
     comment,
     openComposer,
+    extendComposer,
     commentSelection,
     replyTo,
     replyNear,

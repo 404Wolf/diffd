@@ -1606,6 +1606,141 @@ try {
     }
   });
 
+  await section("Reviewing from a phone: drag over line numbers, comment, reply, resolve", async () => {
+    const phone = await browser.newContext({
+      viewport: { width: 412, height: 915 },
+      deviceScaleFactor: 2.625,
+      isMobile: true,
+      hasTouch: true,
+    });
+    const p = await phone.newPage();
+    p.on("pageerror", (e) => errors.push(e.message));
+    const cdp = await phone.newCDPSession(p);
+    /** A finger pressed on one element, dragged to another, and lifted. */
+    const touchDrag = async (from, to) => {
+      const a = await from.boundingBox();
+      const b = await to.boundingBox();
+      const x = a.x + a.width / 2;
+      const [y0, y1] = [a.y + a.height / 2, b.y + b.height / 2];
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: y0 }] });
+      for (let i = 1; i <= 8; i++)
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y0 + ((y1 - y0) * i) / 8 }] });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    };
+    const file = "tools/logreport.py";
+    const num = (n) => p.locator(`.buffer.focused [data-file-section]:has([data-path$="${file}"]) .num[data-side="new"][data-n="${n}"]`).first();
+    const composer = p.getByRole("dialog", { name: "Write a comment" });
+    const range = () => composer.locator("[data-composer-range]").innerText();
+    try {
+      await p.goto(reviewUrl);
+      await p.waitForSelector(".buffer.focused .row");
+      await scrollUntil(p, `[data-file-section]:has([data-path$="${file}"]) .num[data-side="new"][data-n="6"]`);
+      await num(3).scrollIntoViewIfNeeded();
+      await touchDrag(num(3), num(6));
+      await composer.waitFor();
+      check((await range()).includes("L3–6"), `dragging a finger down the line numbers selects lines 3 to 6 (${await range()})`);
+      const docked = await composer.boundingBox();
+      check(docked.width >= 410 && docked.y + docked.height >= 915 - 30, "the composer is docked along the bottom, full width");
+      const send = composer.getByRole("button", { name: "Comment", exact: true });
+      check((await send.boundingBox()).height >= 44, "its Comment button is big enough to tap");
+
+      // The on-screen keyboard: the page's viewport shrinks (interactive-widget=resizes-content).
+      await p.setViewportSize({ width: 412, height: 520 });
+      await sleep(400);
+      const geo = await p.evaluate(() => {
+        const c = document.querySelector('[role=dialog][aria-label="Write a comment"]').getBoundingClientRect();
+        const rows = [...document.querySelectorAll(".buffer.focused .row.vsel")].map((r) => r.getBoundingClientRect());
+        return { top: c.top, bottom: c.bottom, h: innerHeight, last: rows.at(-1)?.bottom ?? null, first: rows[0]?.top ?? null };
+      });
+      check(geo.bottom <= geo.h + 1 && geo.top > 0, `with the keyboard up the composer is still all on screen (${Math.round(geo.top)}–${Math.round(geo.bottom)} of ${geo.h})`);
+      check(geo.last !== null && geo.last <= geo.top + 1, "and the selected lines are scrolled into view above it");
+      const words = `Phone comment ${Date.now()}: why a Counter here?`;
+      await composer.getByRole("textbox").fill(words);
+      await send.tap();
+      await composer.waitFor({ state: "detached" });
+      const thread = p.locator(".buffer.focused [data-thread]").filter({ hasText: words });
+      await thread.waitFor();
+      check(true, "tapping Comment sends it: the thread shows on those lines");
+      await p.setViewportSize({ width: 412, height: 915 });
+      await sleep(300);
+
+      const reply = thread.getByRole("button", { name: /^Reply/ });
+      check((await reply.boundingBox()).height >= 44, "the thread's Reply is big enough to tap");
+      await reply.tap();
+      await composer.waitFor();
+      await composer.getByRole("textbox").fill("Phone reply: never mind, it's for most_common.");
+      await composer.getByRole("button", { name: "Comment", exact: true }).tap();
+      await composer.waitFor({ state: "detached" });
+      await thread.filter({ hasText: "Phone reply" }).waitFor();
+      check(true, "a reply written on the phone joins the thread");
+      await thread.getByRole("button", { name: "Resolve" }).tap();
+      await thread.getByRole("button", { name: "Reopen" }).waitFor();
+      check(true, "Resolve works by tap");
+
+      // Tap a line, then another: the comment's range reaches it.
+      await num(10).scrollIntoViewIfNeeded();
+      await num(10).tap();
+      await composer.waitFor();
+      check((await range()).includes("L10"), "a tap on a line number starts a comment on that line");
+      await num(12).tap();
+      await p.waitForFunction(() => document.querySelector("[data-composer-range]")?.textContent.includes("L10–12"), null, { timeout: 3000 });
+      check(true, "tapping another line number extends it to that line (L10–12)");
+      await composer.getByRole("button", { name: "Cancel" }).tap();
+      await composer.waitFor({ state: "detached" });
+    } finally {
+      await phone.close();
+    }
+
+    // Unfolded, portrait and landscape: the composer floats by the lines, its buttons still finger-sized.
+    for (const [w, h] of [[884, 1050], [1050, 884]]) {
+      const inner = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true });
+      const q = await inner.newPage();
+      q.on("pageerror", (e) => errors.push(e.message));
+      const qcdp = await inner.newCDPSession(q);
+      try {
+        await q.goto(reviewUrl);
+        await q.waitForSelector(".buffer.focused .row");
+        const n = (k) => q.locator(`.buffer.focused [data-file-section]:has([data-path$="${file}"]) .num[data-side="new"][data-n="${k}"]`).first();
+        await scrollUntil(q, `[data-file-section]:has([data-path$="${file}"]) .num[data-side="new"][data-n="9"]`);
+        // Below the thread the phone left on lines 3–6.
+        await n(7).scrollIntoViewIfNeeded();
+        const [s0, s1] = [await n(7).boundingBox(), await n(9).boundingBox()];
+        const x = s0.x + s0.width / 2;
+        await qcdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: s0.y + 4 }] });
+        for (let i = 1; i <= 6; i++) await qcdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: s0.y + 4 + ((s1.y - s0.y) * i) / 6 }] });
+        await qcdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        const c = q.getByRole("dialog", { name: "Write a comment" });
+        await c.waitFor();
+        const box = await c.boundingBox();
+        const btn = await c.getByRole("button", { name: "Comment", exact: true }).boundingBox();
+        check(
+          (await c.locator("[data-composer-range]").innerText()).includes("L7–9") && box.y >= 0 && box.y + box.height <= h && btn.height >= 44,
+          `at ${w}×${h} a finger drag selects lines 7–9 and the composer is on screen with a 44px button`,
+        );
+      } finally {
+        await inner.close();
+      }
+    }
+
+    // With a mouse it's the same path: press on a line number, drag, release.
+    await freshPage(page);
+    await page.waitForSelector(".buffer.focused .row");
+    const desk = (n) => page.locator(`.buffer.focused [data-file-section]:has([data-path$="${file}"]) .num[data-side="new"][data-n="${n}"]`).first();
+    await scrollUntil(page, `[data-file-section]:has([data-path$="${file}"]) .num[data-side="new"][data-n="9"]`);
+    await desk(7).scrollIntoViewIfNeeded();
+    const a = await desk(7).boundingBox();
+    const b = await desk(9).boundingBox();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 6 });
+    await page.mouse.up();
+    const deskComposer = page.getByRole("dialog", { name: "Write a comment" });
+    await deskComposer.waitFor();
+    const said = await deskComposer.locator("[data-composer-range]").innerText();
+    check(said.includes("L7–9"), `a mouse drag over line numbers selects lines too (${said})`);
+    await keys(page, "Escape");
+  });
+
   await section("Home page", async () => {
     await page.goto(base);
     check(await page.getByText("Add burst capacity to the limiter").isVisible(), "recent reviews are listed");
