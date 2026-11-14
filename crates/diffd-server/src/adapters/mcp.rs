@@ -37,8 +37,9 @@ in its thread, and keep it short; if you change code, the review updates by itse
 chat box arrive too: answer those with say. If the user asks where something is, or code outside the diff would help, call show:
 it can open any file in the repository. Comments can be on those files too.
 Keep calling wait_for_feedback while you're in a review conversation. When you finish your turn instead, diffd can still reach
-you: with its plugin installed (`diffd install`), or in Herdr through your terminal's inbox (even mid-turn), a message \
-saying \"New feedback on your diffd review\" arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.";
+you: with its plugin installed (`diffd install`), or in Herdr through your terminal's inbox (even mid-turn), a message
+saying \"New feedback on your diffd review\" arrives with the review_id. Then call wait_for_feedback with that review_id and
+answer as usual.";
 
 /// Who's calling: the `agent` in the MCP URL (diffd's plugins register
 /// `/mcp?agent=claude` or `?agent=codex`), else the HTTP client's User-Agent,
@@ -118,14 +119,12 @@ impl DiffdMcp {
         *self.last.lock().expect("mcp lock") = Some(id.clone());
     }
 
-    /// Follow the agent to the Herdr terminal it calls from now, if that
-    /// changed (it restarted elsewhere): feedback is pushed there. Best effort.
+    /// Follow the agent to the Herdr terminal and core it calls from now, if
+    /// either changed (it resumed elsewhere, the core restarted): feedback is
+    /// pushed there. Best effort.
     async fn note_agent(&self, context: &RequestContext<RoleServer>, id: &ReviewId) {
         let Some(terminal) = herdr_terminal(context) else { return };
-        if self.app.agent_terminal(id).await.ok().flatten().as_deref() == Some(terminal.as_str()) {
-            return;
-        }
-        let Some(core) = Herdr::default().core().await else { return };
+        let Some(core) = self.app.inbox_core().await else { return };
         if let Err(e) = self.app.agent_at(id, terminal, core.id).await {
             tracing::debug!(review = %id, error = %e, "can't note the agent's terminal");
         }
@@ -344,10 +343,14 @@ machine's diffd for that machine. Use present_review to move an already shared r
             },
             None => header.clone(),
         };
-        req.core_id = req.terminal.as_ref().and_then(|_| core.as_ref().map(|c| c.id.clone()));
+        req.core_id = req.terminal.as_ref().and_then(|_| core.map(|c| c.id));
         // Feedback is pushed to the caller's own terminal, whichever pane presents the review.
-        req.agent_core_id = header.as_ref().and_then(|_| core.map(|c| c.id));
-        req.agent_terminal = header.filter(|_| req.agent_core_id.is_some());
+        if let Some(agent_terminal) = header
+            && let Some(inbox_core) = self.app.inbox_core().await
+        {
+            req.agent_terminal = Some(agent_terminal);
+            req.agent_core_id = Some(inbox_core.id);
+        }
         let terminal = req.terminal.clone();
         let result = try_app!(self.app.share(req).await);
         self.remember(&ReviewId(result.review_id.clone()));
@@ -409,8 +412,16 @@ reviewing together.")]
 
     #[tool(description = "Reply in a thread on the review, where the code is. Use it to answer the user's comments. \
 Keep it short; if you changed code because of the comment, say what you changed. Set `resolve` when the thread is done.")]
-    async fn reply(&self, Parameters(p): Parameters<ReplyParams>) -> Result<CallToolResult, ErrorData> {
-        let thread = try_app!(self.app.reply(&ThreadId(p.thread_id), None, Author::Agent, &p.body, p.resolve).await);
+    async fn reply(
+        &self,
+        Parameters(p): Parameters<ReplyParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let thread_id = ThreadId(p.thread_id);
+        if let Ok(id) = self.app.review_of(&thread_id).await {
+            self.note_agent(&context, &id).await;
+        }
+        let thread = try_app!(self.app.reply(&thread_id, None, Author::Agent, &p.body, p.resolve).await);
         ok(&serde_json::json!({ "thread_id": thread.id.0, "resolved": thread.resolved, "messages": thread.messages.len() }))
     }
 

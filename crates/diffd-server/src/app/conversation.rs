@@ -202,6 +202,11 @@ impl App {
         })
     }
 
+    /// The review thread `thread_id` is on.
+    pub async fn review_of(&self, thread_id: &ThreadId) -> Result<ReviewId> {
+        Ok(self.thread(thread_id).await?.0)
+    }
+
     /// A thread and the review it's on.
     async fn thread(&self, thread_id: &ThreadId) -> Result<(ReviewId, Thread)> {
         self.store.thread(thread_id).await?.ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))

@@ -108,13 +108,32 @@ pub trait TreeWatch: Send + Sync {
 
 /// A Herdr core's per-terminal inbox: messages an agent's harness reads out
 /// of band, so nothing is ever typed into its input (herdr-core's
-/// `hc send --inbox-only`). Review feedback is pushed there when it can be
-/// (see `app::push`); the harness hooks deliver it otherwise.
+/// `terminal.queue`, `hc send --inbox-only`). Review feedback goes there when
+/// it can (see `app::push`); the harness hooks deliver it otherwise.
 pub trait AgentInbox: Send + Sync {
-    /// The id of the core on this machine, if one answers.
-    fn core_id(&self) -> BoxFuture<'_, Option<String>>;
-    /// Queue `text` in `terminal`'s inbox. `true` only when the core queued it:
-    /// `false` when nothing follows that inbox, the core has no inboxes, or hc
-    /// failed. Never typed into the terminal.
-    fn send<'a>(&'a self, terminal: &'a str, text: &'a str) -> BoxFuture<'a, bool>;
+    /// The core on this machine, if one answers.
+    fn local_core(&self) -> BoxFuture<'_, Option<InboxCore>>;
+    /// Queue `text` in `terminal`'s inbox. Never typed into the terminal.
+    fn send<'a>(&'a self, terminal: &'a str, text: &'a str) -> BoxFuture<'a, Sent>;
+}
+
+/// The local Herdr core, as an [`AgentInbox`] sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboxCore {
+    pub id: String,
+    /// It takes inbox-only messages; a core that predates them doesn't.
+    pub queues: bool,
+}
+
+/// How an inbox send ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sent {
+    /// The core queued it.
+    Queued,
+    /// It definitely wasn't queued: nothing follows that inbox, the core or
+    /// hc predates inbox-only messages, the address is bad, or hc is missing.
+    Refused,
+    /// No clear answer (a timeout, a lost connection, an unreadable reply):
+    /// it may have been queued.
+    Unknown,
 }

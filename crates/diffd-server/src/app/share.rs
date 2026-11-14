@@ -186,6 +186,7 @@ impl App {
             },
         };
         let live = self.insert_live(&id, snap, fp);
+        live.inner.lock().expect("live lock").route = super::push::route_of(&spec);
         let notes = self.save_notes(&id, &live, notes, false).await?;
         let item = self
             .store

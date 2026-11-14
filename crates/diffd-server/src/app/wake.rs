@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
 use super::feedback::Listening;
+use super::push::Delivery;
 use super::{App, Live, Result, nested};
 
 /// How often a waiter looks for reviews shared after it started. Otherwise it
@@ -56,10 +57,27 @@ pub(super) struct Waiters {
     looks: u64,
 }
 
+/// Who is looking for feedback to announce. Each review's feedback is
+/// announced by one of them at a time (its [`Delivery`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Taker {
+    /// A harness hook's waiter (`wait_for_wake`).
+    Hook,
+    /// The Herdr inbox pusher (see `push`).
+    Inbox,
+}
+
+impl Taker {
+    fn takes(self, delivery: Delivery) -> bool {
+        matches!((self, delivery), (Taker::Hook, Delivery::Hooks) | (Taker::Inbox, Delivery::Inbox))
+    }
+}
+
 /// What a waiter found when it looked.
 pub(super) enum Look {
-    /// Feedback to wake the agent for, and the messages now marked told.
-    Notice(WakeNotice, Vec<Told>),
+    /// Feedback to wake the agent for, the messages now marked told, and how
+    /// long other feedback it looked at is still held for the user's pause.
+    Notice(WakeNotice, Vec<Told>, Option<Duration>),
     /// Feedback held back until the user pauses: look again after this long.
     Held(Duration),
     /// Nothing new (or only feedback behind an open draft, whose closing wakes the waiter).
@@ -135,8 +153,8 @@ impl App {
             // a settled review has nothing to wait for, so it mustn't make the waiter
             // poll (it once did, ten times a second per waiter, ~170% CPU on SQLite).
             self.waiters.lock().expect("waiters lock").looks += 1;
-            let recheck = match self.take_notice(&lives).await? {
-                Look::Notice(notice, _) => return Ok(Some(notice)),
+            let recheck = match self.take_notice(&lives, Taker::Hook).await? {
+                Look::Notice(notice, _, _) => return Ok(Some(notice)),
                 Look::Held(wait) => wait.min(RESCAN),
                 Look::Nothing => RESCAN,
             };
@@ -194,34 +212,39 @@ impl App {
 
     /// Feedback nobody was told about yet, if the user has paused; marks it told.
     /// Otherwise, how long until feedback held back for the pause could go out.
-    /// Hook waiters and the inbox pusher both take feedback here: the `told`
-    /// set, checked and marked under the review's lock, gives each message to one.
-    pub(super) async fn take_notice(&self, lives: &[(ReviewId, Arc<Live>)]) -> Result<Look> {
-        let mut told = Vec::new();
-        let taken = self.take_fresh(lives, &mut told).await;
-        match taken {
-            Ok(Ok(notice)) => Ok(Look::Notice(notice, told)),
-            Ok(Err(held)) => Ok(held.map_or(Look::Nothing, Look::Held)),
-            Err(e) => {
-                // Marked but never announced: leave it for the next look.
-                self.untell(told);
-                Err(e)
-            }
+    /// Hook waiters and the inbox pusher both take feedback here, each only
+    /// from reviews whose [`Delivery`] is theirs, and the `told` set, checked
+    /// and marked under the review's lock, gives each message to one of them.
+    pub(super) async fn take_notice(&self, lives: &[(ReviewId, Arc<Live>)], taker: Taker) -> Result<Look> {
+        let mut taken = Taken::default();
+        let result = self.take_fresh(lives, taker, &mut taken).await;
+        let Taken { reviews, previews, told, held } = taken;
+        if let Err(e) = result {
+            // Marked but never announced: leave it for the next look.
+            self.untell(told);
+            return Err(e);
         }
+        if reviews.is_empty() {
+            return Ok(held.map_or(Look::Nothing, Look::Held));
+        }
+        Ok(Look::Notice(WakeNotice { message: notice_text(&reviews, &previews), reviews }, told, held))
     }
 
-    /// [`App::take_notice`]'s work: the notice, or how long feedback is held
-    /// (`None`: nothing new). Each review's messages are added to `told` as
-    /// they're marked, so a failure part way can un-mark them.
-    async fn take_fresh(&self, lives: &[(ReviewId, Arc<Live>)], told: &mut Vec<Told>) -> Result<std::result::Result<WakeNotice, Option<Duration>>> {
+    /// [`App::take_notice`]'s work, gathered in `taken` as it goes, so a
+    /// failure part way can un-mark what it marked.
+    async fn take_fresh(&self, lives: &[(ReviewId, Arc<Live>)], taker: Taker, taken: &mut Taken) -> Result<()> {
         let now = self.now();
-        let mut reviews = Vec::new();
-        let mut previews = Vec::new();
-        let mut held: Option<Duration> = None;
         for (id, live) in lives {
+            if !taker.takes(live.inner.lock().expect("live lock").delivery) {
+                continue;
+            }
             let pending = self.store.undelivered(id).await?;
             let fresh: Vec<_> = {
                 let mut inner = live.inner.lock().expect("live lock");
+                // Changed hands while the store answered.
+                if !taker.takes(inner.delivery) {
+                    continue;
+                }
                 let fresh: Vec<_> = pending.into_iter().filter(|p| !inner.told.contains(&p.message.id)).collect();
                 if fresh.is_empty() {
                     continue;
@@ -230,18 +253,19 @@ impl App {
                     // An open draft wakes the waiter when it closes; a pause just takes time.
                     if !inner.gate.drafting() {
                         let wait = Duration::from_millis(inner.gate.wait_ms(now).max(100));
-                        held = Some(held.map_or(wait, |h| h.min(wait)));
+                        taken.held = Some(taken.held.map_or(wait, |h| h.min(wait)));
                     }
                     continue;
                 }
                 inner.told.extend(fresh.iter().map(|p| p.message.id.clone()));
                 fresh
             };
-            told.push(Told { live: live.clone(), ids: fresh.iter().map(|p| p.message.id.clone()).collect() });
+            taken.told.push(Told { live: live.clone(), ids: fresh.iter().map(|p| p.message.id.clone()).collect() });
             let (meta, _) = self.meta(id).await?;
             let comments = fresh.iter().filter(|p| p.thread_id.is_some()).count();
-            previews.extend(fresh.iter().filter(|p| p.message.author == Author::User).map(|p| quote(&p.message.body)).take(PREVIEW_ITEMS));
-            reviews.push(WakeReview {
+            let users = fresh.iter().filter(|p| p.message.author == Author::User);
+            taken.previews.extend(users.map(|p| quote(&p.message.body)).take(PREVIEW_ITEMS));
+            taken.reviews.push(WakeReview {
                 review_id: id.0.clone(),
                 title: meta.title,
                 url: self.url(id),
@@ -249,14 +273,11 @@ impl App {
                 chat: fresh.len() - comments,
             });
         }
-        if reviews.is_empty() {
-            return Ok(Err(held));
-        }
-        Ok(Ok(WakeNotice { message: notice_text(&reviews, &previews), reviews }))
+        Ok(())
     }
 
-    /// A notice couldn't be sent: its messages are untold again, and waiting
-    /// hook waiters look again at once, so the fallback delivers them.
+    /// Un-marks messages taken for a notice that was never announced, and
+    /// wakes the hook waiters to look again.
     pub(super) fn untell(&self, told: Vec<Told>) {
         for Told { live, ids } in told {
             {
@@ -268,6 +289,24 @@ impl App {
             live.feedback.notify_waiters();
         }
     }
+
+    /// The inbox definitely refused a notice: its reviews go back to the
+    /// hooks, which announce its messages at once.
+    pub(super) fn hand_to_hooks(&self, told: Vec<Told>) {
+        for t in &told {
+            t.live.inner.lock().expect("live lock").delivery = Delivery::Hooks;
+        }
+        self.untell(told);
+    }
+}
+
+/// What [`App::take_fresh`] gathered.
+#[derive(Default)]
+struct Taken {
+    reviews: Vec<WakeReview>,
+    previews: Vec<String>,
+    told: Vec<Told>,
+    held: Option<Duration>,
 }
 
 fn quote(body: &str) -> String {
