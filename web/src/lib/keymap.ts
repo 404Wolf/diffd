@@ -16,6 +16,11 @@ export interface Binding<C> {
   readonly run: (ctx: C, count: number, counted: boolean) => void;
   /** Where it appears in the help screen: [group, description]. */
   readonly help?: readonly [group: string, label: string];
+  /**
+   * A button on the command bar, for screens without a keyboard: its label, a
+   * short glyph, and its place on the bar (lowest first).
+   */
+  readonly bar?: { readonly label: string; readonly glyph: string; readonly at: number };
 }
 
 export type Feed =

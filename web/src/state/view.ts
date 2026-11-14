@@ -142,6 +142,14 @@ export interface HoverCard {
   readonly at: { readonly left: number; readonly top: number; readonly bottom: number };
 }
 
+/** The actions menu (right-click, or `space a` at the cursor): its split, where it opens, the symbol it's for. */
+export interface ActionsAt {
+  readonly pane: number;
+  readonly x: number;
+  readonly y: number;
+  readonly word: string | null;
+}
+
 export interface Drawer {
   size: number;
   collapsed: boolean;
@@ -438,6 +446,7 @@ export function createView(review: Review) {
   const setMode = (m: Mode) => focused().setMode(m);
   const [composer, setComposer] = createSignal<Composer | null>(null);
   const [hover, setHover] = createSignal<HoverCard | null>(null);
+  const [actions, setActions] = createSignal<ActionsAt | null>(null);
   const [nudge, setNudge] = createSignal<ShowRequest | null>(null);
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [picker, setPicker] = createSignal<Picker | null>(null);
@@ -544,6 +553,8 @@ export function createView(review: Review) {
     composer,
     setComposer,
     hover,
+    actions,
+    setActions,
     setHover,
     nudge,
     setNudge,

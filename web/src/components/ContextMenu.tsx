@@ -90,11 +90,11 @@ export function ContextMenu(props: { at: MenuAt | null; cmd: Commands; onClose: 
               <button
                 type="button"
                 role="menuitem"
-                class="flex w-full cursor-pointer items-center justify-between gap-6 px-3 py-1 text-left hover:bg-hover focus:bg-hover focus:outline-none"
+                class="flex w-full cursor-pointer items-center justify-between gap-6 px-3 py-1 text-left hover:bg-hover focus:bg-hover focus:outline-none touch:min-h-11 touch:text-sm"
                 onClick={() => pick(item)}
               >
                 <span>{item.label}</span>
-                <kbd class="text-[11px] text-subtle">{keyLabel(item.keys)}</kbd>
+                <kbd class="text-[11px] text-subtle touch:hidden">{keyLabel(item.keys)}</kbd>
               </button>
             )}
           </For>

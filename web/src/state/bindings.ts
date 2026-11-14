@@ -136,6 +136,13 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     keys: "K",
     run: ({ cmd }) => void cmd.hoverAtCursor(),
     help: ["Symbols", "Docs and errors here (or hover)"],
+    bar: { label: "Docs", glyph: "ⓘ", at: 8 },
+  },
+  {
+    keys: "space a",
+    run: ({ cmd }) => cmd.actionsMenu(),
+    help: ["Symbols", "Actions here: definition, references… (or right-click)"],
+    bar: { label: "Actions", glyph: "⋮", at: 9 },
   },
   { keys: "enter", modes: ["symbol"], run: ({ cmd }) => void cmd.gotoDefinition() },
   { keys: "g r r", run: ({ cmd }) => cmd.references(), help: ["Symbols", "Find references"] },
@@ -146,14 +153,20 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   },
   { keys: "g S", run: ({ cmd }) => cmd.outline(true) },
   // Review
-  { keys: "] c", run: ({ cmd }) => cmd.hunk(1), help: ["Review", "Next / previous hunk"] },
-  { keys: "[ c", run: ({ cmd }) => cmd.hunk(-1) },
+  {
+    keys: "] c",
+    run: ({ cmd }) => cmd.hunk(1),
+    help: ["Review", "Next / previous hunk"],
+    bar: { label: "Next hunk", glyph: "↓", at: 1 },
+  },
+  { keys: "[ c", run: ({ cmd }) => cmd.hunk(-1), bar: { label: "Previous hunk", glyph: "↑", at: 0 } },
   {
     keys: "] f",
     run: ({ cmd }) => cmd.fileJump(1),
     help: ["Review", "Next / previous file, skipping collapsed"],
+    bar: { label: "Next file", glyph: "⇊", at: 3 },
   },
-  { keys: "[ f", run: ({ cmd }) => cmd.fileJump(-1) },
+  { keys: "[ f", run: ({ cmd }) => cmd.fileJump(-1), bar: { label: "Previous file", glyph: "⇈", at: 2 } },
   {
     keys: "] g",
     run: ({ cmd }) => cmd.chapterJump(1),
@@ -162,7 +175,12 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "[ g", run: ({ cmd }) => cmd.chapterJump(-1) },
   { keys: "] a", run: ({ cmd }) => cmd.noteJump(1), help: ["Review", "The agent's notes, in order"] },
   { keys: "[ a", run: ({ cmd }) => cmd.noteJump(-1) },
-  { keys: "] t", run: ({ cmd }) => cmd.threadJump(1), help: ["Review", "Next / previous thread"] },
+  {
+    keys: "] t",
+    run: ({ cmd }) => cmd.threadJump(1),
+    help: ["Review", "Next / previous thread"],
+    bar: { label: "Next thread", glyph: "»", at: 4 },
+  },
   { keys: "[ t", run: ({ cmd }) => cmd.threadJump(-1) },
   { keys: "] n", run: ({ cmd }) => cmd.unreadNext(), help: ["Review", "Next unread activity"] },
   {
@@ -176,6 +194,7 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     keys: "space v",
     run: ({ cmd }) => cmd.markViewedAndNext(),
     help: ["Review", "Mark viewed, go to the next file"],
+    bar: { label: "Viewed, next file", glyph: "✓", at: 5 },
   },
   // Context
   {
@@ -227,6 +246,7 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     modes: ["normal", "symbol", "file"],
     run: ({ cmd }) => cmd.comment(),
     help: ["Talk", "Comment on this line (gc, or gcc)"],
+    bar: { label: "Comment", glyph: "+", at: 6 },
   },
 
   {
@@ -242,6 +262,7 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
     keys: "r",
     run: ({ cmd }) => void cmd.replyNear(),
     help: ["Talk", "Reply to the thread here (or the next one)"],
+    bar: { label: "Reply", glyph: "↩", at: 7 },
   },
   {
     keys: "space i",
@@ -322,7 +343,12 @@ export const BINDINGS: readonly Binding<Ctx>[] = [
   { keys: "ctrl-f", run: ({ cmd }) => cmd.openFind(), help: ["Panels", "Find in this file (or every file)"] },
   { keys: "n", run: ({ cmd }) => cmd.searchNext(1), help: ["Panels", "Next / previous match of the search"] },
   { keys: "N", run: ({ cmd }) => cmd.searchNext(-1) },
-  { keys: "?", run: ({ view }) => view.setHelp(true), help: ["Panels", "This list"] },
+  {
+    keys: "?",
+    run: ({ view }) => view.setHelp(true),
+    help: ["Panels", "This list"],
+    bar: { label: "More", glyph: "☰", at: 10 },
+  },
   { keys: "esc", run: ({ cmd }) => cmd.escapeAll() },
 ];
 
@@ -341,4 +367,21 @@ export function helpEntries(): { group: string; label: string; keys: string[] }[
       last.keys.push(b.keys);
   }
   return out;
+}
+
+type BarBinding = Binding<Ctx> & { readonly bar: NonNullable<Binding<Ctx>["bar"]> };
+
+/** The command bar's buttons, in their order: the bindings that have a `bar`. */
+export function barEntries(): BarBinding[] {
+  return BINDINGS.filter((b): b is BarBinding => b.bar !== undefined).sort((a, b) => a.bar.at - b.bar.at);
+}
+
+/**
+ * The binding a help entry runs when tapped, or null for the ones that need
+ * more keys than the entry names (a mark's letter, a text object in visual mode).
+ */
+export function helpAction(keys: string): Binding<Ctx> | null {
+  if (/^[m'`ia] /.test(keys)) return null;
+  const b = BINDINGS.find((x) => x.keys === keys);
+  return b && (!b.modes || b.modes.includes("normal")) ? b : null;
 }

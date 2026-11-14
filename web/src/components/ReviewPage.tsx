@@ -12,7 +12,7 @@ import type { SavedPane, SavedPlace } from "../state/persist";
 import { createReview } from "../state/review";
 import { createView, type Pane, type View } from "../state/view";
 import { Buffer } from "./Buffer";
-import { Help, Nudge, Picker, StatusLine, TopBar } from "./Chrome";
+import { CommandBar, Help, Nudge, Picker, StatusLine, TopBar } from "./Chrome";
 import { CommentPopover, SelectionBubble } from "./CommentPopover";
 import { Drawer } from "./Drawer";
 import { FileTree } from "./FileTree";
@@ -378,10 +378,14 @@ export function ReviewPage(props: { state: ReviewState }) {
         <SelectionBubble cmd={cmd} view={v} container={() => container} />
         <CommentPopover review={review} view={v} cmd={cmd} container={() => container} />
       </div>
+      {/* Out of the way while typing (on a phone the keyboard leaves little room). */}
+      <Show when={!focusInput()}>
+        <CommandBar view={v} cmd={cmd} />
+      </Show>
       <StatusLine review={review} view={v} layout={layout} mode={modeLabel} />
       <Picker view={v} />
       <HoverCard review={review} view={v} />
-      <Help view={v} />
+      <Help view={v} cmd={cmd} />
       <Show when={review.error()}>
         {(message) => (
           <div class="fixed right-4 bottom-10 z-40 flex max-w-sm items-start gap-2 rounded-lg border border-del bg-bg px-3 py-2 text-xs shadow-pop">

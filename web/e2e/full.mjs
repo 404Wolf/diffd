@@ -1608,6 +1608,74 @@ try {
     }
   });
 
+  await section("Without a keyboard: the command bar, docs and actions by tap", async () => {
+    check(!(await page.locator("[data-command-bar]").isVisible()), "with a mouse and a wide screen there's no command bar");
+    const phone = await browser.newContext({
+      viewport: { width: 412, height: 915 },
+      deviceScaleFactor: 2.625,
+      isMobile: true,
+      hasTouch: true,
+    });
+    const p = await phone.newPage();
+    p.on("pageerror", (e) => errors.push(e.message));
+    const bar = (keys) => p.locator(`[data-command-bar] [data-bar="${keys}"]`);
+    try {
+      await p.goto(reviewUrl);
+      await p.waitForSelector(".buffer.focused .row");
+      const buttons = await p.locator("[data-command-bar] button").evaluateAll((bs) => bs.map((b) => [b.getAttribute("aria-label"), b.getBoundingClientRect().height]));
+      check(buttons.length >= 8 && buttons.every(([, h]) => h >= 44), `a touch screen gets the command bar, 44px buttons (${buttons.map(([l]) => l).join(", ")})`);
+
+      const file = async () => (await status(p)).match(/([\w.-]+):\d+/)?.[1];
+      const before = await file();
+      await bar("] f").tap();
+      await p.waitForFunction((b) => !document.querySelector("footer").innerText.includes(`${b}:`), before, { timeout: 3000 }).catch(() => {});
+      check((await file()) !== before, `Next file goes to the next file (${before} → ${await file()})`);
+
+      // A tapped symbol, then Actions: the right-click menu, at the cursor.
+      await cursorTo(p, "src/lib.rs", 60);
+      const sym = p.locator('.buffer.focused [data-file-section]:has([data-path$="src/lib.rs"]) .row[data-nl="60"] .code[data-side="new"] .ref', { hasText: "clamp" }).first();
+      await sym.tap();
+      check((await status(p)).includes("· clamp"), "tapping a symbol puts the cursor on it");
+      await bar("space a").tap();
+      const menu = p.getByRole("menu");
+      await menu.waitFor();
+      const go = menu.getByRole("menuitem", { name: /Go to definition/ });
+      check((await go.boundingBox()).height >= 44, "Actions opens the actions menu at the cursor, with finger-sized items");
+      await go.tap();
+      check(await statusSoon(p, "bucket.rs:2"), "and Go to definition from it jumps to clamp in bucket.rs");
+
+      // Docs: the hover card, by tap; a tap elsewhere closes it.
+      await cursorTo(p, "src/lib.rs", 60);
+      await sym.tap();
+      await bar("K").tap();
+      const card = p.locator("[data-hover]");
+      const shown = await card.waitFor({ timeout: 20000 }).then(() => true).catch(() => false);
+      check(shown, "Docs shows the docs card for the symbol");
+      await p.locator("header").tap({ position: { x: 200, y: 10 } });
+      await card.waitFor({ state: "detached", timeout: 3000 });
+      check(true, "a tap elsewhere closes it");
+
+      // More: the help list, each row runs its command.
+      await bar("?").tap();
+      const help = p.getByRole("dialog", { name: "Keys" });
+      await help.waitFor();
+      const at = await file();
+      await help.locator('[data-help-action="] f"]').tap();
+      await help.waitFor({ state: "detached" });
+      await p.waitForFunction((b) => !document.querySelector("footer").innerText.includes(`${b}:`), at, { timeout: 3000 }).catch(() => {});
+      check((await file()) !== at, `More lists every command, and tapping one runs it (${at} → ${await file()})`);
+
+      // Typing hides the bar, so the on-screen keyboard has the room.
+      await bar("g c").tap();
+      const composer = p.getByRole("dialog", { name: "Write a comment" });
+      await composer.waitFor();
+      check(!(await p.locator("[data-command-bar]").isVisible()), "Comment opens the composer, and the bar steps aside while typing");
+      await composer.getByRole("button", { name: "Cancel" }).tap();
+    } finally {
+      await phone.close();
+    }
+  });
+
   await section("Home page", async () => {
     await page.goto(base);
     check(await page.getByText("Add burst capacity to the limiter").isVisible(), "recent reviews are listed");

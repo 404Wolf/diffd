@@ -835,6 +835,15 @@ export function createCommands(review: Review, view: View) {
     view.say(answer.type === "unavailable" ? answer.reason : `No type definition for ${pos.word.text}`);
   };
   /** `K`: docs for what's under the cursor, and any diagnostics on its line. */
+  /** The actions menu (as right-clicking opens), under the cursor's line: for screens without a right-click. */
+  const actionsMenu = () => {
+    const c = view.cursor();
+    const row = cursorEl();
+    if (!c || !row) return view.say("Put the cursor on a line first");
+    const code = row.querySelector<HTMLElement>(`.code[data-side="${c.side}"]`) ?? row;
+    const r = code.getBoundingClientRect();
+    view.setActions({ pane: view.focused().id, x: r.left + 12, y: r.bottom + 2, word: c.word?.text ?? null });
+  };
   const hoverAtCursor = async () => {
     const c = view.cursor();
     const el = cursorEl()?.querySelector<HTMLElement>(`.code[data-side="${c?.side ?? "new"}"]`);
@@ -1457,6 +1466,7 @@ export function createCommands(review: Review, view: View) {
     selectObject,
     typeDefinition,
     hoverAtCursor,
+    actionsMenu,
     openPath,
     openPathAt,
     splitPane,

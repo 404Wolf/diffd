@@ -2,7 +2,6 @@ import {
   createEffect,
   createMemo,
   createRenderEffect,
-  createSignal,
   For,
   type JSX,
   onCleanup,
@@ -19,7 +18,7 @@ import { bufferEl, rowEl, rowsRenderedEvent } from "../state/dom";
 import { createFileLayout, type Item, type LayoutState } from "../state/layout";
 import type { Review } from "../state/review";
 import type { Pane, View } from "../state/view";
-import { ContextMenu, type MenuAt } from "./ContextMenu";
+import { ContextMenu } from "./ContextMenu";
 import { useMouseHover } from "./Hover";
 import { CODE_PAD_PX, Multibuffer } from "./Multibuffer";
 import { ThreadCard } from "./ThreadCard";
@@ -83,9 +82,9 @@ export function Buffer(props: Props) {
     if (word && (e.ctrlKey || e.metaKey)) void props.cmd.gotoDefinition(word.text);
   };
 
-  // Right-click on code: the language-server actions for what's under the pointer.
+  // Right-click on code: the language-server actions for what's under the pointer
+  // (`space a`, or the command bar's Actions, opens the same menu at the cursor).
   // Shift+right-click, or right-clicking a selection, keeps the browser's own menu.
-  const [menu, setMenu] = createSignal<MenuAt | null>(null);
   const onContextMenu = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     const row = target.closest<HTMLElement>(".row");
@@ -99,7 +98,7 @@ export function Buffer(props: Props) {
     const hit = code && col !== null ? wordAt(code.textContent ?? "", col) : null;
     const word = hit ? { text: hit.text, range: [hit.col, hit.col + hit.text.length] as const } : null;
     props.cmd.place(row, { side, word, scroll: false });
-    setMenu({ x: e.clientX, y: e.clientY, word: hit?.text ?? null });
+    props.view.setActions({ pane: props.pane.id, x: e.clientX, y: e.clientY, word: hit?.text ?? null });
   };
 
   return (
@@ -120,7 +119,11 @@ export function Buffer(props: Props) {
       onClick={onClick}
       onContextMenu={onContextMenu}
     >
-      <ContextMenu at={menu()} cmd={props.cmd} onClose={() => setMenu(null)} />
+      <ContextMenu
+        at={props.view.actions()?.pane === props.pane.id ? props.view.actions() : null}
+        cmd={props.cmd}
+        onClose={() => props.view.setActions(null)}
+      />
       <Show
         // An object, not the index: `Show` treats file 0 as false.
         when={match(props.pane.mode())

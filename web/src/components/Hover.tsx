@@ -35,11 +35,17 @@ export function HoverCard(props: { review: Review; view: View }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Shift" && e.key !== "Control" && e.key !== "Meta") close();
     };
+    // A tap or click anywhere else closes it too (without a mouse there's no leaving it).
+    const away = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest?.("[data-hover]")) close();
+    };
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("scroll", close, true);
+    window.addEventListener("pointerdown", away, true);
     onCleanup(() => {
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("scroll", close, true);
+      window.removeEventListener("pointerdown", away, true);
     });
   });
   return (

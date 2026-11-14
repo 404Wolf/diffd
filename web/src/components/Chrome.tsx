@@ -8,7 +8,7 @@ import { diagnosticsOn } from "../lib/code";
 import { spanLabel } from "../lib/history";
 import { composing } from "../lib/keymap";
 import { media, NARROW } from "../lib/media";
-import { helpEntries } from "../state/bindings";
+import { barEntries, helpAction, helpEntries } from "../state/bindings";
 import type { Commands } from "../state/commands";
 import { bufferEl } from "../state/dom";
 import type { LayoutState } from "../state/layout";
@@ -518,7 +518,44 @@ export function Picker(props: { view: View }) {
   );
 }
 
-export function Help(props: { view: View }) {
+/**
+ * Buttons for what's otherwise only on keys, for screens without a keyboard
+ * (touch, or narrow). Each runs its key binding (the `bar` entries in
+ * bindings.ts), so it's the same command as the keys, not a second one.
+ */
+export function CommandBar(props: { view: View; cmd: Commands }) {
+  return (
+    <nav
+      aria-label="Commands"
+      data-command-bar
+      class="hidden flex-none items-center gap-0.5 overflow-x-auto border-t border-line bg-panel px-1 max-md:flex touch:flex"
+    >
+      <For each={barEntries()}>
+        {(b) => (
+          <button
+            type="button"
+            title={`${b.bar.label} (${keyLabel(b.keys)})`}
+            aria-label={b.bar.label}
+            data-bar={b.keys}
+            class="grid min-h-11 min-w-11 flex-none cursor-pointer place-items-center rounded-md px-1.5 text-muted hover:bg-hover hover:text-fg"
+            // Keep focus where it was (the code), as a key press would.
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => b.run({ cmd: props.cmd, view: props.view }, 1, false)}
+          >
+            <span aria-hidden="true" class="text-[17px] leading-none">
+              {b.bar.glyph}
+            </span>
+            <span aria-hidden="true" class="text-[10px] leading-tight whitespace-nowrap">
+              {b.bar.label}
+            </span>
+          </button>
+        )}
+      </For>
+    </nav>
+  );
+}
+
+export function Help(props: { view: View; cmd: Commands }) {
   const groups = () => {
     const by = new Map<string, { label: string; keys: string[] }[]>();
     for (const e of helpEntries()) by.set(e.group, [...(by.get(e.group) ?? []), e]);
@@ -550,14 +587,39 @@ export function Help(props: { view: View }) {
                       {group}
                     </h3>
                     <For each={entries}>
-                      {(e) => (
-                        <div class="flex items-center justify-between gap-2.5 border-b border-line py-1 text-[12.5px]">
-                          <span>{e.label}</span>
-                          <span class="flex flex-wrap justify-end gap-1">
-                            <For each={e.keys}>{(k) => <kbd>{keyLabel(k)}</kbd>}</For>
-                          </span>
-                        </div>
-                      )}
+                      {(e) => {
+                        // Each entry runs its command when tapped or clicked: the way in without keys.
+                        const action = helpAction(e.keys[0] ?? "");
+                        const run = () => {
+                          props.view.setHelp(false);
+                          requestAnimationFrame(() => action?.run({ cmd: props.cmd, view: props.view }, 1, false));
+                        };
+                        return (
+                          <Show
+                            when={action}
+                            fallback={
+                              <div class="flex items-center justify-between gap-2.5 border-b border-line py-1 text-[12.5px] touch:min-h-11">
+                                <span>{e.label}</span>
+                                <span class="flex flex-wrap justify-end gap-1">
+                                  <For each={e.keys}>{(k) => <kbd>{keyLabel(k)}</kbd>}</For>
+                                </span>
+                              </div>
+                            }
+                          >
+                            <button
+                              type="button"
+                              data-help-action={e.keys[0]}
+                              class="flex w-full cursor-pointer items-center justify-between gap-2.5 border-b border-line py-1 text-left text-[12.5px] hover:bg-hover touch:min-h-11"
+                              onClick={run}
+                            >
+                              <span>{e.label}</span>
+                              <span class="flex flex-wrap justify-end gap-1">
+                                <For each={e.keys}>{(k) => <kbd>{keyLabel(k)}</kbd>}</For>
+                              </span>
+                            </button>
+                          </Show>
+                        );
+                      }}
                     </For>
                   </>
                 )}
