@@ -1,4 +1,5 @@
 import { Dialog } from "@kobalte/core/dialog";
+import { Popover } from "@kobalte/core/popover";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
 import { match } from "ts-pattern";
 import type { LanguageServerStatus } from "../api";
@@ -6,6 +7,7 @@ import { agentName } from "../lib/agent";
 import { diagnosticsOn } from "../lib/code";
 import { spanLabel } from "../lib/history";
 import { composing } from "../lib/keymap";
+import { media, NARROW } from "../lib/media";
 import { helpEntries } from "../state/bindings";
 import type { Commands } from "../state/commands";
 import { bufferEl } from "../state/dom";
@@ -56,15 +58,36 @@ export function TopBar(props: { review: Review; view: View }) {
       .with(["live", "working"], () => ({ dot: "bg-warn animate-pulse", text: `${agentName()} is working` }))
       .with(["live", "away"], () => ({ dot: "bg-subtle", text: `${agentName()} hasn't checked in` }))
       .exhaustive();
+  // On a phone the rest of the bar is behind a details button; widened past
+  // a phone (a fold opened) that button is gone, and so is what it opened.
+  const narrow = media(NARROW);
+  const [details, setDetails] = createSignal(false);
+  createEffect(() => narrow() || setDetails(false));
+  let detailsPanel: HTMLDivElement | undefined;
+  // Shown in the bar, and on a phone behind its details button.
+  const refs = () => (
+    <span class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+      <span>{meta().repoName}</span>
+      <Rev>{meta().from}</Rev>→<Rev>{meta().to ?? "working tree"}</Rev>
+      <span>· rev {meta().revision}</span>
+    </span>
+  );
+  const counts = () => (
+    <span class="flex gap-2 font-mono text-[11.5px] text-muted tabular-nums">
+      <span>{props.review.diffCount()} files</span>
+      <span class="text-add">+{totals().add}</span>
+      <span class="text-del">−{totals().del}</span>
+    </span>
+  );
   return (
-    <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-panel px-2.5 py-1">
+    <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-panel px-2.5 py-1 max-md:flex-nowrap max-md:gap-x-1.5">
       <DrawerButton view={props.view} side="left" label="Files">
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="M9 4v16" />
       </DrawerButton>
       <a
         href="/"
-        class="flex items-center gap-1.5 font-mono text-[12.5px] font-semibold text-fg no-underline"
+        class="flex items-center gap-1.5 font-mono text-[12.5px] font-semibold text-fg no-underline max-md:hidden"
       >
         <i class="size-2 rotate-45 rounded-[2px] bg-accent" />
         diffd
@@ -76,24 +99,20 @@ export function TopBar(props: { review: Review; view: View }) {
         side="right"
         label="Activity and chat"
         badge={props.review.unread().length > 0}
-        class="md:order-last"
+        class="max-md:order-2 md:order-last"
       >
         <path d="M4 5h16v11H9l-5 4z" />
       </DrawerButton>
-      <span class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
-        <span>{meta().repoName}</span>
-        <Rev>{meta().from}</Rev>→<Rev>{meta().to ?? "working tree"}</Rev>
-        <span>· rev {meta().revision}</span>
-      </span>
+      <span class="contents max-md:hidden">{refs()}</span>
       {/* The commits on their way show right away, pulsing until they're ready. */}
       <Show when={(props.review.loadingSpan() ?? props.review.span()) !== null}>
         <span
-          class="inline-flex h-[22px] items-center gap-1 rounded-full border border-accent-line bg-accent-soft pr-0.5 pl-2 text-xs text-accent"
+          class="inline-flex h-[22px] min-w-0 items-center gap-1 rounded-full border border-accent-line bg-accent-soft pr-0.5 pl-2 text-xs text-accent"
           classList={{ "animate-pulse": props.review.loadingSpan() !== undefined }}
           aria-busy={props.review.loadingSpan() !== undefined}
           data-span-chip
         >
-          <span class="font-mono text-[11px]">
+          <span class="truncate font-mono text-[11px]">
             {spanLabel(props.review.history(), props.review.loadingSpan() ?? props.review.span())}
           </span>
           <button
@@ -107,19 +126,59 @@ export function TopBar(props: { review: Review; view: View }) {
           </button>
         </span>
       </Show>
-      <span class="flex gap-2 font-mono text-[11.5px] text-muted tabular-nums">
-        <span>{props.review.diffCount()} files</span>
-        <span class="text-add">+{totals().add}</span>
-        <span class="text-del">−{totals().del}</span>
-      </span>
-      <span class="flex-1" />
+      <span class="contents max-md:hidden">{counts()}</span>
+      <span class="flex-1 max-md:hidden" />
       <span
         id="presence"
-        class="inline-flex h-6 items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 text-xs font-medium whitespace-nowrap"
+        class="inline-flex h-6 items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 text-xs font-medium whitespace-nowrap max-md:hidden"
       >
         <span class={`size-[7px] rounded-full ${presence().dot}`} />
         {presence().text}
       </span>
+      {/* On a phone the bar is one line: the rest is behind this, with the agent's dot on it. */}
+      <Popover placement="bottom-end" gutter={6} open={details()} onOpenChange={setDetails}>
+        <Popover.Trigger
+          data-header-details
+          aria-label={`Review details · ${presence().text}`}
+          title={presence().text}
+          class="relative -my-0.5 hidden size-8 flex-none cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-fg max-md:order-1 max-md:grid touch:size-11"
+        >
+          <span aria-hidden="true" class="text-base leading-none">
+            ⋯
+          </span>
+          <span class={`absolute top-1 right-1 size-[7px] rounded-full ${presence().dot}`} />
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
+            data-header-details-panel
+            ref={detailsPanel}
+            tabindex="-1"
+            // Focus the panel itself rather than ringing its link; tab goes on to the link.
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              detailsPanel?.focus({ preventScroll: true });
+            }}
+            // Closed by unfolding, its button is hidden: back to the code instead.
+            onCloseAutoFocus={(e) => {
+              if (narrow()) return;
+              e.preventDefault();
+              bufferEl()?.focus({ preventScroll: true });
+            }}
+            class="z-40 flex outline-none w-[min(360px,calc(100vw-16px))] flex-col gap-2 rounded-lg border border-line-strong bg-bg p-3 text-xs shadow-pop"
+          >
+            <Popover.Title class="text-[13.5px] font-semibold break-words">{meta().title}</Popover.Title>
+            {refs()}
+            {counts()}
+            <span class="flex items-center gap-1.5 font-medium">
+              <span class={`size-[7px] rounded-full ${presence().dot}`} />
+              {presence().text}
+            </span>
+            <a href="/" class="text-accent touch:py-2 touch:text-sm">
+              All reviews
+            </a>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover>
     </header>
   );
 }

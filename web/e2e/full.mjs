@@ -1502,6 +1502,30 @@ try {
       check((await panes()) >= 410 && !(await left.isVisible()) && !(await right.isVisible()), "the code has the whole width; both drawers start put away");
       const wide = await p.evaluate(() => [document.documentElement.scrollWidth, document.body.scrollWidth, innerWidth]);
       check(wide[0] === wide[2] && wide[1] === wide[2], `the sheets waiting off screen don't widen the page (${wide.join(" / ")})`);
+      const bar = await p.locator("header").boundingBox();
+      check(bar.height <= 56, `the top bar is one line (${Math.round(bar.height)}px)`);
+      await p.locator("[data-header-details]").tap();
+      const details = p.locator("[data-header-details-panel]");
+      await details.waitFor();
+      const said = await details.innerText();
+      check(said.includes("Add burst capacity") && said.includes("main") && /\d+ files/.test(said), "the rest of it is behind the details button");
+      const focused = () =>
+        p.evaluate(() => {
+          const a = document.activeElement;
+          if (a?.matches("[data-header-details-panel] a")) return "link";
+          if (a?.closest("[data-header-details-panel]")) return "panel";
+          return a?.matches("[data-header-details]") ? "button" : a?.tagName;
+        });
+      check((await focused()) === "panel", "focus goes into the details");
+      await p.keyboard.press("Tab");
+      check((await focused()) === "link", "tab reaches its link");
+      await p.keyboard.press("Escape");
+      await details.waitFor({ state: "detached" });
+      const backOnButton = await p
+        .waitForFunction(() => document.activeElement?.matches("[data-header-details]"), null, { timeout: 2000 })
+        .then(() => true)
+        .catch(() => false);
+      check(backOnButton, "esc closes it, back on its button");
       const toggle = await p.locator("[data-drawer-toggle=left]").boundingBox();
       check(toggle.width >= 44 && toggle.height >= 44, "the files button is big enough to tap");
 
@@ -1552,10 +1576,31 @@ try {
       await p.keyboard.press("Escape");
       await sheet("left", "closed");
 
-      // Unfolded (the inner screen): the drawers sit beside the code again.
+      // Esc closes only the top layer: the details over the files, then the files.
+      await p.tap("[data-drawer-toggle=left]");
+      await sheet("left", "open");
+      await p.locator("[data-header-details]").tap();
+      await details.waitFor();
+      await p.keyboard.press("Escape");
+      await details.waitFor({ state: "detached" });
+      check((await left.isVisible()) && (await p.locator("[data-drawer-backdrop]").count()) === 1, "esc with the details over the files closes only the details");
+      await p.keyboard.press("Escape");
+      await sheet("left", "closed");
+      check(!(await left.isVisible()), "and esc again the files");
+
+      // Unfolded (the inner screen): the drawers sit beside the code again, and the details go with their button.
+      await p.locator("[data-header-details]").tap();
+      await details.waitFor();
       await p.setViewportSize({ width: 884, height: 1050 });
       await p.waitForFunction(() => !document.querySelector("aside[data-drawer=left]")?.dataset.sheet);
       check((await left.isVisible()) && (await panes()) < 884 - 200, "on a wider screen the files are beside the code");
+      await details.waitFor({ state: "detached" });
+      check(!(await p.locator("[data-header-details]").isVisible()), "and the details close with their button gone");
+      const onCode = await p
+        .waitForFunction(() => document.activeElement?.closest(".buffer"), null, { timeout: 2000 })
+        .then(() => true)
+        .catch(() => false);
+      check(onCode, "focus goes to the code rather than the hidden button");
     } finally {
       await phone.close();
     }

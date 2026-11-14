@@ -206,8 +206,10 @@ export function ReviewPage(props: { state: ReviewState }) {
     }
     const target = e.target as HTMLElement;
     // On a phone, esc puts away the open sheet from anywhere in it: the filter, the chat, a toggle.
+    // Only the top layer: a popover over it that esc just closed has claimed the key.
     if (
       e.key === "Escape" &&
+      !e.defaultPrevented &&
       v.sheet() &&
       !v.picker() &&
       !v.help() &&
@@ -232,7 +234,13 @@ export function ReviewPage(props: { state: ReviewState }) {
         (drawer?.dataset.drawer as "left" | "right" | undefined) ?? "panes",
       );
     }
-    if (target.closest("input, textarea, select, [contenteditable], [role=menu]") || v.picker() || v.help())
+    if (
+      target.closest(
+        "input, textarea, select, [contenteditable], [role=menu], [data-header-details-panel]",
+      ) ||
+      v.picker() ||
+      v.help()
+    )
       return;
     // In a drawer: j / k move through its items, esc goes back to the code.
     if (drawer && !e.ctrlKey && !e.metaKey && !e.altKey) {
