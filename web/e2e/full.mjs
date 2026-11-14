@@ -1502,6 +1502,15 @@ try {
       check((await panes()) >= 410 && !(await left.isVisible()) && !(await right.isVisible()), "the code has the whole width; both drawers start put away");
       const wide = await p.evaluate(() => [document.documentElement.scrollWidth, document.body.scrollWidth, innerWidth]);
       check(wide[0] === wide[2] && wide[1] === wide[2], `the sheets waiting off screen don't widen the page (${wide.join(" / ")})`);
+      const bar = await p.locator("header").boundingBox();
+      check(bar.height <= 56, `the top bar is one line (${Math.round(bar.height)}px)`);
+      await p.locator("[data-header-details]").tap();
+      const details = p.locator("[data-header-details-panel]");
+      await details.waitFor();
+      const said = await details.innerText();
+      check(said.includes("Add burst capacity") && said.includes("main") && /\d+ files/.test(said), "the rest of it is behind the details button");
+      await p.keyboard.press("Escape");
+      await details.waitFor({ state: "detached" });
       const toggle = await p.locator("[data-drawer-toggle=left]").boundingBox();
       check(toggle.width >= 44 && toggle.height >= 44, "the files button is big enough to tap");
 
