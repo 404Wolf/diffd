@@ -436,7 +436,9 @@ async fn a_first_send_to_a_replaced_core_goes_to_the_hooks() {
 async fn without_a_usable_route_the_hooks_deliver() {
     let new_core = || core("core-1", HOUR);
     let old_core = Some(InboxCore { id: "core-1".into(), queues: false, keys_kept: Duration::ZERO });
-    let cases: [(&str, Option<Option<InboxCore>>, Option<(&str, &str)>); 5] = [
+    // The case, the pusher (none, or the core it reads), the route.
+    type Case = (&'static str, Option<Option<InboxCore>>, Option<(&'static str, &'static str)>);
+    let cases: [Case; 5] = [
         ("no route", Some(new_core()), None),
         ("another core", Some(new_core()), Some(("t5", "core-old"))),
         ("no Herdr", Some(None), ROUTE),

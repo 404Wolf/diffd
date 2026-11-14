@@ -210,13 +210,7 @@ impl App {
                 Look::Notice(notice, told, still_held) => {
                     let (Some(app), inbox) = (self.me.upgrade(), inbox.clone()) else { break };
                     // A send waits on the core for a moment; others needn't wait behind it.
-                    let outgoing = Outgoing {
-                        terminal,
-                        core: core.id,
-                        key: new_id("diffd-"),
-                        since_ms: self.now(),
-                        text: notice.message,
-                    };
+                    let outgoing = Outgoing { terminal, core: core.id, key: new_id("diffd-"), since_ms: self.now(), text: notice.message };
                     let window = core.keys_kept / RETRY_SHARE_OF_KEYS_KEPT;
                     tokio::spawn(async move { app.deliver_notice(&*inbox, outgoing, window, told).await });
                     still_held
