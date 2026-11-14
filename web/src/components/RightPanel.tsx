@@ -63,7 +63,7 @@ function Tab(props: { id: RightTab; current: RightTab; view: View; children: JSX
       aria-controls="tabpanel-right"
       aria-selected={props.current === props.id}
       tabindex={props.current === props.id ? 0 : -1}
-      class="-mb-px flex cursor-pointer items-center gap-1 border-b-2 px-2 pb-1 text-[11.5px] font-medium"
+      class="-mb-px flex cursor-pointer items-center gap-1 border-b-2 px-2 pb-1 text-[11.5px] font-medium touch:py-3 touch:text-sm"
       classList={{
         "border-accent text-fg": props.current === props.id,
         "border-transparent text-muted hover:text-fg": props.current !== props.id,

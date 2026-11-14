@@ -1475,6 +1475,92 @@ try {
     await spanReady(page);
   });
 
+  await section("On a phone the drawers are sheets over the code, opened from the top bar", async () => {
+    // A Pixel Fold's cover screen: narrow, touch.
+    const phone = await browser.newContext({
+      viewport: { width: 412, height: 915 },
+      deviceScaleFactor: 2.625,
+      isMobile: true,
+      hasTouch: true,
+    });
+    const p = await phone.newPage();
+    p.on("pageerror", (e) => errors.push(e.message));
+    try {
+      await p.goto(reviewUrl);
+      await p.waitForSelector(".buffer.focused .row");
+      const panes = async () => (await p.locator("#panes").boundingBox()).width;
+      const left = p.locator("aside[data-drawer=left]");
+      const right = p.locator("aside[data-drawer=right]");
+      /** Wait for a sheet to open or close, and to finish sliding. */
+      const sheet = async (side, state) => {
+        await p.waitForFunction(
+          ([side, state]) => document.querySelector(`aside[data-drawer=${side}]`)?.dataset.sheet === state,
+          [side, state],
+        );
+        await sleep(350);
+      };
+      check((await panes()) >= 410 && !(await left.isVisible()) && !(await right.isVisible()), "the code has the whole width; both drawers start put away");
+      const wide = await p.evaluate(() => [document.documentElement.scrollWidth, document.body.scrollWidth, innerWidth]);
+      check(wide[0] === wide[2] && wide[1] === wide[2], `the sheets waiting off screen don't widen the page (${wide.join(" / ")})`);
+      const toggle = await p.locator("[data-drawer-toggle=left]").boundingBox();
+      check(toggle.width >= 44 && toggle.height >= 44, "the files button is big enough to tap");
+
+      await p.tap("[data-drawer-toggle=left]");
+      await sheet("left", "open");
+      check((await left.isVisible()) && (await panes()) >= 410, "it slides the files over the code, which keeps its width");
+      const focusIn = () =>
+        p.evaluate(() => {
+          const a = document.activeElement;
+          return a?.closest("aside[data-drawer]")?.dataset.drawer ?? a?.dataset.drawerToggle ?? a?.tagName;
+        });
+      check((await focusIn()) === "left", "focus goes into it");
+      await p.keyboard.press("Escape");
+      await sheet("left", "closed");
+      check((await focusIn()) === "left", "esc puts it away, and focus goes back to its button");
+      await p.tap("[data-drawer-toggle=left]");
+      await sheet("left", "open");
+      await p.locator("aside[data-drawer=left] input[type=search]").tap();
+      await p.keyboard.press("Escape");
+      await sheet("left", "closed");
+      check(!(await left.isVisible()), "esc in the filter puts it away too");
+      await p.tap("[data-drawer-toggle=left]");
+      await sheet("left", "open");
+      const row = await p.locator("aside[data-drawer=left] [data-tree-file]").first().boundingBox();
+      check(row.height >= 44, `tree rows are big enough to tap (${row.height}px)`);
+      await shot(p, "phone-files");
+      await p.locator('[data-tree-file$="api.ts"]').tap();
+      await sheet("left", "closed");
+      check((await status(p)).includes("api.ts"), "tapping a file opens it and puts the files away");
+
+      await p.tap("[data-drawer-toggle=right]");
+      await sheet("right", "open");
+      check(await right.locator("#chat-input").isVisible(), "the other button brings out activity and the chat");
+      await p.touchscreen.tap(12, 500);
+      await sheet("right", "closed");
+      check(!(await right.isVisible()), "tapping the dimmed code puts it away");
+      await p.tap("[data-drawer-toggle=right]");
+      await sheet("right", "open");
+      await right.locator("#chat-input").tap();
+      await p.keyboard.press("Escape");
+      await sheet("right", "closed");
+      check(!(await right.isVisible()) && (await p.locator("[data-drawer-backdrop]").count()) === 0, "esc in the chat puts it away, backdrop and all");
+      // With a keyboard (a phone with one, a narrow window): ctrl-h brings the files out, into focus.
+      await p.locator(".buffer.focused").focus();
+      await p.keyboard.press("Control+h");
+      await sheet("left", "open");
+      check((await focusIn()) === "left", "ctrl-h opens the files with focus in them, not in the code behind");
+      await p.keyboard.press("Escape");
+      await sheet("left", "closed");
+
+      // Unfolded (the inner screen): the drawers sit beside the code again.
+      await p.setViewportSize({ width: 884, height: 1050 });
+      await p.waitForFunction(() => !document.querySelector("aside[data-drawer=left]")?.dataset.sheet);
+      check((await left.isVisible()) && (await panes()) < 884 - 200, "on a wider screen the files are beside the code");
+    } finally {
+      await phone.close();
+    }
+  });
+
   await section("Home page", async () => {
     await page.goto(base);
     check(await page.getByText("Add burst capacity to the limiter").isVisible(), "recent reviews are listed");

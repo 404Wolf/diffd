@@ -14,6 +14,7 @@ import {
 import { createStore } from "solid-js/store";
 import type { FileDiff } from "../api";
 import type { FileGroup } from "../lib/kinds";
+import { media, TOUCH } from "../lib/media";
 import { STATUS } from "../lib/status";
 import { buildTree, parentDir, type TreeDir, type TreeFile, type TreeNode } from "../lib/tree";
 import type { Commands } from "../state/commands";
@@ -21,8 +22,12 @@ import type { Review } from "../state/review";
 import type { TreeMode, View } from "../state/view";
 import { Markdown } from "./Markdown";
 
-/** Rows are one height, so the list only renders the ones in view (a project can have 100k files). */
-const ROW = 20;
+/**
+ * Rows are one height, so the list only renders the ones in view (a project can have 100k files).
+ * Fingers get rows tall enough to tap (`touch:h-11`).
+ */
+const touch = media(TOUCH);
+const row = () => (touch() ? 44 : 20);
 const OVERSCAN = 12;
 
 interface Row {
@@ -111,8 +116,10 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     observer.observe(list);
     onCleanup(() => observer.disconnect());
   });
-  const first = () => Math.max(0, Math.floor(scrollTop() / ROW) - OVERSCAN);
-  const shown = createMemo(() => rows().slice(first(), Math.ceil((scrollTop() + height()) / ROW) + OVERSCAN));
+  const first = () => Math.max(0, Math.floor(scrollTop() / row()) - OVERSCAN);
+  const shown = createMemo(() =>
+    rows().slice(first(), Math.ceil((scrollTop() + height()) / row()) + OVERSCAN),
+  );
   // Keep the file you're on in view as you move between files.
   createEffect(() => {
     const current = props.current();
@@ -126,8 +133,8 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     }
     const at = untrack(rows).findIndex((r) => r.node.kind === "file" && r.node.index === current);
     if (at < 0) return;
-    const top = at * ROW;
-    if (top < list.scrollTop || top + ROW > list.scrollTop + list.clientHeight)
+    const top = at * row();
+    if (top < list.scrollTop || top + row() > list.scrollTop + list.clientHeight)
       list.scrollTop = top - list.clientHeight / 2;
   });
 
@@ -153,10 +160,10 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     props.review.threads().filter((t) => t.anchor.path === path && t.kind.type === "comment").length;
 
   const Folder = (p: { dir: TreeDir }) => (
-    <div class="group flex items-center rounded hover:bg-hover">
+    <div class="group flex h-full items-center rounded hover:bg-hover">
       <button
         type="button"
-        class="flex h-5 min-w-0 flex-1 cursor-pointer items-center gap-1 px-1 text-left text-[12.5px] whitespace-nowrap text-muted"
+        class="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 px-1 text-left text-[12.5px] whitespace-nowrap text-muted touch:text-sm"
         aria-expanded={isOpen(p.dir)}
         data-tree-dir={p.dir.path}
         onClick={() => props.view.setFolderOpen(mode(), p.dir.path, !isOpen(p.dir))}
@@ -172,9 +179,9 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
       <Show when={mode() === "diff"}>
         <button
           type="button"
-          class="mr-0.5 flex-none cursor-pointer rounded px-1 text-[11px] leading-4 text-subtle hover:bg-bg hover:text-fg"
+          class="mr-0.5 flex-none cursor-pointer rounded px-1 text-[11px] leading-4 text-subtle hover:bg-bg hover:text-fg touch:h-full touch:px-3 touch:text-sm"
           classList={{
-            "invisible group-hover:visible": !neighbours[p.dir.path],
+            "invisible group-hover:visible touch:visible": !neighbours[p.dir.path],
             "text-accent": neighbours[p.dir.path],
           }}
           title={neighbours[p.dir.path] ? "Hide files not in the diff" : "Show every file in this folder"}
@@ -194,7 +201,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     return (
       <button
         type="button"
-        class="flex h-5 w-full cursor-pointer items-center gap-1 rounded px-1 text-left text-[12.5px] font-semibold whitespace-nowrap text-fg hover:bg-hover"
+        class="flex h-full w-full cursor-pointer items-center gap-1 rounded px-1 text-left text-[12.5px] font-semibold touch:text-sm whitespace-nowrap text-fg hover:bg-hover"
         aria-expanded={open()}
         data-tree-group={p.node.group.title}
         title={p.node.group.summary ?? p.node.group.title}
@@ -219,13 +226,14 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
   const Other = (p: { file: TreeFile }) => (
     <button
       type="button"
-      class="flex h-5 w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap hover:bg-hover hover:text-fg"
+      class="flex h-full w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap touch:text-sm hover:bg-hover hover:text-fg"
       classList={{ "text-subtle italic": mode() === "diff", "text-muted": mode() === "project" }}
       title={`${p.file.path} · not changed; open to read or comment`}
       data-neighbour={p.file.path}
-      onClick={(e) =>
-        void (e.shiftKey ? props.cmd.openPathInSplit(p.file.path) : props.cmd.openPath(p.file.path))
-      }
+      onClick={(e) => {
+        props.view.doneWithSheet();
+        void (e.shiftKey ? props.cmd.openPathInSplit(p.file.path) : props.cmd.openPath(p.file.path));
+      }}
     >
       <span class="w-3 flex-none" />
       <span class="min-w-0 flex-1 truncate">{p.file.name}</span>
@@ -237,13 +245,14 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     return (
       <button
         type="button"
-        class="flex h-5 w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap hover:bg-hover"
+        class="flex h-full w-full cursor-pointer items-center gap-1.5 rounded px-1 text-left text-[12.5px] whitespace-nowrap touch:text-sm hover:bg-hover"
         classList={{ "bg-accent-soft": props.current() === p.file.index }}
         aria-current={props.current() === p.file.index}
         data-tree-file={p.file.path}
         data-context={props.review.isContext(p.file.index) ? "" : undefined}
         title={`${p.file.path}${file().collapsed ? ` · collapsed: ${file().collapsed}` : ""} · double-click for the rest of its folder`}
         onClick={(e) => {
+          props.view.doneWithSheet();
           if (e.shiftKey) return void props.cmd.openPathInSplit(p.file.path);
           props.cmd.openFile(p.file.index);
         }}
@@ -296,7 +305,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
       type="button"
       role="tab"
       aria-selected={mode() === p.value}
-      class="-mb-px cursor-pointer border-b-2 px-1 pb-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap uppercase"
+      class="-mb-px cursor-pointer border-b-2 px-1 pb-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap uppercase touch:py-3"
       classList={{
         "border-accent text-fg": mode() === p.value,
         "border-transparent text-muted hover:text-fg": mode() !== p.value,
@@ -307,7 +316,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
     </button>
   );
   const iconButton =
-    "grid size-5 cursor-pointer place-items-center rounded text-[12px] text-muted hover:bg-hover hover:text-fg";
+    "grid size-5 cursor-pointer place-items-center rounded text-[12px] text-muted hover:bg-hover hover:text-fg touch:h-11 touch:w-7 touch:text-base";
 
   return (
     <nav
@@ -363,7 +372,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
           placeholder={mode() === "project" ? "Find a file in the project" : "Filter files"}
           aria-label="Filter files"
           autocomplete="off"
-          class="h-6 w-full rounded border border-line bg-bg px-2 text-xs"
+          class="h-6 w-full rounded border border-line bg-bg px-2 text-xs touch:h-10 touch:text-base"
           onInput={(e) => setFilter(e.currentTarget.value)}
         />
         <Labels review={props.review} />
@@ -387,7 +396,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
             <For each={chapters()}>
               {(c) => (
                 <li data-tree-chapter={c.group.title}>
-                  <div class="h-5">
+                  <div class="h-5 touch:h-11">
                     <GroupHeader node={{ kind: "group", group: c.group, count: c.files.length }} />
                   </div>
                   <Show when={isGroupOpen(c.group)}>
@@ -403,7 +412,7 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
                     <ul>
                       <For each={c.files}>
                         {(f) => (
-                          <li class="h-5 pl-2.5">
+                          <li class="h-5 pl-2.5 touch:h-11">
                             <Changed file={f} />
                           </li>
                         )}
@@ -415,11 +424,11 @@ export function FileTree(props: { review: Review; view: View; cmd: Commands; cur
             </For>
           </ul>
         </Show>
-        <div class="relative" style={{ height: `${rows().length * ROW}px` }}>
-          <ul class="absolute inset-x-0" style={{ transform: `translateY(${first() * ROW}px)` }}>
+        <div class="relative" style={{ height: `${rows().length * row()}px` }}>
+          <ul class="absolute inset-x-0" style={{ transform: `translateY(${first() * row()}px)` }}>
             <For each={shown()}>
               {(row) => (
-                <li style={{ "padding-left": `${row.depth * 10}px` }} class="h-5">
+                <li style={{ "padding-left": `${row.depth * 10}px` }} class="h-5 touch:h-11">
                   <Switch>
                     <Match when={row.node.kind === "dir" && row.node}>
                       {(dir) => <Folder dir={dir()} />}
@@ -450,7 +459,7 @@ function Labels(props: { review: Review }) {
             return (
               <button
                 type="button"
-                class="cursor-pointer rounded-full border px-1.5 text-[11px] leading-[18px]"
+                class="cursor-pointer rounded-full border px-1.5 text-[11px] leading-[18px] touch:px-3 touch:text-sm touch:leading-8"
                 classList={{
                   "border-line bg-bg text-muted hover:text-fg": !hidden(),
                   "border-line-strong bg-inset text-subtle line-through": hidden(),
