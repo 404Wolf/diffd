@@ -155,7 +155,8 @@ pub enum Sent {
     Refused,
     /// Not queued now, and nothing here can say whether an earlier attempt
     /// under the key was: another core, a core or hc without keys, a key the
-    /// core may have forgotten, a removed terminal, or no hc at all.
+    /// core may have forgotten, a removed terminal, or no hc at all. The
+    /// hooks announce it (twice at worst, never not at all).
     Unvouched,
     /// No clear answer (a timeout, a lost connection, an unreadable reply):
     /// it may have been queued.

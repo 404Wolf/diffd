@@ -31,12 +31,15 @@
 //!   inbox): it never queued it, so the hooks announce it;
 //! - not queued now by something that can't speak for an earlier attempt
 //!   (another core took the address, a key it may have forgotten, an old
-//!   core or hc): the hooks announce it only if no earlier attempt was
-//!   unclear; otherwise it stays told, logged, rather than risk it twice;
-//! - still unclear at the end of the window: it stays told, logged. Within
-//!   it the core still has the key, so a retry can't queue it again.
+//!   core or hc), or still unclear at the end of the window: the hooks
+//!   announce it. An earlier attempt may have gone in, so the agent may get
+//!   two notices; that's harmless (`wait_for_feedback` hands out each comment
+//!   once), and losing the only notice isn't. Within the window the core
+//!   still has the key, so a retry itself can't queue it twice.
 //!
-//! Its messages stay told meanwhile, so the hooks don't announce it too.
+//! So the notice is at least once, and twice only after an unclear answer.
+//! Its messages stay told while the inbox tries, so the hooks don't
+//! announce it meanwhile.
 //!
 //! A pass that fails part way (the database) hands the reviews it was
 //! taking to the hooks, so their feedback is still announced.
@@ -220,19 +223,19 @@ impl App {
                     tracing::debug!(terminal, "Herdr inbox refused; the hooks announce this feedback");
                     return self.hand_to_hooks(told);
                 }
-                Sent::Unvouched if !unclear => {
-                    tracing::debug!(terminal, "Herdr inbox can't take it; the hooks announce this feedback");
-                    return self.hand_to_hooks(told);
-                }
                 Sent::Unvouched => {
-                    tracing::warn!(terminal, "an earlier send may have gone in, and nothing can tell now; not announcing it again");
-                    return;
+                    if unclear {
+                        tracing::warn!(terminal, "Herdr inbox can't say whether an earlier send went in; the hooks announce it too");
+                    } else {
+                        tracing::debug!(terminal, "Herdr inbox can't take it; the hooks announce this feedback");
+                    }
+                    return self.hand_to_hooks(told);
                 }
                 Sent::Unknown => {
                     unclear = true;
                     if started.elapsed() + wait > window {
-                        tracing::warn!(terminal, "no clear answer from Herdr's inbox in time; it may have gone in, so not again");
-                        return;
+                        tracing::warn!(terminal, "no clear answer from Herdr's inbox in time; the hooks announce it too");
+                        return self.hand_to_hooks(told);
                     }
                     tracing::warn!(terminal, ?wait, "no clear answer from Herdr's inbox; asking again with the same key");
                     tokio::time::sleep(wait).await;

@@ -331,7 +331,8 @@ async fn an_unclear_send_is_retried_under_its_key_until_settled() {
     }
 }
 
-/// No clear answer, then a definite refusal: the hooks announce it, once.
+/// No clear answer, then a definite refusal (the core checks its keys
+/// first, so it never queued it): the hooks announce it, once.
 #[tokio::test]
 async fn an_unclear_send_then_refused_goes_to_the_hooks() {
     let inbox = FakeInbox::new();
@@ -346,50 +347,69 @@ async fn an_unclear_send_then_refused_goes_to_the_hooks() {
     assert!(inbox.queued().is_empty());
 }
 
-/// Retries stop well before the core could forget the key: half of how long
-/// it keeps keys. A retry after that could find the key gone and queue the
-/// notice again; instead it stays told (logged).
+/// Every attempt lost (never queued anywhere): when the retry window is up,
+/// the hooks announce it, once. The wake is at least once; losing it isn't
+/// an option.
 #[tokio::test]
-async fn retries_stop_before_the_core_forgets_the_key() {
+async fn when_every_attempt_is_lost_the_hooks_announce_it_once() {
     // Keys kept 2.4 s: retries for 1.2 s, so after 1 s, not after 3 s.
     let inbox = FakeInbox::with_core(core("core-1", Duration::from_millis(2400)));
-    inbox.then(&[Next::QueueLoseAnswer, Next::Lose]);
+    inbox.then(&[Next::Lose, Next::Lose, Next::Lose]);
     let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
-    let hook = spawn_hook(&app, &repo, Duration::from_secs(6));
+    let hook = spawn_hook(&app, &repo, Duration::from_secs(8));
     tokio::time::sleep(Duration::from_millis(100)).await;
-    app.chat_user(&id, None, "only once").await.unwrap();
-    assert!(until(Duration::from_secs(4), || inbox.sends().len() == 2).await, "{:?}", inbox.sends());
-    // Past when the core forgot the key, and past when a third try would have been.
-    tokio::time::sleep(Duration::from_millis(3500)).await;
+    app.chat_user(&id, None, "lost in transit").await.unwrap();
+    let notice = tokio::time::timeout(Duration::from_secs(6), hook).await.expect("hook woken").unwrap();
+    assert!(notice.is_some_and(|m| m.contains("> lost in transit")));
+    assert_eq!(inbox.sends().len(), 2, "retried within the window, not after");
+    assert!(inbox.queued().is_empty(), "never queued");
+    assert!(app.wait_for_wake(&repo.path(), "claude:s1", Duration::from_millis(1800)).await.unwrap().is_none(), "announced once");
+    tokio::time::sleep(Duration::from_millis(2000)).await;
     assert_eq!(inbox.sends().len(), 2, "no retry once the window is up");
-    assert_eq!(inbox.queued().len(), 1, "the agent got it once");
-    assert!(hook.await.unwrap().is_none(), "not announced again by the hooks");
+}
+
+/// The first attempt went in but its answer was lost, and every retry is
+/// lost too: past the window the hooks announce it as well. Two notices at
+/// most, and retries stop before the core forgets the key, so the inbox
+/// itself never queues it twice.
+#[tokio::test]
+async fn an_unsettled_send_falls_to_the_hooks_at_the_end_of_the_window() {
+    let inbox = FakeInbox::with_core(core("core-1", Duration::from_millis(2400)));
+    inbox.then(&[Next::QueueLoseAnswer, Next::Lose, Next::Lose]);
+    let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
+    let hook = spawn_hook(&app, &repo, Duration::from_secs(8));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    app.chat_user(&id, None, "maybe twice").await.unwrap();
+    let notice = tokio::time::timeout(Duration::from_secs(6), hook).await.expect("hook woken").unwrap();
+    assert!(notice.is_some_and(|m| m.contains("> maybe twice")));
+    tokio::time::sleep(Duration::from_millis(3000)).await;
+    assert_eq!(inbox.sends().len(), 2);
+    assert_eq!(inbox.queued().len(), 1, "the inbox queued it once");
 }
 
 /// A retry goes to the core the notice was for, and no other: after a core
 /// with another id took over (reusing the terminal address), the retry is
-/// refused there, and since the first attempt may have gone in on the old
-/// core, it isn't announced again either.
+/// refused there and queues nothing; the hooks announce it.
 #[tokio::test]
 async fn a_retry_never_reaches_a_core_that_replaced_the_old_one() {
-    let inbox = FakeInbox::new();
-    inbox.then(&[Next::QueueLoseAnswer]);
-    close(&inbox.send_gate);
-    let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
-    let hook = spawn_hook(&app, &repo, Duration::from_secs(5));
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    app.chat_user(&id, None, "for the old agent").await.unwrap();
-    assert!(until(Duration::from_secs(4), || inbox.sends().len() == 1).await);
-    open(&inbox.send_gate);
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    // The first attempt went in on core-1, its answer lost; core-2 takes over.
-    *inbox.core.lock().unwrap() = core("core-2", HOUR);
-    assert!(until(Duration::from_secs(3), || inbox.sends().len() == 2).await, "retried");
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    let queued = inbox.queued.lock().unwrap().clone();
-    assert_eq!(queued.len(), 1);
-    assert_eq!(queued[0].0, "core-1", "nothing queued on the core that replaced it");
-    assert!(hook.await.unwrap().is_none(), "not announced twice");
+    for (case, first) in [("first attempt lost", Next::Lose), ("first attempt's answer lost", Next::QueueLoseAnswer)] {
+        let inbox = FakeInbox::new();
+        inbox.then(&[first]);
+        close(&inbox.send_gate);
+        let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
+        let hook = spawn_hook(&app, &repo, Duration::from_secs(8));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        app.chat_user(&id, None, "for the old agent").await.unwrap();
+        assert!(until(Duration::from_secs(4), || inbox.sends().len() == 1).await, "{case}");
+        open(&inbox.send_gate);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        *inbox.core.lock().unwrap() = core("core-2", HOUR);
+        let notice = tokio::time::timeout(Duration::from_secs(4), hook).await.expect(case).unwrap();
+        assert!(notice.is_some_and(|m| m.contains("> for the old agent")), "{case}");
+        assert_eq!(inbox.sends().len(), 2, "{case}: retried once, refused by core-2");
+        assert!(inbox.queued.lock().unwrap().iter().all(|(c, _, _)| c == "core-1"), "{case}: nothing on core-2");
+        assert!(app.wait_for_wake(&repo.path(), "claude:s1", Duration::from_millis(1500)).await.unwrap().is_none(), "{case}");
+    }
 }
 
 /// Refused outright by a core that took over before the first attempt: it
