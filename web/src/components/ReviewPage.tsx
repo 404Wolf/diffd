@@ -205,6 +205,17 @@ export function ReviewPage(props: { state: ReviewState }) {
       return cmd.openFind();
     }
     const target = e.target as HTMLElement;
+    // On a phone, esc puts away the open sheet from anywhere in it: the filter, the chat, a toggle.
+    if (
+      e.key === "Escape" &&
+      v.sheet() &&
+      !v.picker() &&
+      !v.help() &&
+      !target.closest("[role=menu], [role=dialog]")
+    ) {
+      e.preventDefault();
+      return v.closeSheet("toggle");
+    }
     const drawer = target.closest<HTMLElement>("aside[data-drawer]");
     // Ctrl+H / Ctrl+L move across the page from anywhere, text boxes included.
     if (
@@ -232,7 +243,6 @@ export function ReviewPage(props: { state: ReviewState }) {
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        v.doneWithSheet();
         return bufferEl()?.focus({ preventScroll: true });
       }
       // Enter and space press the focused item; every other key works as it does in the code.
@@ -322,7 +332,7 @@ export function ReviewPage(props: { state: ReviewState }) {
           onChange={(s) => v.setDrawers("left", s)}
           narrow={v.narrow()}
           open={v.drawerOpen("left")}
-          onClose={() => v.setDrawerOpen("left", false)}
+          onClose={() => v.closeSheet("toggle")}
         >
           <FileTree review={review} view={v} cmd={cmd} current={currentFile} />
         </Drawer>
@@ -351,7 +361,7 @@ export function ReviewPage(props: { state: ReviewState }) {
           badge={review.unread().length > 0}
           narrow={v.narrow()}
           open={v.drawerOpen("right")}
-          onClose={() => v.setDrawerOpen("right", false)}
+          onClose={() => v.closeSheet("toggle")}
         >
           <RightPanel review={review} view={v} cmd={cmd} />
         </Drawer>

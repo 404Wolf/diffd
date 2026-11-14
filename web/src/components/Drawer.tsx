@@ -1,4 +1,4 @@
-import { type JSX, Show } from "solid-js";
+import { createEffect, type JSX, on, Show } from "solid-js";
 import type { Drawer as DrawerState } from "../state/view";
 
 const MIN = 160;
@@ -30,6 +30,22 @@ export function Drawer(props: {
   children: JSX.Element;
 }) {
   let root: HTMLElement | undefined;
+
+  // A sheet that comes out takes focus (the file you're on, or its first
+  // item), so esc and the keys work in it; closing hands focus back (see closeSheet).
+  createEffect(
+    on(
+      () => props.narrow && props.open,
+      (out) => {
+        if (!out || !root || root.contains(document.activeElement)) return;
+        const target =
+          root.querySelector<HTMLElement>('[aria-current="true"]') ??
+          root.querySelector<HTMLElement>("[role=tab][aria-selected=true], button, a[href]");
+        target?.focus({ preventScroll: true });
+      },
+      { defer: true },
+    ),
+  );
 
   const onPointerDown = (e: PointerEvent) => {
     const handle = e.currentTarget as HTMLElement;
@@ -88,8 +104,10 @@ export function Drawer(props: {
           "border-r border-line": props.side === "left",
           "flex-row-reverse border-l border-line": props.side === "right",
           relative: !props.narrow,
-          "absolute inset-y-0 z-[25] w-[min(88%,360px)] shadow-pop transition-[translate,visibility] duration-200 ease-out":
-            props.narrow,
+          "absolute inset-y-0 z-[25] w-[min(88%,360px)] shadow-pop duration-200 ease-out": props.narrow,
+          // Shown at once when it comes out (so it can take focus), hidden only once it has slid away.
+          "transition-[translate]": props.narrow && props.open,
+          "transition-[translate,visibility]": props.narrow && !props.open,
           "left-0": props.narrow && props.side === "left",
           "right-0": props.narrow && props.side === "right",
           "invisible -translate-x-full": props.narrow && !props.open && props.side === "left",

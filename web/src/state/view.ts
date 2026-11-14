@@ -11,7 +11,7 @@ import { JumpList } from "../lib/jumps";
 import { media, NARROW } from "../lib/media";
 import type { Match } from "../lib/search";
 import { loadJson, saveJson } from "../lib/storage";
-import { setFocusedPane } from "./dom";
+import { bufferEl, setFocusedPane } from "./dom";
 import { fromRuns, loadSession, sessionWriter, toRuns } from "./persist";
 import type { Review } from "./review";
 
@@ -470,6 +470,8 @@ export function createView(review: Review) {
    */
   const narrow = media(NARROW);
   const [sheet, setSheet] = createSignal<DrawerSide | null>(null);
+  // Widened past a phone (a fold opened): the drawers are beside the code again.
+  createEffect(on(narrow, (n) => n || setSheet(null), { defer: true }));
   const drawerOpen = (side: DrawerSide) => (narrow() ? sheet() === side : !drawers[side].collapsed);
   const setDrawerOpen = (side: DrawerSide, open: boolean | ((was: boolean) => boolean)) => {
     const next = typeof open === "function" ? open(untrack(() => drawerOpen(side))) : open;
@@ -477,9 +479,24 @@ export function createView(review: Review) {
     if (next) setSheet(side);
     else if (untrack(sheet) === side) setSheet(null);
   };
+  /**
+   * Put the open sheet away. Focus left inside it goes back to the button
+   * that opens it (`"toggle"`: esc, the backdrop) or to the code (`"code"`:
+   * something in it took you there); focus already elsewhere stays put.
+   */
+  const closeSheet = (focus: "toggle" | "code") => {
+    const side = untrack(sheet);
+    if (!side) return;
+    setSheet(null);
+    const active = document.activeElement;
+    if (active && active !== document.body && !active.closest(`aside[data-drawer="${side}"]`)) return;
+    const to =
+      focus === "toggle" ? document.querySelector<HTMLElement>(`[data-drawer-toggle="${side}"]`) : bufferEl();
+    to?.focus({ preventScroll: true });
+  };
   /** Something in a drawer took you to the code: on a phone, get the drawer out of the way. */
   const doneWithSheet = () => {
-    if (untrack(narrow)) setSheet(null);
+    if (untrack(narrow)) closeSheet("code");
   };
   const [rightTab, setRightTab] = createSignal<RightTab>(loadJson<RightTab>("diffd:right-tab", "activity"));
   createEffect(() => saveJson("diffd:right-tab", rightTab()));
@@ -568,6 +585,8 @@ export function createView(review: Review) {
     setAllFolders,
     setDrawers,
     narrow,
+    sheet,
+    closeSheet,
     drawerOpen,
     setDrawerOpen,
     doneWithSheet,

@@ -1506,6 +1506,23 @@ try {
       await p.tap("[data-drawer-toggle=left]");
       await sheet("left", "open");
       check((await left.isVisible()) && (await panes()) >= 410, "it slides the files over the code, which keeps its width");
+      const focusIn = () =>
+        p.evaluate(() => {
+          const a = document.activeElement;
+          return a?.closest("aside[data-drawer]")?.dataset.drawer ?? a?.dataset.drawerToggle ?? a?.tagName;
+        });
+      check((await focusIn()) === "left", "focus goes into it");
+      await p.keyboard.press("Escape");
+      await sheet("left", "closed");
+      check((await focusIn()) === "left", "esc puts it away, and focus goes back to its button");
+      await p.tap("[data-drawer-toggle=left]");
+      await sheet("left", "open");
+      await p.locator("aside[data-drawer=left] input[type=search]").tap();
+      await p.keyboard.press("Escape");
+      await sheet("left", "closed");
+      check(!(await left.isVisible()), "esc in the filter puts it away too");
+      await p.tap("[data-drawer-toggle=left]");
+      await sheet("left", "open");
       const row = await p.locator("aside[data-drawer=left] [data-tree-file]").first().boundingBox();
       check(row.height >= 44, `tree rows are big enough to tap (${row.height}px)`);
       await shot(p, "phone-files");
@@ -1519,6 +1536,12 @@ try {
       await p.touchscreen.tap(12, 500);
       await sheet("right", "closed");
       check(!(await right.isVisible()), "tapping the dimmed code puts it away");
+      await p.tap("[data-drawer-toggle=right]");
+      await sheet("right", "open");
+      await right.locator("#chat-input").tap();
+      await p.keyboard.press("Escape");
+      await sheet("right", "closed");
+      check(!(await right.isVisible()) && (await p.locator("[data-drawer-backdrop]").count()) === 0, "esc in the chat puts it away, backdrop and all");
 
       // Unfolded (the inner screen): the drawers sit beside the code again.
       await p.setViewportSize({ width: 884, height: 1050 });
