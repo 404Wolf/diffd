@@ -198,7 +198,8 @@ impl App {
     /// set, checked and marked under the review's lock, gives each message to one.
     pub(super) async fn take_notice(&self, lives: &[(ReviewId, Arc<Live>)]) -> Result<Look> {
         let mut told = Vec::new();
-        match self.take_fresh(lives, &mut told).await {
+        let taken = self.take_fresh(lives, &mut told).await;
+        match taken {
             Ok(Ok(notice)) => Ok(Look::Notice(notice, told)),
             Ok(Err(held)) => Ok(held.map_or(Look::Nothing, Look::Held)),
             Err(e) => {
