@@ -7,6 +7,7 @@ import { agentName } from "../lib/agent";
 import { diagnosticsOn } from "../lib/code";
 import { spanLabel } from "../lib/history";
 import { composing } from "../lib/keymap";
+import { media, NARROW } from "../lib/media";
 import { helpEntries } from "../state/bindings";
 import type { Commands } from "../state/commands";
 import { bufferEl } from "../state/dom";
@@ -57,6 +58,12 @@ export function TopBar(props: { review: Review; view: View }) {
       .with(["live", "working"], () => ({ dot: "bg-warn animate-pulse", text: `${agentName()} is working` }))
       .with(["live", "away"], () => ({ dot: "bg-subtle", text: `${agentName()} hasn't checked in` }))
       .exhaustive();
+  // On a phone the rest of the bar is behind a details button; widened past
+  // a phone (a fold opened) that button is gone, and so is what it opened.
+  const narrow = media(NARROW);
+  const [details, setDetails] = createSignal(false);
+  createEffect(() => narrow() || setDetails(false));
+  let detailsPanel: HTMLDivElement | undefined;
   // Shown in the bar, and on a phone behind its details button.
   const refs = () => (
     <span class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
@@ -129,7 +136,7 @@ export function TopBar(props: { review: Review; view: View }) {
         {presence().text}
       </span>
       {/* On a phone the bar is one line: the rest is behind this, with the agent's dot on it. */}
-      <Popover placement="bottom-end" gutter={6}>
+      <Popover placement="bottom-end" gutter={6} open={details()} onOpenChange={setDetails}>
         <Popover.Trigger
           data-header-details
           aria-label={`Review details · ${presence().text}`}
@@ -144,9 +151,20 @@ export function TopBar(props: { review: Review; view: View }) {
         <Popover.Portal>
           <Popover.Content
             data-header-details-panel
-            // A glance, not a form: leave focus on the button rather than ringing the link.
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            class="z-40 flex w-[min(360px,calc(100vw-16px))] flex-col gap-2 rounded-lg border border-line-strong bg-bg p-3 text-xs shadow-pop"
+            ref={detailsPanel}
+            tabindex="-1"
+            // Focus the panel itself rather than ringing its link; tab goes on to the link.
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              detailsPanel?.focus({ preventScroll: true });
+            }}
+            // Closed by unfolding, its button is hidden: back to the code instead.
+            onCloseAutoFocus={(e) => {
+              if (narrow()) return;
+              e.preventDefault();
+              bufferEl()?.focus({ preventScroll: true });
+            }}
+            class="z-40 flex outline-none w-[min(360px,calc(100vw-16px))] flex-col gap-2 rounded-lg border border-line-strong bg-bg p-3 text-xs shadow-pop"
           >
             <Popover.Title class="text-[13.5px] font-semibold break-words">{meta().title}</Popover.Title>
             {refs()}
