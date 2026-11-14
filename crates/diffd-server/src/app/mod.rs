@@ -5,11 +5,13 @@ mod context;
 mod conversation;
 mod feedback;
 mod history;
+mod push;
 mod rebuild;
 mod share;
 mod wake;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 use diffd_core::feedback::FeedbackGate;
@@ -25,7 +27,7 @@ pub use share::{ShareRequest, ShareResult};
 pub use wake::{WakeNotice, WakeReview};
 
 use crate::adapters::store::Store;
-use crate::ports::{Clock, CodeIntel, DiffEngine, RepoSource, TreeWatch};
+use crate::ports::{AgentInbox, Clock, CodeIntel, DiffEngine, RepoSource, TreeWatch};
 
 /// Agents that haven't called a tool for this long are shown as away.
 const AWAY_AFTER_MS: Millis = 10 * 60 * 1000;
@@ -61,6 +63,12 @@ pub struct App {
     code: Mutex<Option<Arc<dyn CodeIntel>>>,
     /// Harness hooks waiting to wake their agent (see `wake`).
     waiters: Mutex<wake::Waiters>,
+    /// Agents' Herdr inboxes, once [`App::set_inbox`] starts the pusher.
+    inbox: Mutex<Option<Arc<dyn AgentInbox>>>,
+    /// Whether the pusher runs: only then do reviews with a route wait for it.
+    pushing: AtomicBool,
+    /// Told when feedback changed anywhere: the pusher looks again (see `push`).
+    pushes: Arc<Notify>,
     /// Held while diffing commits ahead of time (see `history`), so background
     /// work never takes more than one diff's worth of the machine.
     prefetching: tokio::sync::Mutex<()>,
@@ -85,8 +93,18 @@ struct LiveInner {
     listeners: u32,
     /// Pages showing the review. Language servers run for it only while there are some.
     viewers: u32,
-    /// User messages a harness hook already woke the agent for (see `wake`).
+    /// User messages the agent was already told about, by a harness hook
+    /// (see `wake`) or in its Herdr inbox (see `push`): whichever takes a
+    /// message first marks it here, so it's announced once.
     told: std::collections::HashSet<diffd_core::model::MessageId>,
+    /// The agent's Herdr route (its terminal, that terminal's core), as in the spec.
+    route: Option<(String, String)>,
+    /// Who announces this review's feedback (see `push`). Changed only by
+    /// [`LiveInner::set_delivery`].
+    delivery: push::Delivery,
+    /// Counts changes of `delivery`, so a pusher pass that looked before an
+    /// await can tell its view went stale (see `push`).
+    delivery_epoch: u64,
     last_agent: Option<Millis>,
     presence: Presence,
     snapshot: Arc<Snapshot>,
@@ -117,6 +135,9 @@ impl App {
             watcher: Mutex::new(None),
             code: Mutex::new(None),
             waiters: Mutex::default(),
+            inbox: Mutex::new(None),
+            pushing: AtomicBool::new(false),
+            pushes: Arc::new(Notify::new()),
             prefetching: tokio::sync::Mutex::new(()),
             me: me.clone(),
         })
@@ -171,13 +192,18 @@ impl App {
             return Ok(l.clone());
         }
         let snapshot = self.store.latest_snapshot(id).await?.ok_or_else(|| no_review(id))?;
+        let found = self.meta(id).await;
         // First use since a restart: a review of the working tree follows it again.
-        if let Ok((meta, spec)) = self.meta(id).await
-            && follows_worktree(&meta, &spec)
+        if let Ok((meta, spec)) = &found
+            && follows_worktree(meta, spec)
         {
-            self.start_watch(&meta);
+            self.start_watch(meta);
         }
-        Ok(self.insert_live(id, snapshot, 0))
+        let live = self.insert_live(id, snapshot, 0);
+        if let Ok((_, spec)) = &found {
+            live.inner.lock().expect("live lock").route = push::route_of(spec);
+        }
+        Ok(live)
     }
 
     fn insert_live(&self, id: &ReviewId, snapshot: Snapshot, fingerprint: u64) -> Arc<Live> {
@@ -195,6 +221,9 @@ impl App {
                         listeners: 0,
                         viewers: 0,
                         told: Default::default(),
+                        route: None,
+                        delivery: push::Delivery::Hooks,
+                        delivery_epoch: 0,
                         last_agent: None,
                         presence: Presence::Away,
                         snapshot: Arc::new(snapshot),
@@ -275,6 +304,37 @@ impl App {
         Ok(meta)
     }
 
+    /// On a review the agent can be reached at in Herdr, the hooks stand down
+    /// until the pusher decides (see `push`).
+    fn to_pusher(&self, inner: &mut LiveInner) {
+        if self.pushing.load(Ordering::SeqCst) && inner.route.is_some() && inner.delivery == push::Delivery::Hooks {
+            inner.set_delivery(push::Delivery::Deciding);
+        }
+    }
+
+    /// The user is about to write feedback on `live`: from now on, a hook
+    /// waiter holds it for their pause and leaves a routed review to the
+    /// pusher, so none sees the new feedback, once it's written, under the
+    /// old rules. Keep the guard until it's written: dropping it tells
+    /// everyone to look (see [`App::feedback_changed`]).
+    fn user_activity<'a>(&'a self, live: &'a Live) -> FeedbackComing<'a> {
+        {
+            let mut inner = live.inner.lock().expect("live lock");
+            inner.gate.touch(self.now());
+            self.to_pusher(&mut inner);
+        }
+        FeedbackComing { app: self, live }
+    }
+
+    /// Feedback on `live` changed (a message, a pause, a draft opened or
+    /// closed): hook waiters, waiting agents and the inbox pusher look again.
+    fn feedback_changed(&self, live: &Live) {
+        self.to_pusher(&mut live.inner.lock().expect("live lock"));
+        live.feedback.notify_waiters();
+        // A permit, kept if the pusher is busy: it looks again after.
+        self.pushes.notify_one();
+    }
+
     fn broadcast(live: &Live, msg: ServerMsg) {
         // No subscribers is fine: nobody has the page open.
         let _ = live.tx.send(msg);
@@ -305,6 +365,26 @@ impl App {
     fn agent_seen(&self, live: &Live) {
         live.inner.lock().expect("live lock").last_agent = Some(self.now());
         self.update_presence(live);
+    }
+}
+
+impl LiveInner {
+    /// The one way `delivery` changes: each change starts a new epoch.
+    fn set_delivery(&mut self, delivery: push::Delivery) {
+        self.delivery = delivery;
+        self.delivery_epoch += 1;
+    }
+}
+
+/// See [`App::user_activity`].
+struct FeedbackComing<'a> {
+    app: &'a App,
+    live: &'a Live,
+}
+
+impl Drop for FeedbackComing<'_> {
+    fn drop(&mut self) {
+        self.app.feedback_changed(self.live);
     }
 }
 

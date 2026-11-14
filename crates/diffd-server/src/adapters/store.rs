@@ -20,6 +20,13 @@ pub struct ReviewSpec {
     pub terminal: Option<String>,
     #[serde(default)]
     pub core_id: Option<String>,
+    /// The Herdr terminal of the agent working on the review, and its core:
+    /// feedback is pushed into that terminal's inbox (see `app::push`). Not
+    /// `terminal`, which may be another pane presenting the review.
+    #[serde(default)]
+    pub agent_terminal: Option<String>,
+    #[serde(default)]
+    pub agent_core_id: Option<String>,
     /// The base commit, resolved once when the review was shared, so moving
     /// refs (the agent committing on `HEAD`) don't shift what's reviewed.
     #[serde(default)]
@@ -146,6 +153,12 @@ impl Store {
         let pool = SqlitePoolOptions::new().max_connections(max).connect_with(opts).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(Self { pool })
+    }
+
+    /// The database itself, for tests that break it on purpose.
+    #[cfg(test)]
+    pub(crate) fn pool(&self) -> &SqlitePool {
+        &self.pool
     }
 
     pub async fn insert_review(&self, meta: &ReviewMeta, spec: &ReviewSpec) -> anyhow::Result<()> {

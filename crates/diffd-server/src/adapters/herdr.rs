@@ -1,10 +1,34 @@
-//! Optional pane presentation on the core local to this diffd. Every hc call
-//! is bounded, uses argv directly, and never routes a target to a remote core.
+//! Optional pane presentation on the core local to this diffd, and agents'
+//! inboxes there ([`AgentInbox`]). Every hc call is bounded, uses argv
+//! directly, and never routes a target to a remote core.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
+use futures::future::BoxFuture;
 use serde::Deserialize;
+
+use crate::ports::{AgentInbox, InboxCore, Outgoing, Sent};
+
+/// How long an inbox send may take. The core answers once the message is
+/// queued and it has watched a moment for the agent to start working.
+const SEND_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// hc's error kinds that mean the core never queued this key: it checks its
+/// keys first, so `not_following` holds for earlier attempts too.
+const REFUSALS: &[&str] = &["not_following", "invalid_params", "machine_unknown", "needs_target"];
+
+/// hc's error kinds that mean it wasn't queued now, by a core (or hc) that
+/// can't say whether an earlier attempt under the key was.
+const UNVOUCHED: &[&str] = &[
+    "other_core",     // the core this notice was for is gone
+    "key_forgotten",  // the core may have queued it and forgotten the key
+    "unknown_method", // a core that predates `terminal.queue`
+    "usage",          // an hc that predates `--inbox-only --key`
+    "not_found",      // the terminal, and its keys, were removed
+    "finished",
+];
 
 #[derive(Deserialize)]
 pub(crate) struct Core {
@@ -14,11 +38,12 @@ pub(crate) struct Core {
 
 pub(crate) struct Herdr {
     program: PathBuf,
+    send_timeout: Duration,
 }
 
 impl Default for Herdr {
     fn default() -> Self {
-        Self { program: PathBuf::from("hc") }
+        Self { program: PathBuf::from("hc"), send_timeout: SEND_TIMEOUT }
     }
 }
 
@@ -82,8 +107,101 @@ impl Herdr {
     }
 }
 
+/// Agents' inboxes on the local core.
+pub fn inbox() -> Arc<dyn AgentInbox> {
+    Arc::new(Herdr::default())
+}
+
+impl AgentInbox for Herdr {
+    fn local_core(&self) -> BoxFuture<'_, Option<InboxCore>> {
+        Box::pin(async move {
+            let output = self.output(&["server", "status", "--json"]).await?;
+            #[derive(Deserialize)]
+            struct Status {
+                core: Core,
+                // A core that predates inbox-only messages lists no features.
+                #[serde(default)]
+                features: Vec<String>,
+                #[serde(default)]
+                queue_keys_kept_ms: u64,
+            }
+            let status = serde_json::from_slice::<Status>(&output.stdout).ok()?;
+            Some(InboxCore {
+                id: status.core.id,
+                // Keys, or a retry could queue a notice twice.
+                queues: status.features.iter().any(|f| f == "queue-keyed"),
+                keys_kept: Duration::from_millis(status.queue_keys_kept_ms),
+            })
+        })
+    }
+
+    fn send<'a>(&'a self, notice: &'a Outgoing) -> BoxFuture<'a, Sent> {
+        Box::pin(async move {
+            if !valid_terminal(&notice.terminal) {
+                return Sent::Refused;
+            }
+            // `--inbox-only` (`terminal.queue`): queued or refused, never typed;
+            // queued once per key, by that core only. `--` keeps any text literal.
+            let since = notice.since_ms.to_string();
+            let args = [
+                "send",
+                "--inbox-only",
+                "--core",
+                &notice.core,
+                "--key",
+                &notice.key,
+                "--key-since",
+                &since,
+                "--",
+                &notice.terminal,
+                &notice.text,
+            ];
+            let mut command = tokio::process::Command::new(&self.program);
+            command.args(args).kill_on_drop(true);
+            match tokio::time::timeout(self.send_timeout, command.output()).await {
+                // It may have been queued before the answer was late.
+                Err(_) => Sent::Unknown,
+                // hc never ran: nothing here can speak for an earlier attempt.
+                Ok(Err(_)) => Sent::Unvouched,
+                Ok(Ok(output)) => outcome(&output),
+            }
+        })
+    }
+}
+
+/// What `hc send --inbox-only` said: queued (`via: inbox`, `repeated` or
+/// not), a refusal hc names, or anything else, which may have come after
+/// the core queued it.
+fn outcome(output: &std::process::Output) -> Sent {
+    #[derive(Deserialize)]
+    struct Answer {
+        via: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Failure {
+        error: Kind,
+    }
+    #[derive(Deserialize)]
+    struct Kind {
+        kind: String,
+    }
+    if output.status.success() {
+        let queued = serde_json::from_slice::<Answer>(&output.stdout).is_ok_and(|a| a.via.as_deref() == Some("inbox"));
+        return if queued { Sent::Queued } else { Sent::Unknown };
+    }
+    match serde_json::from_slice::<Failure>(&output.stderr) {
+        Ok(failure) if REFUSALS.contains(&failure.error.kind.as_str()) => Sent::Refused,
+        Ok(failure) if UNVOUCHED.contains(&failure.error.kind.as_str()) => Sent::Unvouched,
+        _ => Sent::Unknown,
+    }
+}
+
 async fn output(program: &Path, args: &[&str]) -> Option<std::process::Output> {
-    tokio::time::timeout(Duration::from_millis(500), tokio::process::Command::new(program).args(args).kill_on_drop(true).output())
+    output_within(program, args, Duration::from_millis(500)).await
+}
+
+async fn output_within(program: &Path, args: &[&str], limit: Duration) -> Option<std::process::Output> {
+    tokio::time::timeout(limit, tokio::process::Command::new(program).args(args).kill_on_drop(true).output())
         .await
         .ok()?
         .ok()
@@ -136,7 +254,7 @@ esac
         )
         .unwrap();
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let hc = Herdr { program };
+        let hc = Herdr { program, ..Herdr::default() };
         let read = |t: &str| std::fs::read_to_string(dir.path().join(t)).unwrap();
         hc.label("tworker", "moved").await;
         assert!(hc.move_label(Some("tworker"), "tmanager", "moved", None).await);
@@ -153,5 +271,86 @@ esac
         assert_eq!(read("tworker"), "moved");
         hc.move_label(Some("tworker"), "tworker", "moved", None).await;
         assert_eq!(read("tworker"), "moved", "same-pane presentation never clears its own label");
+    }
+
+    /// A fake hc on a fake core: `send` records its argv and answers as hc
+    /// would for each terminal; `server status` names core `core-1` with the
+    /// given features.
+    fn fake_core(dir: &Path, features: &str) -> Herdr {
+        use std::os::unix::fs::PermissionsExt;
+        let program = dir.join("hc");
+        std::fs::write(
+            &program,
+            format!(
+                r#"#!/bin/sh
+cd -- "$(dirname -- "$0")"
+case "$1" in
+  server) printf '{{"core":{{"id":"core-1","name":"server"}}{features}}}' ;;
+  send)
+    printf '%s\n' "$@" > sent
+    fail() {{ printf '{{"error":{{"kind":"%s","message":"no"}}}}' "$1" >&2; exit 1; }}
+    case "${{10}}" in
+      tinbox) printf '{{"status":"idle","turn":3,"started":true,"via":"inbox","waiting":1}}' ;;
+      tagain) printf '{{"status":"idle","turn":3,"started":null,"via":"inbox","waiting":1,"repeated":true}}' ;;
+      tnone) fail not_following ;;
+      toldcore) fail unknown_method ;;
+      tgone) fail other_core ;;
+      tforgot) fail key_forgotten ;;
+      toldhc) printf '{{"error":{{"kind":"usage","message":"unexpected argument --inbox-only"}}}}' >&2; exit 2 ;;
+      tlost) fail unavailable ;;
+      tgarbled) printf 'Segmentation fault' >&2; exit 139 ;;
+      tnovia) printf '{{"status":"idle","turn":3,"started":true}}' ;;
+      tslow) sleep 5 ;;
+    esac ;;
+esac
+"#
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        Herdr { program, send_timeout: Duration::from_millis(500) }
+    }
+
+    #[tokio::test]
+    async fn the_core_says_whether_it_takes_inbox_only_messages() {
+        let dir = tempfile::tempdir().unwrap();
+        let hour = Duration::from_secs(3600);
+        let keyed = fake_core(dir.path(), r#","features":["queue","queue-keyed"],"queue_keys_kept_ms":3600000"#).local_core().await;
+        assert_eq!(keyed, Some(InboxCore { id: "core-1".into(), queues: true, keys_kept: hour }));
+        let unkeyed = fake_core(dir.path(), r#","features":["framed","queue"]"#).local_core().await;
+        assert!(unkeyed.is_some_and(|c| !c.queues), "queue without keys isn't enough: a retry could queue twice");
+        let old = fake_core(dir.path(), "").local_core().await;
+        assert!(old.is_some_and(|c| !c.queues), "a core that predates them lists no features");
+        assert_eq!(Herdr { program: "/no/such/hc".into(), ..Herdr::default() }.local_core().await, None);
+    }
+
+    fn outgoing(terminal: &str) -> Outgoing {
+        let text = "--help; New feedback on your diffd review".to_owned();
+        Outgoing { terminal: terminal.into(), core: "core-1".into(), key: "diffd-k1".into(), since_ms: 1_700_000_000_000, text }
+    }
+
+    #[tokio::test]
+    async fn refused_unvouched_and_unknown_are_told_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let hc = fake_core(dir.path(), r#","features":["queue","queue-keyed"]"#);
+        assert_eq!(hc.send(&outgoing("tinbox")).await, Sent::Queued);
+        let sent = std::fs::read_to_string(dir.path().join("sent")).unwrap();
+        let argv = "send\n--inbox-only\n--core\ncore-1\n--key\ndiffd-k1\n--key-since\n1700000000000\n--\ntinbox\n";
+        assert_eq!(sent, format!("{argv}{}\n", outgoing("tinbox").text), "argv is literal, the text after --");
+        assert_eq!(hc.send(&outgoing("tagain")).await, Sent::Queued, "queued before under that key");
+        // The core vouches that it never queued this key.
+        assert_eq!(hc.send(&outgoing("tnone")).await, Sent::Refused);
+        // Not queued now, but nobody can speak for an earlier attempt.
+        for terminal in ["tgone", "tforgot", "toldcore", "toldhc"] {
+            assert_eq!(hc.send(&outgoing(terminal)).await, Sent::Unvouched, "{terminal}");
+        }
+        assert_eq!(Herdr { program: "/no/such/hc".into(), ..Herdr::default() }.send(&outgoing("tinbox")).await, Sent::Unvouched);
+        // Maybe queued: a lost core, an unreadable failure, an answer without `via`, no answer in time.
+        for terminal in ["tlost", "tgarbled", "tnovia", "tslow"] {
+            assert_eq!(hc.send(&outgoing(terminal)).await, Sent::Unknown, "{terminal}");
+        }
+        std::fs::remove_file(dir.path().join("sent")).unwrap();
+        assert_eq!(hc.send(&outgoing("t1;id")).await, Sent::Refused);
+        assert!(!dir.path().join("sent").exists(), "an invalid address never reaches hc");
     }
 }
