@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* A finger rather than a mouse (phones, tablets): bigger targets, nothing hover-only. */
+@custom-variant touch (@media (pointer: coarse));
+
 /*
  * Design tokens. Every color lives here once, for light and dark; Tailwind
  * utilities (bg-panel, text-muted, border-line…) and the diff styles below

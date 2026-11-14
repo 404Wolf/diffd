@@ -16,7 +16,7 @@ import type { PickerItem, View } from "../state/view";
 /** How long the agent must have stopped listening before the top bar says so. */
 const PRESENCE_SETTLE_MS = 4000;
 
-export function TopBar(props: { review: Review }) {
+export function TopBar(props: { review: Review; view: View }) {
   const meta = () => props.review.meta();
   const totals = createMemo(() =>
     props.review
@@ -58,6 +58,10 @@ export function TopBar(props: { review: Review }) {
       .exhaustive();
   return (
     <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-panel px-2.5 py-1">
+      <DrawerButton view={props.view} side="left" label="Files">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 4v16" />
+      </DrawerButton>
       <a
         href="/"
         class="flex items-center gap-1.5 font-mono text-[12.5px] font-semibold text-fg no-underline"
@@ -65,7 +69,17 @@ export function TopBar(props: { review: Review }) {
         <i class="size-2 rotate-45 rounded-[2px] bg-accent" />
         diffd
       </a>
-      <span class="min-w-0 truncate text-[13.5px] font-semibold">{meta().title}</span>
+      <span class="min-w-0 truncate text-[13.5px] font-semibold max-md:flex-1">{meta().title}</span>
+      {/* At the end of the bar, or of the title's line on a phone. */}
+      <DrawerButton
+        view={props.view}
+        side="right"
+        label="Activity and chat"
+        badge={props.review.unread().length > 0}
+        class="md:order-last"
+      >
+        <path d="M4 5h16v11H9l-5 4z" />
+      </DrawerButton>
       <span class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
         <span>{meta().repoName}</span>
         <Rev>{meta().from}</Rev>→<Rev>{meta().to ?? "working tree"}</Rev>
@@ -107,6 +121,48 @@ export function TopBar(props: { review: Review }) {
         {presence().text}
       </span>
     </header>
+  );
+}
+
+/**
+ * Opens and closes a drawer, for screens where its edge handle is out of
+ * reach: narrow ones, where the drawer is a sheet, and touch ones.
+ */
+function DrawerButton(props: {
+  view: View;
+  side: "left" | "right";
+  label: string;
+  badge?: boolean;
+  class?: string;
+  children: JSX.Element;
+}) {
+  const open = () => props.view.drawerOpen(props.side);
+  return (
+    <button
+      type="button"
+      data-drawer-toggle={props.side}
+      aria-label={open() ? `Close ${props.label.toLowerCase()}` : `Open ${props.label.toLowerCase()}`}
+      aria-expanded={open()}
+      title={props.label}
+      class={`relative -my-0.5 hidden size-8 flex-none cursor-pointer place-items-center rounded-md max-md:grid touch:grid touch:size-11 ${props.class ?? ""}`}
+      classList={{ "bg-accent-soft text-accent": open(), "text-muted hover:bg-hover hover:text-fg": !open() }}
+      onClick={() => props.view.setDrawerOpen(props.side, (was) => !was)}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        class="size-5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        {props.children}
+      </svg>
+      <Show when={props.badge && !open()}>
+        <span class="absolute top-1 right-1 size-2 rounded-full bg-accent" />
+      </Show>
+    </button>
   );
 }
 

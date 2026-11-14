@@ -188,6 +188,7 @@ export function ReviewPage(props: { state: ReviewState }) {
     const go = link?.dataset.go;
     if (!go) return;
     e.preventDefault();
+    v.doneWithSheet();
     const at = go.lastIndexOf(":");
     const [path, line] = [go.slice(0, at), Number(go.slice(at + 1))];
     // Shift+click: in a split, next to what you're reading.
@@ -231,6 +232,7 @@ export function ReviewPage(props: { state: ReviewState }) {
       }
       if (e.key === "Escape") {
         e.preventDefault();
+        v.doneWithSheet();
         return bufferEl()?.focus({ preventScroll: true });
       }
       // Enter and space press the focused item; every other key works as it does in the code.
@@ -311,9 +313,17 @@ export function ReviewPage(props: { state: ReviewState }) {
 
   return (
     <div ref={root} class="flex h-full flex-col bg-bg">
-      <TopBar review={review} />
+      <TopBar review={review} view={v} />
       <div ref={container} class="relative flex min-h-0 flex-1">
-        <Drawer side="left" label="Files" state={v.drawers.left} onChange={(s) => v.setDrawers("left", s)}>
+        <Drawer
+          side="left"
+          label="Files"
+          state={v.drawers.left}
+          onChange={(s) => v.setDrawers("left", s)}
+          narrow={v.narrow()}
+          open={v.drawerOpen("left")}
+          onClose={() => v.setDrawerOpen("left", false)}
+        >
           <FileTree review={review} view={v} cmd={cmd} current={currentFile} />
         </Drawer>
         <div class="relative flex min-w-0 flex-1 flex-col">
@@ -339,6 +349,9 @@ export function ReviewPage(props: { state: ReviewState }) {
           state={v.drawers.right}
           onChange={(s) => v.setDrawers("right", s)}
           badge={review.unread().length > 0}
+          narrow={v.narrow()}
+          open={v.drawerOpen("right")}
+          onClose={() => v.setDrawerOpen("right", false)}
         >
           <RightPanel review={review} view={v} cmd={cmd} />
         </Drawer>

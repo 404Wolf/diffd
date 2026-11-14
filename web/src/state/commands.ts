@@ -506,6 +506,8 @@ export function createCommands(review: Review, view: View) {
 
   const activityGo = (item: ActivityItem) => {
     review.markRead(item.seq);
+    // On a phone the activity covers the code it's taking you to; the chat stays.
+    if (item.kind.type !== "agentSaid") view.doneWithSheet();
     match(item.kind)
       .with({ type: "userCommented" }, { type: "agentNoted" }, ({ threadId }) => {
         const t = review.threads().find((x) => x.id === threadId);
@@ -664,7 +666,7 @@ export function createCommands(review: Review, view: View) {
   };
   /** Focus a drawer (opening it): the file you're on in the tree, or the latest activity. */
   const focusDrawer = (side: "left" | "right") => {
-    view.setDrawers(side, "collapsed", false);
+    view.setDrawerOpen(side, true);
     requestAnimationFrame(() => {
       const drawer = document.querySelector<HTMLElement>(`aside[data-drawer="${side}"]`);
       const target =
@@ -1278,10 +1280,10 @@ export function createCommands(review: Review, view: View) {
 
   // -- Misc ----------------------------------------------------------------------
 
-  const toggleDrawer = (side: "left" | "right") => view.setDrawers(side, "collapsed", (c) => !c);
+  const toggleDrawer = (side: "left" | "right") => view.setDrawerOpen(side, (open) => !open);
   /** The chat lives in the right drawer: open it if needed. */
   const focusChat = () => {
-    view.setDrawers("right", "collapsed", false);
+    view.setDrawerOpen("right", true);
     queueMicrotask(() => document.getElementById("chat-input")?.focus());
   };
   const markViewedAndNext = () => {

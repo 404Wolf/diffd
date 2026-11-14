@@ -8,6 +8,7 @@ import { match } from "ts-pattern";
 import type { Anchor, Diagnostic, ShowRequest, Side, Snapshot, ThreadId } from "../api";
 import { applyFolds, carryRow, initialVisible, regionRows, rowOf } from "../lib/diffModel";
 import { JumpList } from "../lib/jumps";
+import { media, NARROW } from "../lib/media";
 import type { Match } from "../lib/search";
 import { loadJson, saveJson } from "../lib/storage";
 import { setFocusedPane } from "./dom";
@@ -145,6 +146,8 @@ export interface Drawer {
   size: number;
   collapsed: boolean;
 }
+
+export type DrawerSide = "left" | "right";
 
 interface Flags {
   collapsed: Record<string, boolean>;
@@ -461,6 +464,23 @@ export function createView(review: Review) {
     }),
   );
   createEffect(() => saveJson("diffd:drawers", { left: { ...drawers.left }, right: { ...drawers.right } }));
+  /**
+   * On a narrow screen (a phone) a drawer slides over the code, one at a
+   * time, and starts closed; the saved desktop layout is left alone.
+   */
+  const narrow = media(NARROW);
+  const [sheet, setSheet] = createSignal<DrawerSide | null>(null);
+  const drawerOpen = (side: DrawerSide) => (narrow() ? sheet() === side : !drawers[side].collapsed);
+  const setDrawerOpen = (side: DrawerSide, open: boolean | ((was: boolean) => boolean)) => {
+    const next = typeof open === "function" ? open(untrack(() => drawerOpen(side))) : open;
+    if (!untrack(narrow)) return setDrawers(side, "collapsed", !next);
+    if (next) setSheet(side);
+    else if (untrack(sheet) === side) setSheet(null);
+  };
+  /** Something in a drawer took you to the code: on a phone, get the drawer out of the way. */
+  const doneWithSheet = () => {
+    if (untrack(narrow)) setSheet(null);
+  };
   const [rightTab, setRightTab] = createSignal<RightTab>(loadJson<RightTab>("diffd:right-tab", "activity"));
   createEffect(() => saveJson("diffd:right-tab", rightTab()));
   const [folders, setFolders] = createStore<Record<TreeMode, Folders>>({
@@ -547,6 +567,10 @@ export function createView(review: Review) {
     setFolderOpen,
     setAllFolders,
     setDrawers,
+    narrow,
+    drawerOpen,
+    setDrawerOpen,
+    doneWithSheet,
   };
 }
 
