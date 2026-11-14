@@ -110,6 +110,25 @@ review of the current directory, then prints what to do and exits 2
 (`--json` for scripts). `diffd setup claude|codex` adds the plugin for one
 agent without installing the service.
 
+### Showing you files
+
+Agents can also put a file in front of you: a report, a plan, some code, a
+screenshot. They call `present` (or run `diffd present FILE` in a shell)
+and give you a link to your **Showing board**, at `/show` (every board),
+`/show/<board>` (one board: in Herdr, a project's or the deacon's) and
+`/show/<board>/<item>` (one item, open). Markdown is rendered with its
+tables, code and the local images it shows; code is highlighted; images are
+shown. The page works the same on a phone and a desktop: minimise an item to
+keep it in the tray, hide it to put it away (it waits under "Hidden"), and
+bring it back any time. Presenting the same file again updates its item.
+
+Items are snapshots, kept in diffd's database: they stay readable after the
+agent or its checkout is gone. diffd only reads files in git work trees that
+git doesn't ignore, or under the directories you list in `[present] roots`,
+and never ones that look private (keys, `.env` files, `.ssh`, …; add your own
+with `[present] deny`). Only programs on the machine can ask it to read a
+file; the pages only show what was presented.
+
 ### The MCP tools
 
 | Tool | What it's for |
@@ -123,6 +142,7 @@ agent without installing the service.
 | `show` | Point you at some code, in the diff or anywhere in the repository. |
 | `refresh` | Rebuild the review now (it also follows file changes by itself). |
 | `get_review` | Everything about a review, for picking a conversation back up. |
+| `present` | Put a file (Markdown, code, an image) on your Showing board and get a link to it. |
 
 ### Keys you'll use most
 

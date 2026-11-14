@@ -76,6 +76,17 @@ e2e port="3433": build
     url=$(python3 scripts/demo-share.py {{scratch}} {{port}})
     DIFFD_E2E_STOP="$stop" DIFFD_E2E_START="$start" node web/e2e/full.mjs "$url" {{scratch}} target/e2e-shots
 
+# The Showing board end to end: an MCP client presents files, Playwright reads
+# them on a Pixel Fold's cover and inner screens (touch) and on a desktop.
+e2e-board port="3434": build
+    #!/usr/bin/env sh
+    set -eu
+    rm -rf target/e2e-board.db*
+    target/release/diffd --port {{port}} --db target/e2e-board.db >> target/e2e-board.log 2>&1 & echo $! > target/e2e-board.pid
+    trap 'kill $(cat target/e2e-board.pid) || true' EXIT
+    sleep 1
+    node web/e2e/board.mjs http://localhost:{{port}} {{scratch}}-board target/e2e-board-shots
+
 # A review with a real agent: Claude Code does a small task in a clone of
 # `requests` and talks it through with a scripted reviewer. Uses real model calls.
 e2e-agent port="3433": build
