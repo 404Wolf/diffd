@@ -1677,14 +1677,56 @@ try {
       await thread.getByRole("button", { name: "Reopen" }).waitFor();
       check(true, "Resolve works by tap");
 
-      // Tap a line, then another: the comment's range reaches it.
+      // Tap a line, then others: the line first tapped stays, each tap moves the other end.
+      const rangeIs = (want) =>
+        p
+          .waitForFunction((w) => document.querySelector("[data-composer-range]")?.textContent.includes(w), want, { timeout: 3000 })
+          .then(() => true)
+          .catch(() => false);
       await num(10).scrollIntoViewIfNeeded();
       await num(10).tap();
       await composer.waitFor();
       check((await range()).includes("L10"), "a tap on a line number starts a comment on that line");
+      await composer.getByRole("textbox").fill("A draft that should survive a reload");
       await num(12).tap();
-      await p.waitForFunction(() => document.querySelector("[data-composer-range]")?.textContent.includes("L10–12"), null, { timeout: 3000 });
-      check(true, "tapping another line number extends it to that line (L10–12)");
+      check(await rangeIs("L10–12"), "tapping another line number moves the range's end to it (L10–12)");
+      await p.reload();
+      await p.waitForSelector(".buffer.focused .row");
+      await composer.waitFor();
+      check(
+        (await rangeIs("L10–12")) && (await composer.getByRole("textbox").inputValue()) === "A draft that should survive a reload",
+        "a reload brings the draft back on its moved range, L10–12",
+      );
+      await num(20).tap();
+      check(await rangeIs("L10–20"), "L20 next: L10–20");
+      await num(5).tap();
+      check(await rangeIs("L5–10"), "then L5: L5–10, the first tap's line stays put");
+      const clear = composer.getByRole("button", { name: "Clear range" });
+      check((await clear.boundingBox()).height >= 44, "Clear range is there, big enough to tap");
+      await clear.tap();
+      check((await rangeIs("L10")) && !(await range()).includes("–"), "and takes it back to the first line, L10");
+      await composer.getByRole("button", { name: "Cancel" }).tap();
+      await composer.waitFor({ state: "detached" });
+
+      // Dragging up into the sticky file header, and holding: the buffer scrolls and the range grows upward.
+      await num(14).scrollIntoViewIfNeeded();
+      const top = await p.evaluate((f) => {
+        const buf = document.querySelector(".buffer.focused");
+        const row = document.querySelector(`.buffer.focused [data-file-section]:has([data-path$="${f}"]) .num[data-side="new"][data-n="14"]`);
+        buf.scrollTop += row.getBoundingClientRect().top - buf.getBoundingClientRect().top - 34;
+        return buf.getBoundingClientRect().top;
+      }, file);
+      await sleep(300);
+      const start = await num(14).boundingBox();
+      const sx = start.x + start.width / 2;
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: sx, y: start.y + start.height / 2 }] });
+      for (let i = 1; i <= 6; i++)
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: sx, y: start.y + start.height / 2 - ((start.y + start.height / 2 - (top + 8)) * i) / 6 }] });
+      await sleep(900);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await composer.waitFor();
+      const upward = (await range()).match(/L(\d+)–(\d+)/);
+      check(upward && Number(upward[1]) < 12 && upward[2] === "14", `held over the header, the range grows upward past it (${await range()})`);
       await composer.getByRole("button", { name: "Cancel" }).tap();
       await composer.waitFor({ state: "detached" });
     } finally {

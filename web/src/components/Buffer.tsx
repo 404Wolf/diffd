@@ -86,23 +86,36 @@ export function Buffer(props: Props) {
     /** A comment is being written on this file and side: a tap moves its range instead of starting another. */
     extend: boolean;
   } | null = null;
-  /** The row of `file` under a point, clamped into the buffer (dragging past its top or bottom). */
-  const rowUnder = (x: number, y: number, file: number): HTMLElement | null => {
+  /**
+   * The row of `file` at a height on screen, by geometry rather than hit
+   * testing: what's under the pointer can be a thread card, a gap, or the
+   * sticky file header covering the top rows. Past the rows that are in view
+   * (dragging into the header, or past the buffer's edge), the nearest one.
+   */
+  const rowUnder = (y: number, file: number): HTMLElement | null => {
     const box = main?.getBoundingClientRect();
-    if (!box) return null;
-    const at = document.elementFromPoint(
-      Math.min(Math.max(x, box.left + 1), box.right - 1),
-      Math.min(Math.max(y, box.top + 1), box.bottom - 1),
-    );
-    const row = at?.closest<HTMLElement>(".row[data-f]");
-    return row && Number(row.dataset.f) === file ? row : null;
+    if (!main || !box) return null;
+    const head = main.querySelector("[data-sticky-head] > div")?.getBoundingClientRect();
+    const top = Math.max(box.top, head?.bottom ?? box.top);
+    let nearest: HTMLElement | null = null;
+    let distance = Number.POSITIVE_INFINITY;
+    for (const row of main.querySelectorAll<HTMLElement>(`.row[data-f="${file}"]`)) {
+      const r = row.getBoundingClientRect();
+      // Hidden (a folded gap's rows), or out of view under the header or past the bottom.
+      if (r.height === 0 || r.bottom <= top || r.top >= box.bottom) continue;
+      if (y >= r.top && y < r.bottom) return row;
+      const d = y < r.top ? r.top - y : y - r.bottom;
+      if (d < distance) [nearest, distance] = [row, d];
+    }
+    return nearest;
   };
   const hasLine = (row: HTMLElement, side: Side) =>
     row.querySelector(`.num[data-side="${side}"][data-n]`) !== null;
-  let lastPoint = { x: 0, y: 0 };
-  const dragTo = (x: number, y: number) => {
+  /** Where the pointer was last, for scrolling while it's held still at an edge. */
+  let lastY = 0;
+  const dragTo = (y: number) => {
     const d = drag;
-    const row = d ? rowUnder(x, y, d.file) : null;
+    const row = d ? rowUnder(y, d.file) : null;
     if (!d || !row || !hasLine(row, d.side)) return;
     if (Number(row.dataset.r) !== d.first) d.moved = true;
     props.cmd.place(row, { side: d.side, scroll: false });
@@ -113,7 +126,7 @@ export function Buffer(props: Props) {
   const scrollAtEdge = () => {
     const box = main?.getBoundingClientRect();
     if (!drag || !main || !box) return;
-    const y = lastPoint.y;
+    const y = lastY;
     const by =
       y < box.top + EDGE_PX
         ? y - (box.top + EDGE_PX)
@@ -122,7 +135,7 @@ export function Buffer(props: Props) {
           : 0;
     if (by !== 0) {
       main.scrollTop += Math.round(by / 3);
-      dragTo(lastPoint.x, y);
+      dragTo(y);
     }
     edgeFrame = requestAnimationFrame(scrollAtEdge);
   };
@@ -155,12 +168,12 @@ export function Buffer(props: Props) {
       moved: Boolean(fromCursor),
       extend,
     };
-    lastPoint = { x: e.clientX, y: e.clientY };
+    lastY = e.clientY;
     main.setPointerCapture(e.pointerId);
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== drag?.pointer) return;
-      lastPoint = { x: ev.clientX, y: ev.clientY };
-      dragTo(ev.clientX, ev.clientY);
+      lastY = ev.clientY;
+      dragTo(ev.clientY);
     };
     const end = (ev: PointerEvent) => {
       const d = drag;

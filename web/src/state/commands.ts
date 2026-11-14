@@ -1105,24 +1105,37 @@ export function createCommands(review: Review, view: View) {
     const range = review.isContext(file) ? null : review.range();
     return { anchor: { path: f.path, side, start, end, text: quote, range }, quote };
   };
-  const openComposer = (file: number, side: Side, start: number, end: number) => {
+  /** A new comment on lines `start`–`end`; `from` is the line its range was started from. */
+  const openComposer = (file: number, side: Side, start: number, end: number, from = start) => {
     const a = anchorFrom(file, side, start, end);
     if (!a) return;
     view.setVisual(null);
-    view.setComposer({ kind: "new", ...a });
+    view.setComposer({ kind: "new", ...a, from });
     review.drafting(true);
+  };
+  /** The new comment being written, if it's on this file and side. */
+  const composingOn = (file: number, side: Side) => {
+    const c = view.composer();
+    return c?.kind === "new" && c.anchor.side === side && files()[file]?.path === c.anchor.path ? c : null;
   };
   /**
    * Tapping another line number while writing a new comment on that file and
-   * side: the range now runs from where the comment starts to that line (or
-   * from that line to where it ends, when it's above).
+   * side. The line the range was started from stays; the tap moves the other
+   * end. So L10, then L20, is L10–20; then L5 is L5–10.
    */
   const extendComposer = (file: number, side: Side, line: number) => {
+    const c = composingOn(file, side);
+    if (!c) return;
+    const from = c.from ?? c.anchor.start;
+    openComposer(file, side, Math.min(from, line), Math.max(from, line), from);
+  };
+  /** Back to the one line the new comment's range was started from. */
+  const clearComposerRange = () => {
     const c = view.composer();
-    if (c?.kind !== "new" || c.anchor.side !== side || files()[file]?.path !== c.anchor.path) return;
-    const { start, end } = c.anchor;
-    if (line >= start) openComposer(file, side, start, line);
-    else openComposer(file, side, line, end);
+    if (c?.kind !== "new") return;
+    const file = review.paths().indexOf(c.anchor.path);
+    const from = c.from ?? c.anchor.start;
+    if (file >= 0) openComposer(file, c.anchor.side, from, from, from);
   };
   /** `gcc`, or `gc` in visual mode: comment on the cursor line or selected lines. */
   const comment = () => {
@@ -1139,7 +1152,9 @@ export function createCommands(review: Review, view: View) {
       (l): l is number => l !== null,
     );
     if (lines.length === 0) return view.say(`No ${c.side} lines selected`);
-    openComposer(c.file, c.side, Math.min(...lines), Math.max(...lines));
+    // Started from: where the selection began (a drag's first line), else its first line.
+    const from = (v && v.file === c.file ? lineOf(v.row) : null) ?? Math.min(...lines);
+    openComposer(c.file, c.side, Math.min(...lines), Math.max(...lines), from);
   };
   // -- Text objects (visual mode) --------------------------------------------------
 
@@ -1501,6 +1516,7 @@ export function createCommands(review: Review, view: View) {
     comment,
     openComposer,
     extendComposer,
+    clearComposerRange,
     commentSelection,
     replyTo,
     replyNear,

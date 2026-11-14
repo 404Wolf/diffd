@@ -133,6 +133,8 @@ export function CommentPopover(props: {
         // A comment you were writing before a reload comes back as you left it.
         const draft = props.view.persist.session.draft;
         if (input && draft && JSON.stringify(draft.composer) === JSON.stringify(c)) input.value = draft.text;
+        // Still the same box with its text (its range was moved): the saved draft follows the new range.
+        else saveDraft();
         place();
         input?.focus({ preventScroll: true });
         if (narrow()) requestAnimationFrame(reveal);
@@ -197,9 +199,18 @@ export function CommentPopover(props: {
                     {a.path.split("/").pop()} · {a.side}{" "}
                     {a.start === a.end ? `L${a.start}` : `L${a.start}–${a.end}`}
                   </span>
+                  <Show when={a.start !== a.end}>
+                    <button
+                      type="button"
+                      class="cursor-pointer rounded px-1 text-[11px] text-accent hover:bg-hover touch:min-h-11 touch:px-3 touch:text-sm"
+                      onClick={() => props.cmd.clearComposerRange()}
+                    >
+                      Clear range
+                    </button>
+                  </Show>
                   {/* Without shift-click or j/k, this is how a finger changes the range. */}
                   <span class="hidden basis-full text-subtle touch:block">
-                    Tap another line number to extend
+                    Tap another line number to move the range's end
                   </span>
                 </div>
                 <pre class="mb-1.5 max-h-[58px] overflow-hidden rounded bg-inset px-1.5 py-1 font-mono text-[11px] leading-snug whitespace-pre-wrap text-muted">
