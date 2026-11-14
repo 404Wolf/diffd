@@ -21,12 +21,22 @@
 //!   back to `Hooks`, un-marks the messages and wakes the hook waiters, which
 //!   announce them at once. It stays with the hooks until the next feedback.
 //!
-//! Each notice has a key, and the core queues a key once (it remembers the
-//! keys it queued, with the terminal, across restarts). So a send whose
-//! outcome is unknown (no answer in time, a lost core) is simply sent again
-//! with the same key, backing off from 1 s to a minute, until the core says
-//! queued (now, or before: `repeated`) or definitely refuses (then the
-//! hooks). Its messages stay told meanwhile: neither lost nor announced twice.
+//! Each notice has a key, and the core queues a key once: it remembers the
+//! keys it queued for `queue_keys_kept_ms` (an hour), with the terminal,
+//! across restarts. So a send whose outcome is unknown (no answer in time, a
+//! lost core) is sent again, the same notice under the same key to the same
+//! core, backing off from 1 s, for at most half that time:
+//! - queued (now, or before: `repeated`): done;
+//! - refused by the core, which checks its keys first (nothing follows that
+//!   inbox): it never queued it, so the hooks announce it;
+//! - not queued now by something that can't speak for an earlier attempt
+//!   (another core took the address, a key it may have forgotten, an old
+//!   core or hc): the hooks announce it only if no earlier attempt was
+//!   unclear; otherwise it stays told, logged, rather than risk it twice;
+//! - still unclear at the end of the window: it stays told, logged. Within
+//!   it the core still has the key, so a retry can't queue it again.
+//!
+//! Its messages stay told meanwhile, so the hooks don't announce it too.
 //!
 //! A pass that fails part way (the database) hands the reviews it was
 //! taking to the hooks, so their feedback is still announced.
@@ -41,7 +51,7 @@ use diffd_core::model::ReviewId;
 use super::wake::{Look, Taker, Told};
 use super::{App, Live, Result, new_id};
 use crate::adapters::store::ReviewSpec;
-use crate::ports::{AgentInbox, InboxCore, Sent};
+use crate::ports::{AgentInbox, InboxCore, Outgoing, Sent};
 
 /// Who announces a review's feedback (see the module docs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -59,6 +69,9 @@ pub(crate) enum Delivery {
 /// longest any waits.
 const RETRY_FIRST: Duration = Duration::from_secs(1);
 const RETRY_MAX: Duration = Duration::from_secs(60);
+/// Retries stop at this share of how long the core keeps keys, well before it
+/// could forget one.
+const RETRY_SHARE_OF_KEYS_KEPT: u32 = 2;
 
 /// The agent's Herdr terminal and that terminal's core, from a review's spec.
 pub(super) fn route_of(spec: &ReviewSpec) -> Option<(String, String)> {
@@ -154,6 +167,8 @@ impl App {
         }
         let mut held: Option<Duration> = None;
         for (terminal, lives) in by_terminal {
+            // Only reviews on this core's routes are the inbox's.
+            let Some(core) = core.clone() else { break };
             let look = match self.take_notice(&lives, Taker::Inbox).await {
                 Ok(look) => look,
                 Err(e) => {
@@ -170,7 +185,15 @@ impl App {
                 Look::Notice(notice, told, still_held) => {
                     let (Some(app), inbox) = (self.me.upgrade(), inbox.clone()) else { break };
                     // A send waits on the core for a moment; others needn't wait behind it.
-                    tokio::spawn(async move { app.deliver_notice(&*inbox, &terminal, &notice.message, told).await });
+                    let outgoing = Outgoing {
+                        terminal,
+                        core: core.id,
+                        key: new_id("diffd-"),
+                        since_ms: self.now(),
+                        text: notice.message,
+                    };
+                    let window = core.keys_kept / RETRY_SHARE_OF_KEYS_KEPT;
+                    tokio::spawn(async move { app.deliver_notice(&*inbox, outgoing, window, told).await });
                     still_held
                 }
                 Look::Held(wait) => Some(wait),
@@ -183,18 +206,34 @@ impl App {
         Ok(held)
     }
 
-    /// Sends one notice under one key until the core says queued or refused.
-    async fn deliver_notice(&self, inbox: &dyn AgentInbox, terminal: &str, text: &str, told: Vec<Told>) {
-        let key = new_id("diffd-");
+    /// Sends one notice, the same on every attempt, until it's settled or
+    /// `window` is up (see the module docs).
+    async fn deliver_notice(&self, inbox: &dyn AgentInbox, notice: Outgoing, window: Duration, told: Vec<Told>) {
+        let terminal = notice.terminal.as_str();
+        let started = tokio::time::Instant::now();
+        let mut unclear = false;
         let mut wait = RETRY_FIRST;
         loop {
-            match inbox.send(terminal, &key, text).await {
+            match inbox.send(&notice).await {
                 Sent::Queued => return,
                 Sent::Refused => {
-                    tracing::debug!(terminal, "Herdr inbox refused; the hooks deliver this feedback");
+                    tracing::debug!(terminal, "Herdr inbox refused; the hooks announce this feedback");
                     return self.hand_to_hooks(told);
                 }
+                Sent::Unvouched if !unclear => {
+                    tracing::debug!(terminal, "Herdr inbox can't take it; the hooks announce this feedback");
+                    return self.hand_to_hooks(told);
+                }
+                Sent::Unvouched => {
+                    tracing::warn!(terminal, "an earlier send may have gone in, and nothing can tell now; not announcing it again");
+                    return;
+                }
                 Sent::Unknown => {
+                    unclear = true;
+                    if started.elapsed() + wait > window {
+                        tracing::warn!(terminal, "no clear answer from Herdr's inbox in time; it may have gone in, so not again");
+                        return;
+                    }
                     tracing::warn!(terminal, ?wait, "no clear answer from Herdr's inbox; asking again with the same key");
                     tokio::time::sleep(wait).await;
                     wait = (wait * 2).min(RETRY_MAX);

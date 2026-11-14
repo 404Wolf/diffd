@@ -14,7 +14,7 @@ use diffd_core::model::{Anchor, ReviewId, Side};
 use diffd_server::App;
 use diffd_server::adapters::http;
 use diffd_server::app::ShareRequest;
-use diffd_server::ports::{AgentInbox, InboxCore, Sent};
+use diffd_server::ports::{AgentInbox, InboxCore, Outgoing, Sent};
 use futures::future::BoxFuture;
 use rmcp::ServiceExt;
 use rmcp::model::CallToolRequestParams;
@@ -36,21 +36,37 @@ enum Next {
     Lose,
 }
 
-/// A Herdr core as the pusher sees it, modelled on herdr-core: it queues a
-/// key once (a repeat answers queued without queuing again). Its core reads
-/// and its sends can be held at a gate, so a test decides when the pusher
-/// gets its answers; `script` decides what the next sends do (then `Queue`).
+/// A Herdr core as the pusher sees it, modelled on herdr-core:
+/// - it queues a key once, and remembers it for `keys_kept` (a repeat then
+///   answers queued without queuing again), then forgets it;
+/// - a key first sent before what it remembers is refused as unvouched
+///   (`key_forgotten`), so is a send meant for another core (`other_core`);
+/// - a different core id is a different core: it has none of the old keys.
+///
+/// Its core reads and its sends can be held at a gate, so a test decides
+/// when the pusher gets its answers; `script` decides what the next sends
+/// do (then `Queue`).
 struct FakeInbox {
     core: Mutex<Option<InboxCore>>,
     script: Mutex<std::collections::VecDeque<Next>>,
     core_reads: AtomicUsize,
-    /// Every send: terminal, key, text, when.
+    /// Every send: terminal, text, when.
     sends: Mutex<Vec<(String, String, Instant)>>,
     keys: Mutex<Vec<String>>,
-    /// The keys queued, once each: the messages the agent gets.
-    queued: Mutex<Vec<String>>,
+    /// What each core queued: core id, key, when. The messages agents get.
+    queued: Mutex<Vec<(String, String, Instant)>>,
     core_gate: Semaphore,
     send_gate: Semaphore,
+}
+
+const HOUR: Duration = Duration::from_secs(3600);
+
+fn core(id: &str, keys_kept: Duration) -> Option<InboxCore> {
+    Some(InboxCore { id: id.into(), queues: true, keys_kept })
+}
+
+fn epoch_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
 }
 
 const OPEN: usize = 1 << 20;
@@ -58,7 +74,7 @@ const OPEN: usize = 1 << 20;
 impl FakeInbox {
     /// Core `core-1`, which takes inbox-only messages and queues every send.
     fn new() -> Arc<Self> {
-        Self::with_core(Some(InboxCore { id: "core-1".into(), queues: true }))
+        Self::with_core(core("core-1", HOUR))
     }
 
     fn with_core(core: Option<InboxCore>) -> Arc<Self> {
@@ -78,8 +94,9 @@ impl FakeInbox {
         self.script.lock().unwrap().extend(next.iter().copied());
     }
 
+    /// The keys queued, by any core.
     fn queued(&self) -> Vec<String> {
-        self.queued.lock().unwrap().clone()
+        self.queued.lock().unwrap().iter().map(|(_, key, _)| key.clone()).collect()
     }
 
     fn sends(&self) -> Vec<(String, String, Instant)> {
@@ -109,27 +126,39 @@ impl AgentInbox for FakeInbox {
         })
     }
 
-    fn send<'a>(&'a self, terminal: &'a str, key: &'a str, text: &'a str) -> BoxFuture<'a, Sent> {
+    fn send<'a>(&'a self, notice: &'a Outgoing) -> BoxFuture<'a, Sent> {
         Box::pin(async move {
-            self.sends.lock().unwrap().push((terminal.to_owned(), text.to_owned(), Instant::now()));
-            self.keys.lock().unwrap().push(key.to_owned());
+            self.sends.lock().unwrap().push((notice.terminal.clone(), notice.text.clone(), Instant::now()));
+            self.keys.lock().unwrap().push(notice.key.clone());
             drop(self.send_gate.acquire().await.unwrap());
             let next = self.script.lock().unwrap().pop_front().unwrap_or(Next::Queue);
+            if next == Next::Lose {
+                return Sent::Unknown; // the core never heard of it
+            }
+            let Some(here) = self.core.lock().unwrap().clone() else { return Sent::Unvouched };
+            if notice.core != here.id {
+                return Sent::Unvouched; // `other_core`
+            }
             let mut queued = self.queued.lock().unwrap();
-            if queued.iter().any(|k| k == key) && next != Next::Lose {
+            let known = queued.iter().any(|(c, k, at)| *c == here.id && *k == notice.key && at.elapsed() <= here.keys_kept);
+            if known {
                 return Sent::Queued; // `repeated`: not queued again
             }
+            if notice.since_ms + (here.keys_kept.as_millis() as u64) < epoch_ms() {
+                return Sent::Unvouched; // `key_forgotten`
+            }
+            let queue = |queued: &mut Vec<(String, String, Instant)>| queued.push((here.id.clone(), notice.key.clone(), Instant::now()));
             match next {
                 Next::Queue => {
-                    queued.push(key.to_owned());
+                    queue(&mut queued);
                     Sent::Queued
                 }
                 Next::Refuse => Sent::Refused,
                 Next::QueueLoseAnswer => {
-                    queued.push(key.to_owned());
+                    queue(&mut queued);
                     Sent::Unknown
                 }
-                Next::Lose => Sent::Unknown,
+                Next::Lose => unreachable!(),
             }
         })
     }
@@ -317,12 +346,76 @@ async fn an_unclear_send_then_refused_goes_to_the_hooks() {
     assert!(inbox.queued().is_empty());
 }
 
+/// Retries stop well before the core could forget the key: half of how long
+/// it keeps keys. A retry after that could find the key gone and queue the
+/// notice again; instead it stays told (logged).
+#[tokio::test]
+async fn retries_stop_before_the_core_forgets_the_key() {
+    // Keys kept 2.4 s: retries for 1.2 s, so after 1 s, not after 3 s.
+    let inbox = FakeInbox::with_core(core("core-1", Duration::from_millis(2400)));
+    inbox.then(&[Next::QueueLoseAnswer, Next::Lose]);
+    let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
+    let hook = spawn_hook(&app, &repo, Duration::from_secs(6));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    app.chat_user(&id, None, "only once").await.unwrap();
+    assert!(until(Duration::from_secs(4), || inbox.sends().len() == 2).await, "{:?}", inbox.sends());
+    // Past when the core forgot the key, and past when a third try would have been.
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+    assert_eq!(inbox.sends().len(), 2, "no retry once the window is up");
+    assert_eq!(inbox.queued().len(), 1, "the agent got it once");
+    assert!(hook.await.unwrap().is_none(), "not announced again by the hooks");
+}
+
+/// A retry goes to the core the notice was for, and no other: after a core
+/// with another id took over (reusing the terminal address), the retry is
+/// refused there, and since the first attempt may have gone in on the old
+/// core, it isn't announced again either.
+#[tokio::test]
+async fn a_retry_never_reaches_a_core_that_replaced_the_old_one() {
+    let inbox = FakeInbox::new();
+    inbox.then(&[Next::QueueLoseAnswer]);
+    close(&inbox.send_gate);
+    let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
+    let hook = spawn_hook(&app, &repo, Duration::from_secs(5));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    app.chat_user(&id, None, "for the old agent").await.unwrap();
+    assert!(until(Duration::from_secs(4), || inbox.sends().len() == 1).await);
+    open(&inbox.send_gate);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    // The first attempt went in on core-1, its answer lost; core-2 takes over.
+    *inbox.core.lock().unwrap() = core("core-2", HOUR);
+    assert!(until(Duration::from_secs(3), || inbox.sends().len() == 2).await, "retried");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let queued = inbox.queued.lock().unwrap().clone();
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].0, "core-1", "nothing queued on the core that replaced it");
+    assert!(hook.await.unwrap().is_none(), "not announced twice");
+}
+
+/// Refused outright by a core that took over before the first attempt: it
+/// was never queued anywhere, so the hooks announce it.
+#[tokio::test]
+async fn a_first_send_to_a_replaced_core_goes_to_the_hooks() {
+    let inbox = FakeInbox::new();
+    close(&inbox.send_gate);
+    let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
+    let hook = spawn_hook(&app, &repo, Duration::from_secs(10));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    app.chat_user(&id, None, "anyone?").await.unwrap();
+    assert!(until(Duration::from_secs(4), || inbox.sends().len() == 1).await);
+    *inbox.core.lock().unwrap() = core("core-2", HOUR);
+    open(&inbox.send_gate);
+    let notice = tokio::time::timeout(Duration::from_secs(3), hook).await.expect("hook woken").unwrap();
+    assert!(notice.is_some_and(|m| m.contains("> anyone?")));
+    assert!(inbox.queued().is_empty());
+}
+
 /// No route, a route on another core, no Herdr, a core that predates
 /// inbox-only messages, or no pusher at all: the hooks deliver.
 #[tokio::test]
 async fn without_a_usable_route_the_hooks_deliver() {
-    let new_core = || Some(InboxCore { id: "core-1".into(), queues: true });
-    let old_core = Some(InboxCore { id: "core-1".into(), queues: false });
+    let new_core = || core("core-1", HOUR);
+    let old_core = Some(InboxCore { id: "core-1".into(), queues: false, keys_kept: Duration::ZERO });
     let cases: [(&str, Option<Option<InboxCore>>, Option<(&str, &str)>); 5] = [
         ("no route", Some(new_core()), None),
         ("another core", Some(new_core()), Some(("t5", "core-old"))),
@@ -441,7 +534,7 @@ async fn the_route_follows_the_agent_over_mcp() {
     assert_eq!(app.agent_route(&id).await.unwrap(), Some(("tmoved".into(), "core-1".into())));
 
     // The same address on a restarted core, answering with say.
-    *inbox.core.lock().unwrap() = Some(InboxCore { id: "core-2".into(), queues: true });
+    *inbox.core.lock().unwrap() = core("core-2", HOUR);
     call(&moved, "say", json!({"review_id": id.0, "body": "still here"})).await;
     assert_eq!(app.agent_route(&id).await.unwrap(), Some(("tmoved".into(), "core-2".into())));
 

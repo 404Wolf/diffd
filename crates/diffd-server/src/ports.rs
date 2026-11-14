@@ -113,19 +113,36 @@ pub trait TreeWatch: Send + Sync {
 pub trait AgentInbox: Send + Sync {
     /// The core on this machine, if one answers.
     fn local_core(&self) -> BoxFuture<'_, Option<InboxCore>>;
-    /// Queue `text` in `terminal`'s inbox under `key`. Never typed into the
-    /// terminal. Sending the same key again doesn't queue it twice (the core
-    /// remembers the keys it queued, across restarts), so an `Unknown`
-    /// outcome can be retried safely.
-    fn send<'a>(&'a self, terminal: &'a str, key: &'a str, text: &'a str) -> BoxFuture<'a, Sent>;
+    /// Queue a notice in a terminal's inbox. Never typed into the terminal.
+    fn send<'a>(&'a self, notice: &'a Outgoing) -> BoxFuture<'a, Sent>;
 }
 
 /// The local Herdr core, as an [`AgentInbox`] sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InboxCore {
     pub id: String,
-    /// It takes inbox-only messages; a core that predates them doesn't.
+    /// It takes inbox-only messages with keys (`queue-keyed`); a core that
+    /// predates them doesn't.
     pub queues: bool,
+    /// How long it remembers a key it queued: a send with an unclear
+    /// outcome may be retried for (well) under this long.
+    pub keys_kept: std::time::Duration,
+}
+
+/// One notice for one agent's inbox, the same on every attempt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outgoing {
+    pub terminal: String,
+    /// The core the terminal belongs to (its id): another core refuses, so
+    /// an attempt never reaches a terminal that took over the address.
+    pub core: String,
+    /// Names the notice: the core queues a key once, and remembers it for
+    /// [`InboxCore::keys_kept`], across restarts.
+    pub key: String,
+    /// When the key was first sent (ms since the epoch): a core that may
+    /// have forgotten it since refuses instead of queuing it again.
+    pub since_ms: Millis,
+    pub text: String,
 }
 
 /// How an inbox send ended.
@@ -133,9 +150,13 @@ pub struct InboxCore {
 pub enum Sent {
     /// The core queued it, now or under the same key before.
     Queued,
-    /// It definitely wasn't queued: nothing follows that inbox, the core or
-    /// hc predates inbox-only messages, the address is bad, or hc is missing.
+    /// The core says it never queued this key: nothing follows that inbox,
+    /// or the address is bad. Safe to announce some other way.
     Refused,
+    /// Not queued now, and nothing here can say whether an earlier attempt
+    /// under the key was: another core, a core or hc without keys, a key the
+    /// core may have forgotten, a removed terminal, or no hc at all.
+    Unvouched,
     /// No clear answer (a timeout, a lost connection, an unreadable reply):
     /// it may have been queued.
     Unknown,

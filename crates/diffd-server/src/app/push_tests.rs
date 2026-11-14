@@ -15,7 +15,7 @@ use super::super::{App, ShareRequest, new_id};
 use crate::adapters::difft::NoEngine;
 use crate::adapters::git::GitCli;
 use crate::adapters::store::Store;
-use crate::ports::{AgentInbox, InboxCore, Sent, SystemClock};
+use crate::ports::{AgentInbox, InboxCore, Outgoing, Sent, SystemClock};
 
 /// Core `core-1`, queuing everything.
 #[derive(Default)]
@@ -25,12 +25,12 @@ struct Inbox {
 
 impl AgentInbox for Inbox {
     fn local_core(&self) -> BoxFuture<'_, Option<InboxCore>> {
-        Box::pin(async { Some(InboxCore { id: "core-1".into(), queues: true }) })
+        Box::pin(async { Some(InboxCore { id: "core-1".into(), queues: true, keys_kept: Duration::from_secs(3600) }) })
     }
 
-    fn send<'a>(&'a self, _terminal: &'a str, _key: &'a str, text: &'a str) -> BoxFuture<'a, Sent> {
+    fn send<'a>(&'a self, notice: &'a Outgoing) -> BoxFuture<'a, Sent> {
         Box::pin(async move {
-            self.sends.lock().unwrap().push(text.to_owned());
+            self.sends.lock().unwrap().push(notice.text.clone());
             Sent::Queued
         })
     }
