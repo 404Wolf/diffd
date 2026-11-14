@@ -1,22 +1,27 @@
 //! Optional pane presentation on the core local to this diffd, and agents'
-//! inboxes there ([`AgentInbox`]). Every hc call is bounded, uses argv
-//! directly, and never routes a target to a remote core.
+//! inboxes there ([`AgentInbox`]). Presentation talks to the running core over
+//! its socket, never starting one; inbox sends use hc. Every call is bounded,
+//! and no target is ever routed to a remote core.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 use crate::app::HerdrView;
 use crate::ports::{AgentInbox, InboxCore, Outgoing, Sent};
 
-/// How long a show waits for a Herdr app to say what it did (`diffd.shown`).
-/// The app looks at labels every 1.5 s.
+/// How long a show waits, in all, for a Herdr app to say what it did
+/// (`diffd.shown`). The app looks at labels every 1.5 s.
 const ACK_WAIT: Duration = Duration::from_secs(3);
 const ACK_POLL: Duration = Duration::from_millis(500);
+/// The longest one call to the core may take (connecting included).
+const CALL: Duration = Duration::from_millis(500);
 
 /// How long an inbox send may take. The core answers once the message is
 /// queued and it has watched a moment for the agent to start working.
@@ -37,7 +42,7 @@ const UNVOUCHED: &[&str] = &[
     "finished",
 ];
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(crate) struct Core {
     pub id: String,
     pub name: String,
@@ -47,11 +52,13 @@ pub(crate) struct Herdr {
     program: PathBuf,
     send_timeout: Duration,
     ack_wait: Duration,
+    /// The core's socket; `None`: where herdr-core puts it ([`core_socket`]).
+    socket: Option<PathBuf>,
 }
 
 impl Default for Herdr {
     fn default() -> Self {
-        Self { program: PathBuf::from("hc"), send_timeout: SEND_TIMEOUT, ack_wait: ACK_WAIT }
+        Self { program: PathBuf::from("hc"), send_timeout: SEND_TIMEOUT, ack_wait: ACK_WAIT, socket: None }
     }
 }
 
@@ -62,6 +69,9 @@ impl Default for Herdr {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct Shown {
     pub herdr: bool,
+    /// The review's labels went on (`present_review`'s `labelled`).
+    #[serde(skip)]
+    pub labelled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -74,9 +84,17 @@ pub(crate) struct Shown {
     pub reason: Option<String>,
 }
 
+pub(crate) const NO_CORE: &str = "herdr-core isn't running here: nothing to show it in";
+pub(crate) const REPLACED: &str = "the Herdr core it was presented on was replaced: present it again (present_in)";
+
 impl Shown {
     pub fn absent(reason: &str) -> Self {
-        Self { herdr: false, terminal: None, core_id: None, seq: None, shown: None, reason: Some(reason.into()) }
+        Self { herdr: false, labelled: false, terminal: None, core_id: None, seq: None, shown: None, reason: Some(reason.into()) }
+    }
+
+    /// A core runs, but not the one the review's terminal belongs to: nothing labelled.
+    pub fn replaced(core: &Core, terminal: &str) -> Self {
+        Self { terminal: Some(terminal.into()), core_id: Some(core.id.clone()), ..Self::absent(REPLACED) }
     }
 }
 
@@ -101,6 +119,11 @@ fn answer_for(value: &str, seq: u64) -> Option<String> {
     (of.parse::<u64>().ok()? == seq && matches!(state, "open" | "front" | "badge" | "closed")).then(|| state.to_owned())
 }
 
+/// Review ids go into a label value split on `:`; diffd's own ids never hold one.
+fn valid_review(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 64 && value.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+}
+
 pub(crate) fn valid_terminal(value: &str) -> bool {
     value.len() > 1
         && value.len() <= 32
@@ -122,58 +145,174 @@ pub(crate) fn target(value: &str, core: Option<&Core>) -> Result<String, String>
     Ok(terminal.to_owned())
 }
 
-impl Herdr {
-    async fn output(&self, args: &[&str]) -> Option<std::process::Output> {
-        output(&self.program, args).await
+/// Where this user's herdr-core listens, worked out as herdr-core's own
+/// `Paths::from_env` does on Unix (`paths.rs`; `platform/unix.rs` `endpoints`):
+/// `HC_SOCKET`, else `socket` in its `config.toml`, else
+/// `$XDG_RUNTIME_DIR/herdr-core/<session>.sock` (`/run/user/<uid>` when that is
+/// unset but exists), else beside its state; `<session>` is `HC_SESSION` or `default`.
+fn core_socket(var: impl Fn(&str) -> Option<String>) -> PathBuf {
+    let set = |name: &str| var(name).filter(|v| !v.is_empty());
+    if let Some(socket) = set("HC_SOCKET") {
+        return PathBuf::from(socket);
+    }
+    let session = set("HC_SESSION").map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| "default".into());
+    let home = PathBuf::from(var("HOME").unwrap_or_else(|| "/".into()));
+    let config = set("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from).join("herdr-core").join("config.toml");
+    let configured = std::fs::read_to_string(config)
+        .ok()
+        .and_then(|text| text.parse::<toml::Table>().ok())
+        .and_then(|table| table.get("socket").and_then(|v| v.as_str()).map(PathBuf::from));
+    if let Some(socket) = configured {
+        return socket;
+    }
+    let state = set("XDG_STATE_HOME").map_or_else(|| home.join(".local/state"), PathBuf::from).join("herdr-core").join(&session);
+    let run = set("XDG_RUNTIME_DIR").map(PathBuf::from).or_else(runtime_dir);
+    run.map_or(state, |run| run.join("herdr-core")).join(format!("{session}.sock"))
+}
+
+#[cfg(unix)]
+fn runtime_dir() -> Option<PathBuf> {
+    use std::os::unix::fs::MetadataExt;
+    let uid = std::fs::metadata("/proc/self").ok()?.uid();
+    Some(PathBuf::from(format!("/run/user/{uid}"))).filter(|p| p.is_dir())
+}
+
+#[cfg(not(unix))]
+fn runtime_dir() -> Option<PathBuf> {
+    None
+}
+
+/// One plain-mode connection to the running core: one JSON-RPC message per
+/// line, answered in order (herdr-core `server.rs` `connection`, the protocol
+/// `client::call` speaks). Connecting never starts a core, unlike every hc
+/// command but `server stop` (`cli.rs` `call` uses `client::connect_or_start`;
+/// on Unix `server status` does too, since `platform::status_may_start_core`
+/// is true there). And every call on it reaches the same core process: after
+/// its id is checked, a replacement core (a new process, whose short addresses
+/// may name other terminals) can't receive the writes that follow.
+#[cfg(unix)]
+struct Session {
+    lines: tokio::io::Lines<tokio::io::BufReader<tokio::net::unix::OwnedReadHalf>>,
+    write: tokio::net::unix::OwnedWriteHalf,
+    next: u64,
+    broken: bool,
+}
+
+#[cfg(unix)]
+impl Session {
+    async fn open(socket: &Path) -> Option<Self> {
+        use tokio::io::AsyncBufReadExt;
+        let stream = tokio::time::timeout(CALL, tokio::net::UnixStream::connect(socket)).await.ok()?.ok()?;
+        let (read, write) = stream.into_split();
+        Some(Self { lines: tokio::io::BufReader::new(read).lines(), write, next: 0, broken: false })
     }
 
-    pub async fn core(&self) -> Option<Core> {
-        let output = self.output(&["server", "status", "--json"]).await?;
-        #[derive(Deserialize)]
-        struct Status {
-            core: Core,
+    /// One call's result, or `None` for an error, a late answer or a lost core.
+    /// After a late or unreadable answer the connection is out of step: it is not used again.
+    async fn call(&mut self, method: &str, params: Value) -> Option<Value> {
+        use tokio::io::AsyncWriteExt;
+        if self.broken {
+            return None;
         }
-        serde_json::from_slice::<Status>(&output.stdout).ok().map(|status| status.core)
+        self.next += 1;
+        let id = self.next;
+        let line = format!("{}\n", json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        let (write, lines) = (&mut self.write, &mut self.lines);
+        let reply = tokio::time::timeout(CALL, async move {
+            write.write_all(line.as_bytes()).await.ok()?;
+            let reply: Value = serde_json::from_str(&lines.next_line().await.ok()??).ok()?;
+            (reply["id"] == id).then_some(reply)
+        })
+        .await
+        .ok()
+        .flatten();
+        let Some(reply) = reply else {
+            self.broken = true;
+            return None;
+        };
+        reply.get("error").is_none().then(|| reply["result"].clone())
     }
 
-    pub async fn label(&self, terminal: &str, review: &str) -> bool {
-        let success = self.output(&["label", terminal, &format!("diffd.review={review}")]).await.is_some();
-        if !success {
-            tracing::debug!(terminal, review, "could not label the presentation terminal");
-        }
-        success
+    async fn status(&mut self) -> Option<Value> {
+        self.call("server.status", json!({})).await
     }
 
-    /// Only repair an old label that still points to this review. A newer
-    /// review's label is untouched; failure to label the destination keeps the old one.
-    pub async fn move_label(&self, old: Option<&str>, new: &str, review: &str, replacement: Option<&str>) -> bool {
-        if !self.label(new, review).await {
-            return false;
-        }
-        if let Some(old) = old.filter(|old| *old != new)
-            && let Some(output) = self.output(&["get", old, "--json"]).await
-            && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout)
-            && value["labels"]["diffd.review"].as_str() == Some(review)
-        {
-            self.label(old, replacement.unwrap_or("")).await;
-        }
-        true
+    async fn label(&mut self, terminal: &str, labels: BTreeMap<&str, &str>) -> bool {
+        self.call("terminal.label", json!({ "terminal": terminal, "labels": labels })).await.is_some()
+    }
+
+    async fn labels(&mut self, terminal: &str) -> Option<Value> {
+        self.call("terminal.get", json!({ "terminal": terminal })).await.map(|t| t["labels"].clone())
+    }
+}
+
+#[cfg(not(unix))]
+struct Session;
+
+#[cfg(not(unix))]
+impl Session {
+    /// Presentation needs the Unix socket; elsewhere there is no Herdr to show in.
+    async fn open(_socket: &Path) -> Option<Self> {
+        None
+    }
+    async fn status(&mut self) -> Option<Value> {
+        None
+    }
+    async fn label(&mut self, _terminal: &str, _labels: BTreeMap<&str, &str>) -> bool {
+        false
+    }
+    async fn labels(&mut self, _terminal: &str) -> Option<Value> {
+        None
     }
 }
 
 impl Herdr {
-    /// Ask the Herdr app to open (or front, badge, close) a review beside
-    /// `terminal`, on `core` (this diffd's, from [`Herdr::core`]):
-    /// `hc label <terminal> diffd.show=<view>:<review>:<seq>`. The app answers
-    /// with `diffd.shown=<seq>:<state>`, which this waits for briefly. With
-    /// no core there is no Herdr here: nothing is labelled.
-    pub async fn show(&self, core: Option<&Core>, terminal: &str, review: &str, view: HerdrView) -> Shown {
-        let Some(core) = core else { return Shown::absent("herdr-core isn't running here (no hc, or no core answered)") };
+    #[cfg(test)]
+    pub(crate) fn for_tests(socket: PathBuf, program: PathBuf, ack_wait: Duration) -> Self {
+        Self { program, ack_wait, socket: Some(socket), ..Self::default() }
+    }
+
+    async fn session(&self) -> Option<Session> {
+        let socket = self.socket.clone().unwrap_or_else(|| core_socket(|name| std::env::var(name).ok()));
+        Session::open(&socket).await
+    }
+
+    /// This machine's core, if one is running (it is never started).
+    pub async fn core(&self) -> Option<Core> {
+        serde_json::from_value(self.session().await?.status().await?["core"].clone()).ok()
+    }
+
+    /// Present a review beside `terminal` and ask the Herdr app to show it as
+    /// `view`, on the core with id `core` (the one the caller checked): on one
+    /// connection, the core's id is checked again, then `diffd.review=<review>`
+    /// and `diffd.show=<view>:<review>:<seq>` go on in one `terminal.label`
+    /// (applied under one lock with one labels event, herdr-core `api.rs`
+    /// `terminal_label`, so no window sees one without the other). `moved_from`
+    /// (the old terminal and the review it should show now) is repaired only if
+    /// its label still names this review. Then the app's answer,
+    /// `diffd.shown=<seq>:<state>`, is awaited for at most `ack_wait`. Without
+    /// that core nothing is labelled.
+    pub async fn present(
+        &self,
+        core: &str,
+        terminal: &str,
+        review: &str,
+        view: HerdrView,
+        moved_from: Option<(&str, Option<&str>)>,
+    ) -> Shown {
+        let Some(mut session) = self.session().await else { return Shown::absent(NO_CORE) };
+        let Some(running) = session.status().await.and_then(|s| serde_json::from_value::<Core>(s["core"].clone()).ok()) else {
+            return Shown::absent(NO_CORE);
+        };
+        if running.id != core {
+            return Shown::replaced(&running, terminal);
+        }
         let seq = next_seq();
         let mut shown = Shown {
             herdr: true,
+            labelled: false,
             terminal: Some(terminal.to_owned()),
-            core_id: Some(core.id.clone()),
+            core_id: Some(running.id),
             seq: Some(seq),
             shown: None,
             reason: None,
@@ -182,40 +321,36 @@ impl Herdr {
             shown.reason = Some("not a Herdr terminal or review id".into());
             return shown;
         }
-        let label = format!("diffd.show={}:{review}:{seq}", view.as_str());
-        if self.output(&["label", terminal, &label]).await.is_none() {
+        let request = format!("{}:{review}:{seq}", view.as_str());
+        if !session.label(terminal, BTreeMap::from([("diffd.review", review), ("diffd.show", request.as_str())])).await {
             shown.reason = Some(format!("could not label {terminal}: is it still open on this core?"));
             return shown;
+        }
+        shown.labelled = true;
+        if let Some((old, replacement)) = moved_from.filter(|(old, _)| *old != terminal && valid_terminal(old))
+            && session.labels(old).await.is_some_and(|labels| labels["diffd.review"].as_str() == Some(review))
+        {
+            session.label(old, BTreeMap::from([("diffd.review", replacement.unwrap_or(""))])).await;
         }
         if view == HerdrView::None {
             shown.shown = Some("none".into());
             return shown;
         }
-        shown.shown = Some(self.answer(terminal, seq).await.unwrap_or_else(|| "pending".into()));
+        // One bound for the whole wait, a slow read included.
+        let answer = tokio::time::timeout(self.ack_wait, async {
+            loop {
+                if let Some(labels) = session.labels(terminal).await
+                    && let Some(state) = labels["diffd.shown"].as_str().and_then(|v| answer_for(v, seq))
+                {
+                    return state;
+                }
+                tokio::time::sleep(ACK_POLL).await;
+            }
+        })
+        .await;
+        shown.shown = Some(answer.unwrap_or_else(|_| "pending".into()));
         shown
     }
-
-    /// The app's answer to request `seq`, read from the terminal's labels until `ack_wait` passes.
-    async fn answer(&self, terminal: &str, seq: u64) -> Option<String> {
-        let until = Instant::now() + self.ack_wait;
-        loop {
-            if let Some(output) = self.output(&["get", terminal, "--json"]).await
-                && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout)
-                && let Some(state) = value["labels"]["diffd.shown"].as_str().and_then(|v| answer_for(v, seq))
-            {
-                return Some(state);
-            }
-            if Instant::now() + ACK_POLL > until {
-                return None;
-            }
-            tokio::time::sleep(ACK_POLL).await;
-        }
-    }
-}
-
-/// Review ids go into a label value split on `:`; diffd's own ids never hold one.
-fn valid_review(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 64 && value.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
 }
 
 /// Agents' inboxes on the local core.
@@ -226,7 +361,8 @@ pub fn inbox() -> Arc<dyn AgentInbox> {
 impl AgentInbox for Herdr {
     fn local_core(&self) -> BoxFuture<'_, Option<InboxCore>> {
         Box::pin(async move {
-            let output = self.output(&["server", "status", "--json"]).await?;
+            // Over the socket: `hc server status` would start a core that isn't running.
+            let status = self.session().await?.status().await?;
             #[derive(Deserialize)]
             struct Status {
                 core: Core,
@@ -236,7 +372,7 @@ impl AgentInbox for Herdr {
                 #[serde(default)]
                 queue_keys_kept_ms: u64,
             }
-            let status = serde_json::from_slice::<Status>(&output.stdout).ok()?;
+            let status = serde_json::from_value::<Status>(status).ok()?;
             Some(InboxCore {
                 id: status.core.id,
                 // Keys, or a retry could queue a notice twice.
@@ -307,16 +443,135 @@ fn outcome(output: &std::process::Output) -> Sent {
     }
 }
 
-async fn output(program: &Path, args: &[&str]) -> Option<std::process::Output> {
-    output_within(program, args, Duration::from_millis(500)).await
-}
+/// A fake herdr-core for tests: a Unix socket speaking the plain line protocol
+/// (`server.status`, `terminal.label`, `terminal.get`), recording every call.
+#[cfg(test)]
+pub(crate) mod fake {
+    use std::collections::{BTreeMap, VecDeque};
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
-async fn output_within(program: &Path, args: &[&str], limit: Duration) -> Option<std::process::Output> {
-    tokio::time::timeout(limit, tokio::process::Command::new(program).args(args).kill_on_drop(true).output())
-        .await
-        .ok()?
-        .ok()
-        .filter(|o| o.status.success())
+    use serde_json::{Value, json};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    #[derive(Default)]
+    pub struct State {
+        /// The id each `server.status` answers, in turn; the last one stays.
+        pub ids: VecDeque<String>,
+        pub features: Vec<String>,
+        pub labels: BTreeMap<String, BTreeMap<String, String>>,
+        /// Every call: (connection number, method, params).
+        pub calls: Vec<(usize, String, Value)>,
+        /// Terminals that don't exist (labelling them fails).
+        pub missing: Vec<String>,
+        /// The app: when a `diffd.show` arrives, answer `<seq>:<state>` after a delay.
+        pub app: Option<(&'static str, Duration)>,
+        /// Each `terminal.get` takes this long.
+        pub slow_get: Option<Duration>,
+        /// Hang up right after answering `server.status`.
+        pub hang_up_after_status: bool,
+        connections: usize,
+    }
+
+    pub type Core = Arc<Mutex<State>>;
+
+    pub fn core(id: &str) -> Core {
+        Arc::new(Mutex::new(State { ids: VecDeque::from([id.to_owned()]), ..State::default() }))
+    }
+
+    /// Listen at `<dir>/core.sock`.
+    pub fn listen(dir: &Path, core: Core) -> PathBuf {
+        let path = dir.join("core.sock");
+        let listener = tokio::net::UnixListener::bind(&path).unwrap();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(serve(stream, core.clone()));
+            }
+        });
+        path
+    }
+
+    pub fn calls(core: &Core, method: &str) -> Vec<Value> {
+        core.lock().unwrap().calls.iter().filter(|(_, m, _)| m == method).map(|(_, _, p)| p.clone()).collect()
+    }
+
+    pub fn label(core: &Core, terminal: &str, key: &str) -> Option<String> {
+        core.lock().unwrap().labels.get(terminal)?.get(key).cloned()
+    }
+
+    async fn serve(stream: tokio::net::UnixStream, core: Core) {
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        let connection = {
+            let mut state = core.lock().unwrap();
+            state.connections += 1;
+            state.connections
+        };
+        while let Ok(Some(line)) = lines.next_line().await {
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let (method, params) = (request["method"].as_str().unwrap().to_owned(), request["params"].clone());
+            let slow = {
+                let mut state = core.lock().unwrap();
+                state.calls.push((connection, method.clone(), params.clone()));
+                state.slow_get.filter(|_| method == "terminal.get")
+            };
+            if let Some(slow) = slow {
+                tokio::time::sleep(slow).await;
+            }
+            let (result, hang_up) = {
+                let mut state = core.lock().unwrap();
+                let terminal = params["terminal"].as_str().unwrap_or_default().to_owned();
+                match method.as_str() {
+                    "server.status" => {
+                        let id = if state.ids.len() > 1 { state.ids.pop_front().unwrap() } else { state.ids[0].clone() };
+                        (
+                            Ok(
+                                json!({ "core": { "id": id, "name": "server" }, "features": state.features, "queue_keys_kept_ms": 3_600_000 }),
+                            ),
+                            state.hang_up_after_status,
+                        )
+                    }
+                    "terminal.label" if state.missing.contains(&terminal) => (Err("not_found"), false),
+                    "terminal.label" => {
+                        let set = params["labels"].as_object().unwrap().clone();
+                        let labels = state.labels.entry(terminal.clone()).or_default();
+                        for (key, value) in &set {
+                            match value.as_str().unwrap() {
+                                "" => labels.remove(key),
+                                value => labels.insert(key.clone(), value.to_owned()),
+                            };
+                        }
+                        if let (Some(show), Some((answer, delay))) = (set.get("diffd.show").and_then(Value::as_str), state.app) {
+                            let seq = show.rsplit(':').next().unwrap().to_owned();
+                            let core = core.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(delay).await;
+                                core.lock()
+                                    .unwrap()
+                                    .labels
+                                    .entry(terminal)
+                                    .or_default()
+                                    .insert("diffd.shown".into(), format!("{seq}:{answer}"));
+                            });
+                        }
+                        (Ok(json!({})), false)
+                    }
+                    "terminal.get" => (Ok(json!({ "labels": state.labels.get(&terminal).cloned().unwrap_or_default() })), false),
+                    _ => (Err("unknown_method"), false),
+                }
+            };
+            let reply = match result {
+                Ok(result) => json!({ "jsonrpc": "2.0", "id": request["id"], "result": result }),
+                Err(kind) => {
+                    json!({ "jsonrpc": "2.0", "id": request["id"], "error": { "code": -32000, "message": kind, "data": { "kind": kind } } })
+                }
+            };
+            if write.write_all(format!("{reply}\n").as_bytes()).await.is_err() || hang_up {
+                return;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -337,156 +592,73 @@ mod tests {
         assert!(target("server/t2r", None).is_err(), "a qualified address needs a known local core");
     }
 
+    #[test]
+    fn the_socket_is_found_where_herdr_core_puts_it() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |name: &str| pairs.iter().find(|(k, _)| *k == name).map(|(_, v)| (*v).to_owned())
+        };
+        assert_eq!(core_socket(env(&[("HC_SOCKET", "/s/core.sock"), ("XDG_RUNTIME_DIR", "/run/user/7")])), PathBuf::from("/s/core.sock"));
+        assert_eq!(
+            core_socket(env(&[("XDG_RUNTIME_DIR", "/run/user/7"), ("HOME", "/nowhere")])),
+            PathBuf::from("/run/user/7/herdr-core/default.sock")
+        );
+        assert_eq!(
+            core_socket(env(&[("XDG_RUNTIME_DIR", "/run/user/7"), ("HC_SESSION", "lab"), ("HOME", "/nowhere")])),
+            PathBuf::from("/run/user/7/herdr-core/lab.sock")
+        );
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("herdr-core")).unwrap();
+        std::fs::write(dir.path().join("herdr-core/config.toml"), "socket = \"/elsewhere/c.sock\"\n").unwrap();
+        let config = dir.path().to_string_lossy().into_owned();
+        let with_config = move |name: &str| match name {
+            "XDG_CONFIG_HOME" => Some(config.clone()),
+            "XDG_RUNTIME_DIR" => Some("/run/user/7".into()),
+            _ => None,
+        };
+        assert_eq!(core_socket(with_config), PathBuf::from("/elsewhere/c.sock"), "the config's socket");
+    }
+
+    /// No core: no socket listening. hc is a fake that records any run.
+    fn no_core(dir: &Path) -> Herdr {
+        use std::os::unix::fs::PermissionsExt;
+        let program = dir.join("hc");
+        std::fs::write(&program, "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$(dirname \"$0\")/ran\"\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        Herdr::for_tests(dir.join("no-core.sock"), program, ACK_WAIT)
+    }
+
     #[tokio::test]
-    async fn hc_failure_is_optional_and_bounded_and_arguments_are_literal() {
-        assert!(output(Path::new("/no/such/hc"), &["label", "t1", "diffd.review=test"]).await.is_none());
+    async fn without_a_running_core_nothing_runs_and_nothing_is_started() {
+        let dir = tempfile::tempdir().unwrap();
+        let hc = no_core(dir.path());
         let start = std::time::Instant::now();
-        assert!(output(Path::new("sh"), &["-c", "exec sleep 10"]).await.is_none());
-        assert!(start.elapsed() < Duration::from_secs(2));
-        let out = output(Path::new("printf"), &["%s\n", "label", "t2r", "diffd.review=example"]).await.unwrap();
-        assert_eq!(String::from_utf8(out.stdout).unwrap(), "label\nt2r\ndiffd.review=example\n");
+        assert!(hc.core().await.is_none());
+        assert!(hc.local_core().await.is_none());
+        let shown = hc.present("core-1", "tmanager", "rabc23", HerdrView::Open, Some(("tworker", None))).await;
+        assert!(!shown.herdr && !shown.labelled && shown.reason.as_deref() == Some(NO_CORE));
+        assert!(start.elapsed() < Duration::from_secs(1));
+        assert!(!dir.path().join("ran").exists(), "no hc ran: hc would start a core");
+        assert!(!dir.path().join("no-core.sock").exists(), "and none was started");
+    }
+
+    fn herdr(socket: PathBuf, ack_wait: Duration) -> Herdr {
+        Herdr::for_tests(socket, PathBuf::from("/no/such/hc"), ack_wait)
     }
 
     #[tokio::test]
-    async fn moving_a_label_preserves_other_reviews_and_failed_destinations() {
-        use std::os::unix::fs::PermissionsExt;
+    async fn both_labels_go_on_in_one_call_and_the_answer_is_read_back() {
         let dir = tempfile::tempdir().unwrap();
-        let program = dir.path().join("hc");
-        // The test process owns this fake core. No environment mutation or live terminals.
-        std::fs::write(
-            &program,
-            r#"#!/bin/sh
-cd -- "$(dirname -- "$0")"
-case "$1" in
-  label) [ "$2" != tmissing ] || exit 1; printf '%s' "${3#diffd.review=}" > "$2" ;;
-  get) printf '{"labels":{"diffd.review":"%s"}}' "$(cat "$2")" ;;
-esac
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let hc = Herdr { program, ..Herdr::default() };
-        let read = |t: &str| std::fs::read_to_string(dir.path().join(t)).unwrap();
-        hc.label("tworker", "moved").await;
-        assert!(hc.move_label(Some("tworker"), "tmanager", "moved", None).await);
-        assert_eq!(read("tmanager"), "moved");
-        assert_eq!(read("tworker"), "");
-        hc.label("tworker", "moved").await;
-        hc.move_label(Some("tworker"), "tmanager", "moved", Some("remaining")).await;
-        assert_eq!(read("tworker"), "remaining");
-        hc.label("tworker", "newer").await;
-        hc.move_label(Some("tworker"), "tmanager", "moved", Some("remaining")).await;
-        assert_eq!(read("tworker"), "newer");
-        hc.label("tworker", "moved").await;
-        assert!(!hc.move_label(Some("tworker"), "tmissing", "moved", None).await);
-        assert_eq!(read("tworker"), "moved");
-        hc.move_label(Some("tworker"), "tworker", "moved", None).await;
-        assert_eq!(read("tworker"), "moved", "same-pane presentation never clears its own label");
-    }
-
-    /// A fake hc on a fake core: `send` records its argv and answers as hc
-    /// would for each terminal; `server status` names core `core-1` with the
-    /// given features.
-    fn fake_core(dir: &Path, features: &str) -> Herdr {
-        use std::os::unix::fs::PermissionsExt;
-        let program = dir.join("hc");
-        std::fs::write(
-            &program,
-            format!(
-                r#"#!/bin/sh
-cd -- "$(dirname -- "$0")"
-case "$1" in
-  server) printf '{{"core":{{"id":"core-1","name":"server"}}{features}}}' ;;
-  send)
-    printf '%s\n' "$@" > sent
-    fail() {{ printf '{{"error":{{"kind":"%s","message":"no"}}}}' "$1" >&2; exit 1; }}
-    case "${{10}}" in
-      tinbox) printf '{{"status":"idle","turn":3,"started":true,"via":"inbox","waiting":1}}' ;;
-      tagain) printf '{{"status":"idle","turn":3,"started":null,"via":"inbox","waiting":1,"repeated":true}}' ;;
-      tnone) fail not_following ;;
-      toldcore) fail unknown_method ;;
-      tgone) fail other_core ;;
-      tforgot) fail key_forgotten ;;
-      toldhc) printf '{{"error":{{"kind":"usage","message":"unexpected argument --inbox-only"}}}}' >&2; exit 2 ;;
-      tlost) fail unavailable ;;
-      tgarbled) printf 'Segmentation fault' >&2; exit 139 ;;
-      tnovia) printf '{{"status":"idle","turn":3,"started":true}}' ;;
-      tslow) sleep 5 ;;
-    esac ;;
-esac
-"#
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-        Herdr { program, send_timeout: Duration::from_millis(500), ..Herdr::default() }
-    }
-
-    #[tokio::test]
-    async fn the_core_says_whether_it_takes_inbox_only_messages() {
-        let dir = tempfile::tempdir().unwrap();
-        let hour = Duration::from_secs(3600);
-        let keyed = fake_core(dir.path(), r#","features":["queue","queue-keyed"],"queue_keys_kept_ms":3600000"#).local_core().await;
-        assert_eq!(keyed, Some(InboxCore { id: "core-1".into(), queues: true, keys_kept: hour }));
-        let unkeyed = fake_core(dir.path(), r#","features":["framed","queue"]"#).local_core().await;
-        assert!(unkeyed.is_some_and(|c| !c.queues), "queue without keys isn't enough: a retry could queue twice");
-        let old = fake_core(dir.path(), "").local_core().await;
-        assert!(old.is_some_and(|c| !c.queues), "a core that predates them lists no features");
-        assert_eq!(Herdr { program: "/no/such/hc".into(), ..Herdr::default() }.local_core().await, None);
-    }
-
-    /// A fake core with terminals `tmanager` and `tworker` whose labels live in files
-    /// (`<terminal>.<key>`); labelling `tmissing` fails, as for a stale terminal.
-    fn fake_labels(dir: &Path, ack_wait: Duration) -> Herdr {
-        use std::os::unix::fs::PermissionsExt;
-        let program = dir.join("hc");
-        std::fs::write(
-            &program,
-            r#"#!/bin/sh
-cd -- "$(dirname -- "$0")"
-case "$1" in
-  label) [ "$2" != tmissing ] || exit 1; printf '%s\n' "$@" >> calls; printf '%s' "${3#*=}" > "$2.${3%%=*}" ;;
-  get) printf '{"labels":{"diffd.shown":"%s"}}' "$(cat "$2.diffd.shown" 2>/dev/null)" ;;
-esac
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-        Herdr { program, ack_wait, ..Herdr::default() }
-    }
-
-    /// A Herdr app: once `diffd.show` is on `terminal`, it answers `<seq>:<state>` after `delay`.
-    fn app_answers(dir: &Path, terminal: &str, state: &'static str, delay: Duration) -> tokio::task::JoinHandle<()> {
-        let (asked, answer) = (dir.join(format!("{terminal}.diffd.show")), dir.join(format!("{terminal}.diffd.shown")));
-        tokio::spawn(async move {
-            let request = loop {
-                if let Ok(request) = std::fs::read_to_string(&asked) {
-                    break request;
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            };
-            tokio::time::sleep(delay).await;
-            let seq = request.rsplit(':').next().unwrap().to_owned();
-            std::fs::write(answer, format!("{seq}:{state}")).unwrap();
-        })
-    }
-
-    fn core() -> Core {
-        Core { id: "core-1".into(), name: "server".into() }
-    }
-
-    #[tokio::test]
-    async fn a_show_labels_the_terminal_and_reports_what_the_app_did() {
-        let dir = tempfile::tempdir().unwrap();
-        let hc = fake_labels(dir.path(), Duration::from_secs(3));
-        let app = app_answers(dir.path(), "tmanager", "badge", Duration::from_millis(700));
-        let shown = hc.show(Some(&core()), "tmanager", "rabc23", HerdrView::Open).await;
-        app.await.unwrap();
+        let core = fake::core("core-1");
+        core.lock().unwrap().app = Some(("badge", Duration::from_millis(700)));
+        let hc = herdr(fake::listen(dir.path(), core.clone()), ACK_WAIT);
+        assert_eq!(hc.core().await.map(|c| c.id).as_deref(), Some("core-1"));
+        let shown = hc.present("core-1", "tmanager", "rabc23", HerdrView::Open, None).await;
         let seq = shown.seq.unwrap();
         assert_eq!(
             shown,
             Shown {
                 herdr: true,
+                labelled: true,
                 terminal: Some("tmanager".into()),
                 core_id: Some("core-1".into()),
                 seq: Some(seq),
@@ -494,40 +666,96 @@ esac
                 reason: None,
             }
         );
-        let calls = std::fs::read_to_string(dir.path().join("calls")).unwrap();
-        assert_eq!(calls, format!("label\ntmanager\ndiffd.show=open:rabc23:{seq}\n"), "argv is literal");
+        let labels = fake::calls(&core, "terminal.label");
+        assert_eq!(labels.len(), 1, "one call: no window sees the review without its request");
+        assert_eq!(
+            labels[0],
+            serde_json::json!({ "terminal": "tmanager", "labels": { "diffd.review": "rabc23", "diffd.show": format!("open:rabc23:{seq}") } })
+        );
+        // The status check and the write are on one connection: one core process.
+        let state = core.lock().unwrap();
+        let on: Vec<_> = state.calls.iter().filter(|(_, m, _)| m != "terminal.get").map(|(c, m, _)| (*c, m.clone())).collect();
+        assert_eq!(on, [(1, "server.status".to_owned()), (2, "server.status".to_owned()), (2, "terminal.label".to_owned())]);
     }
 
     #[tokio::test]
-    async fn without_an_answer_for_this_request_it_is_pending_within_the_bound() {
+    async fn a_replaced_core_gets_no_label() {
         let dir = tempfile::tempdir().unwrap();
-        let hc = fake_labels(dir.path(), Duration::from_secs(1));
-        // An answer to an earlier request is not this one's.
-        std::fs::write(dir.path().join("tworker.diffd.shown"), "17:open").unwrap();
-        let start = Instant::now();
-        let shown = hc.show(Some(&core()), "tworker", "rabc23", HerdrView::Front).await;
-        assert_eq!(shown.shown.as_deref(), Some("pending"));
-        assert!(start.elapsed() < Duration::from_secs(2), "{:?}", start.elapsed());
-        assert!(shown.herdr);
+        // Checked as core-1 by the caller, then replaced: the write's own check sees core-2.
+        let core = fake::core("core-2");
+        let hc = herdr(fake::listen(dir.path(), core.clone()), ACK_WAIT);
+        let shown = hc.present("core-1", "tmanager", "rabc23", HerdrView::Open, Some(("tworker", None))).await;
+        assert!(!shown.labelled && shown.reason.as_deref() == Some(REPLACED), "{shown:?}");
+        assert!(fake::calls(&core, "terminal.label").is_empty() && fake::calls(&core, "terminal.get").is_empty());
+        // A core lost after its check (the connection ends): nothing reaches another one.
+        let dir = tempfile::tempdir().unwrap();
+        let core = fake::core("core-1");
+        core.lock().unwrap().hang_up_after_status = true;
+        let hc = herdr(fake::listen(dir.path(), core.clone()), ACK_WAIT);
+        let shown = hc.present("core-1", "tmanager", "rabc23", HerdrView::Open, None).await;
+        assert!(!shown.labelled && shown.shown.is_none(), "{shown:?}");
+        assert!(fake::calls(&core, "terminal.label").is_empty());
     }
 
     #[tokio::test]
-    async fn no_core_stale_terminals_odd_ids_and_none_ask_nothing_of_the_app() {
+    async fn moving_repairs_the_old_terminal_only_while_it_names_this_review() {
         let dir = tempfile::tempdir().unwrap();
-        let hc = fake_labels(dir.path(), Duration::from_secs(3));
-        let absent = hc.show(None, "tmanager", "rabc23", HerdrView::Open).await;
-        assert!(!absent.herdr && absent.seq.is_none() && absent.reason.unwrap().contains("isn't running"));
-        let stale = hc.show(Some(&core()), "tmissing", "rabc23", HerdrView::Open).await;
-        assert!(stale.herdr && stale.shown.is_none() && stale.reason.unwrap().contains("tmissing"));
-        for (terminal, review) in [("tmanager", "r:1"), ("tmanager", ""), ("--help", "rabc23")] {
-            assert!(hc.show(Some(&core()), terminal, review, HerdrView::Open).await.shown.is_none(), "{terminal} {review}");
+        let core = fake::core("core-1");
+        let hc = herdr(fake::listen(dir.path(), core.clone()), Duration::from_millis(100));
+        let set = |t: &str, review: &str| {
+            core.lock().unwrap().labels.entry(t.into()).or_default().insert("diffd.review".into(), review.into());
+        };
+        set("tworker", "moved");
+        assert!(hc.present("core-1", "tmanager", "moved", HerdrView::Open, Some(("tworker", None))).await.labelled);
+        assert_eq!(fake::label(&core, "tmanager", "diffd.review").as_deref(), Some("moved"));
+        assert_eq!(fake::label(&core, "tworker", "diffd.review"), None, "cleared");
+        set("tworker", "moved");
+        hc.present("core-1", "tmanager", "moved", HerdrView::Open, Some(("tworker", Some("remaining")))).await;
+        assert_eq!(fake::label(&core, "tworker", "diffd.review").as_deref(), Some("remaining"));
+        set("tworker", "newer");
+        hc.present("core-1", "tmanager", "moved", HerdrView::Open, Some(("tworker", Some("remaining")))).await;
+        assert_eq!(fake::label(&core, "tworker", "diffd.review").as_deref(), Some("newer"), "another review's label stays");
+        set("tworker", "moved");
+        core.lock().unwrap().missing.push("tmissing".into());
+        let failed = hc.present("core-1", "tmissing", "moved", HerdrView::Open, Some(("tworker", None))).await;
+        assert!(!failed.labelled && failed.reason.unwrap().contains("tmissing"));
+        assert_eq!(fake::label(&core, "tworker", "diffd.review").as_deref(), Some("moved"), "a failed destination keeps the old one");
+        hc.present("core-1", "tworker", "moved", HerdrView::Open, Some(("tworker", None))).await;
+        assert_eq!(fake::label(&core, "tworker", "diffd.review").as_deref(), Some("moved"), "same pane: never cleared");
+    }
+
+    #[tokio::test]
+    async fn the_wait_is_bounded_even_when_reads_are_slow() {
+        for slow in [None, Some(Duration::from_millis(450))] {
+            let dir = tempfile::tempdir().unwrap();
+            let core = fake::core("core-1");
+            core.lock().unwrap().slow_get = slow;
+            // An earlier request's answer is not this one's.
+            core.lock().unwrap().labels.entry("tworker".into()).or_default().insert("diffd.shown".into(), "17:open".into());
+            let hc = herdr(fake::listen(dir.path(), core.clone()), Duration::from_millis(1000));
+            let start = std::time::Instant::now();
+            let shown = hc.present("core-1", "tworker", "rabc23", HerdrView::Front, None).await;
+            assert_eq!(shown.shown.as_deref(), Some("pending"));
+            // Connect, status and label are quick here; the wait itself stops at 1 s.
+            assert!(start.elapsed() < Duration::from_millis(1200), "{slow:?}: {:?}", start.elapsed());
         }
-        assert!(!dir.path().join("calls").exists(), "nothing was labelled");
-        let start = Instant::now();
-        let none = hc.show(Some(&core()), "tmanager", "rabc23", HerdrView::None).await;
+    }
+
+    #[tokio::test]
+    async fn odd_ids_and_none_ask_nothing_of_the_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = fake::core("core-1");
+        let hc = herdr(fake::listen(dir.path(), core.clone()), ACK_WAIT);
+        for (terminal, review) in [("tmanager", "r:1"), ("tmanager", ""), ("--help", "rabc23")] {
+            assert!(!hc.present("core-1", terminal, review, HerdrView::Open, None).await.labelled, "{terminal} {review}");
+        }
+        assert!(fake::calls(&core, "terminal.label").is_empty());
+        let start = std::time::Instant::now();
+        let none = hc.present("core-1", "tmanager", "rabc23", HerdrView::None, None).await;
         assert_eq!(none.shown.as_deref(), Some("none"));
         assert!(start.elapsed() < Duration::from_millis(400), "none waits for no answer");
-        assert!(std::fs::read_to_string(dir.path().join("tmanager.diffd.show")).unwrap().starts_with("none:rabc23:"));
+        assert!(fake::label(&core, "tmanager", "diffd.show").unwrap().starts_with("none:rabc23:"));
+        assert!(fake::calls(&core, "terminal.get").is_empty());
     }
 
     #[test]
@@ -540,6 +768,54 @@ esac
         }
     }
 
+    #[tokio::test]
+    async fn the_core_says_whether_it_takes_inbox_only_messages() {
+        let hour = Duration::from_secs(3600);
+        for (features, queues) in [(vec!["queue", "queue-keyed"], true), (vec!["framed", "queue"], false), (vec![], false)] {
+            let dir = tempfile::tempdir().unwrap();
+            let core = fake::core("core-1");
+            core.lock().unwrap().features = features.iter().map(|f| f.to_string()).collect();
+            let hc = herdr(fake::listen(dir.path(), core), ACK_WAIT);
+            // Queue without keys isn't enough (a retry could queue twice); an old core lists no features.
+            assert_eq!(hc.local_core().await, Some(InboxCore { id: "core-1".into(), queues, keys_kept: hour }), "{features:?}");
+        }
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(no_core(dir.path()).local_core().await, None);
+    }
+
+    /// A fake hc: `send` records its argv and answers as hc would for each terminal.
+    fn fake_core(dir: &Path) -> Herdr {
+        use std::os::unix::fs::PermissionsExt;
+        let program = dir.join("hc");
+        std::fs::write(
+            &program,
+            r#"#!/bin/sh
+cd -- "$(dirname -- "$0")"
+case "$1" in
+  send)
+    printf '%s\n' "$@" > sent
+    fail() { printf '{"error":{"kind":"%s","message":"no"}}' "$1" >&2; exit 1; }
+    case "${10}" in
+      tinbox) printf '{"status":"idle","turn":3,"started":true,"via":"inbox","waiting":1}' ;;
+      tagain) printf '{"status":"idle","turn":3,"started":null,"via":"inbox","waiting":1,"repeated":true}' ;;
+      tnone) fail not_following ;;
+      toldcore) fail unknown_method ;;
+      tgone) fail other_core ;;
+      tforgot) fail key_forgotten ;;
+      toldhc) printf '{"error":{"kind":"usage","message":"unexpected argument --inbox-only"}}' >&2; exit 2 ;;
+      tlost) fail unavailable ;;
+      tgarbled) printf 'Segmentation fault' >&2; exit 139 ;;
+      tnovia) printf '{"status":"idle","turn":3,"started":true}' ;;
+      tslow) sleep 5 ;;
+    esac ;;
+esac
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        Herdr { program, send_timeout: Duration::from_millis(500), ..Herdr::default() }
+    }
+
     fn outgoing(terminal: &str) -> Outgoing {
         let text = "--help; New feedback on your diffd review".to_owned();
         Outgoing { terminal: terminal.into(), core: "core-1".into(), key: "diffd-k1".into(), since_ms: 1_700_000_000_000, text }
@@ -548,7 +824,7 @@ esac
     #[tokio::test]
     async fn refused_unvouched_and_unknown_are_told_apart() {
         let dir = tempfile::tempdir().unwrap();
-        let hc = fake_core(dir.path(), r#","features":["queue","queue-keyed"]"#);
+        let hc = fake_core(dir.path());
         assert_eq!(hc.send(&outgoing("tinbox")).await, Sent::Queued);
         let sent = std::fs::read_to_string(dir.path().join("sent")).unwrap();
         let argv = "send\n--inbox-only\n--core\ncore-1\n--key\ndiffd-k1\n--key-since\n1700000000000\n--\ntinbox\n";

@@ -362,13 +362,21 @@ The agent decides what the Herdr window does with a review: `view` on
 `share_diff` and `present_review` (default `open`), and `show_in_herdr` later.
 diffd puts the request on the presenting terminal as a second label,
 `diffd.show=<view>:<review id>:<seq>` (`seq`: milliseconds, unique per
-request), after `diffd.review`. The Herdr app's review controller acts on
+request), in the same label write as `diffd.review`, so a window never sees
+one without the other. It talks to the running core over its socket (found
+as herdr-core finds it: `HC_SOCKET`, its config's `socket`, else
+`$XDG_RUNTIME_DIR/herdr-core/<session>.sock`), never through `hc`, which
+would start a core that isn't running. On that one connection it checks the
+core's id is still the one the review was presented on, then writes, so a
+replaced core whose short addresses name other terminals is never labelled.
+The Herdr app's review controller acts on
 each request once and answers on the same terminal with
-`diffd.shown=<seq>:<state>`; diffd waits up to 3 s for it and returns
+`diffd.shown=<seq>:<state>`; diffd waits at most 3 s in all for it and returns
 `herdr: {herdr, terminal, core_id, seq, shown, reason}`:
 
-- `herdr: false`: no `hc` or no core here (or, for `show_in_herdr`, the review
-  was presented on an earlier core). Nothing was labelled; don't retry.
+- `herdr: false`: no core running here, or the core was replaced since the
+  review was presented there. Nothing was labelled; don't retry (present it
+  again with `present_in` after a replacement).
 - `shown`: `open`, `front`, `badge` or `closed` as the window did it;
   `pending` when no window answered (one opened soon after still acts);
   `none` for `view: none`.
