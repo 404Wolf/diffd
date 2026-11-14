@@ -20,7 +20,9 @@ use tokio::sync::Notify;
 use super::feedback::Listening;
 use super::{App, Live, Result, nested};
 
-/// How often a waiter looks for reviews shared after it started.
+/// How often a waiter looks for reviews shared after it started. Otherwise it
+/// looks only when told something happened, or when feedback it's holding
+/// back for the user's pause could go out.
 const RESCAN: Duration = Duration::from_secs(5);
 /// How much of each message the wake notice quotes.
 const PREVIEW_CHARS: usize = 160;
@@ -50,6 +52,18 @@ pub(super) struct Waiters {
     by_key: HashMap<String, (u64, Arc<Notify>)>,
     /// When a hook last waited in each working directory: its agent can be woken.
     seen: HashMap<std::path::PathBuf, Millis>,
+    /// How many times waiters have looked for feedback, for [`App::wake_looks`].
+    looks: u64,
+}
+
+/// What a waiter found when it looked.
+enum Look {
+    /// Feedback to wake the agent for.
+    Notice(WakeNotice),
+    /// Feedback held back until the user pauses: look again after this long.
+    Held(Duration),
+    /// Nothing new (or only feedback behind an open draft, whose closing wakes the waiter).
+    Nothing,
 }
 
 /// A hook seen this recently means its agent can end its turn and still hear the user.
@@ -110,10 +124,14 @@ impl App {
             for w in &mut wakes {
                 w.as_mut().enable();
             }
-            if let Some(notice) = self.take_notice(&lives).await? {
-                return Ok(Some(notice));
-            }
-            let recheck = lives.iter().map(|(_, live)| self.gate_wait(live)).min().unwrap_or(RESCAN).min(RESCAN);
+            // Look again only when held feedback could go out, or to find new reviews:
+            // a settled review has nothing to wait for, so it mustn't make the waiter
+            // poll (it once did, ten times a second per waiter, ~170% CPU on SQLite).
+            let recheck = match self.take_notice(&lives).await? {
+                Look::Notice(notice) => return Ok(Some(notice)),
+                Look::Held(wait) => wait.min(RESCAN),
+                Look::Nothing => RESCAN,
+            };
             let until = (tokio::time::Instant::now() + recheck).min(deadline);
             let any_feedback = async move {
                 if wakes.is_empty() {
@@ -141,6 +159,13 @@ impl App {
         waiters.seen.iter().any(|(cwd, at)| *at >= since && nested(cwd, repo_path))
     }
 
+    /// How many times wake waiters have looked for feedback since start: each
+    /// look reads the database, so an idle waiter should look rarely.
+    #[doc(hidden)]
+    pub fn wake_looks(&self) -> u64 {
+        self.waiters.lock().expect("waiters lock").looks
+    }
+
     /// End the wait of `waiter`, if any (its session ended).
     pub fn cancel_wake(&self, waiter: &str) {
         if let Some((_, cancel)) = self.waiters.lock().expect("waiters lock").by_key.remove(waiter) {
@@ -159,30 +184,33 @@ impl App {
         Ok(out)
     }
 
-    /// How long until a review's feedback could be ready (the quiet period after typing).
-    fn gate_wait(&self, live: &Live) -> Duration {
-        Duration::from_millis(live.inner.lock().expect("live lock").gate.wait_ms(self.now()).max(100))
-    }
-
     /// Feedback nobody was told about yet, if the user has paused; marks it told.
-    async fn take_notice(&self, lives: &[(ReviewId, Arc<Live>)]) -> Result<Option<WakeNotice>> {
+    /// Otherwise, how long until feedback held back for the pause could go out.
+    async fn take_notice(&self, lives: &[(ReviewId, Arc<Live>)]) -> Result<Look> {
+        self.waiters.lock().expect("waiters lock").looks += 1;
         let now = self.now();
         let mut reviews = Vec::new();
         let mut previews = Vec::new();
+        let mut held: Option<Duration> = None;
         for (id, live) in lives {
             let pending = self.store.undelivered(id).await?;
             let fresh: Vec<_> = {
                 let mut inner = live.inner.lock().expect("live lock");
-                if !inner.gate.ready(now) {
+                let fresh: Vec<_> = pending.into_iter().filter(|p| !inner.told.contains(&p.message.id)).collect();
+                if fresh.is_empty() {
                     continue;
                 }
-                let fresh: Vec<_> = pending.into_iter().filter(|p| !inner.told.contains(&p.message.id)).collect();
+                if !inner.gate.ready(now) {
+                    // An open draft wakes the waiter when it closes; a pause just takes time.
+                    if !inner.gate.drafting() {
+                        let wait = Duration::from_millis(inner.gate.wait_ms(now).max(100));
+                        held = Some(held.map_or(wait, |h| h.min(wait)));
+                    }
+                    continue;
+                }
                 inner.told.extend(fresh.iter().map(|p| p.message.id.clone()));
                 fresh
             };
-            if fresh.is_empty() {
-                continue;
-            }
             let (meta, _) = self.meta(id).await?;
             let comments = fresh.iter().filter(|p| p.thread_id.is_some()).count();
             previews.extend(fresh.iter().filter(|p| p.message.author == Author::User).map(|p| quote(&p.message.body)).take(PREVIEW_ITEMS));
@@ -195,9 +223,9 @@ impl App {
             });
         }
         if reviews.is_empty() {
-            return Ok(None);
+            return Ok(held.map_or(Look::Nothing, Look::Held));
         }
-        Ok(Some(WakeNotice { message: notice_text(&reviews, &previews), reviews }))
+        Ok(Look::Notice(WakeNotice { message: notice_text(&reviews, &previews), reviews }))
     }
 }
 

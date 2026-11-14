@@ -144,8 +144,7 @@ impl App {
     /// Reviews updated within [`RECENT_MS`], newest first.
     async fn recent_reviews(&self) -> Result<Vec<ReviewMeta>> {
         let since = self.now().saturating_sub(RECENT_MS);
-        let recent = self.store.recent(200).await?;
-        Ok(recent.into_iter().map(|(meta, _)| meta).take_while(|meta| meta.updated_at >= since).collect())
+        Ok(self.store.reviews_since(since, 200).await?)
     }
 
     fn start_watch(&self, meta: &ReviewMeta) {
