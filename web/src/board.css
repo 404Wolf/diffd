@@ -1,0 +1,674 @@
+/*
+ * The Showing board (components/Board.tsx) and the documents it shows.
+ *
+ * One layout for every screen, from a container query: under 760px (a
+ * phone's cover screen) the tray is the whole page until an item is opened,
+ * then a row of chips above it; wider, the tray is a column beside the
+ * reader. Colours come from the tokens in styles.css, so dark mode follows.
+ */
+
+.board {
+  --board-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --board-mono: "JetBrains Mono", "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --board-target: 36px;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--page);
+  color: var(--fg);
+  font: 14px / 1.45 var(--board-sans);
+}
+
+@media (pointer: coarse) {
+  .board {
+    --board-target: 44px;
+  }
+}
+
+/* Low specificity (`:where`), so each kind of button below sets its own look. */
+:where(.board) button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* -- The bar on top ----------------------------------------------------------- */
+
+.board-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  flex: none;
+}
+.board-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font: 600 14px / 1.2 var(--board-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-title .scope {
+  color: var(--muted);
+  font-weight: 400;
+}
+.board-count {
+  margin-left: auto;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: 600 12px / 20px var(--board-sans);
+}
+.board-back {
+  display: none;
+  min-width: var(--board-target);
+  min-height: var(--board-target);
+  margin-left: -8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+}
+.board-back:hover {
+  background: var(--hover);
+}
+.board-error {
+  margin: 0;
+  padding: 8px 16px;
+  background: var(--del-bg);
+  color: var(--del);
+}
+
+/* -- Tray and reader ---------------------------------------------------------- */
+
+.board-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.board-tray {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg);
+}
+.board-reader {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+/* Narrow, with an item open: the tray is a row of chips above it. */
+.board[data-open] .board-back {
+  display: block;
+}
+.board[data-open] .board-tray {
+  flex: none;
+  overflow: auto hidden;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+.board[data-open] .board-reader {
+  display: block;
+}
+.board[data-open] .tray-list {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px;
+  width: max-content;
+}
+.board[data-open] .tray-item {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+}
+.board[data-open] .tray-item[aria-current] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.board[data-open] .tray-open {
+  padding: 0 14px;
+  min-height: var(--board-target);
+  max-width: 60vw;
+}
+.board[data-open] .tray-meta,
+.board[data-open] .tray-actions,
+.board[data-open] .tray-hidden,
+.board[data-open] .board-empty {
+  display: none;
+}
+
+@container (min-width: 760px) {
+  .board-body {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) 1fr;
+  }
+  .board-tray {
+    border-right: 1px solid var(--line);
+  }
+  .board-reader,
+  .board[data-open] .board-reader {
+    display: block;
+  }
+  .board[data-open] .board-back {
+    display: none;
+  }
+  /* The tray stays a list beside the reader. */
+  .board[data-open] .board-tray {
+    overflow: hidden auto;
+    border-bottom: 0;
+  }
+  .board[data-open] .tray-list {
+    display: block;
+    padding: 0;
+    width: auto;
+  }
+  .board[data-open] .tray-item {
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+  }
+  .board[data-open] .tray-open {
+    padding: 10px 8px 10px 16px;
+    max-width: none;
+  }
+  .board[data-open] .tray-meta,
+  .board[data-open] .tray-actions,
+  .board[data-open] .tray-hidden,
+  .board[data-open] .board-empty {
+    display: flex;
+  }
+  .board[data-open] .tray-hidden {
+    display: block;
+  }
+}
+
+/* -- Tray rows ---------------------------------------------------------------- */
+
+.tray-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tray-item {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+}
+.tray-item[aria-current] {
+  background: var(--accent-soft);
+}
+.tray-item[data-state="minimised"] .tray-name {
+  color: var(--muted);
+}
+.tray-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: var(--board-target);
+  padding: 10px 8px 10px 16px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.tray-open:hover {
+  background: var(--hover);
+}
+.tray-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.tray-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.tray-kind {
+  flex: none;
+  width: 1.4em;
+  color: var(--muted);
+  font: 12px var(--board-mono);
+  text-align: center;
+}
+.tray-meta {
+  display: flex;
+  padding-left: calc(1.4em + 8px);
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.tray-actions {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+.icon-btn {
+  min-width: var(--board-target);
+  min-height: var(--board-target);
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+}
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.tray-hidden {
+  padding: 8px 0 24px;
+}
+.tray-hidden-toggle {
+  min-height: var(--board-target);
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+}
+.tray-hidden .tray-item {
+  opacity: 0.75;
+}
+.board-empty,
+.board-pick {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.board-pick {
+  text-align: center;
+  padding-top: 20vh;
+}
+
+/* -- The reader --------------------------------------------------------------- */
+
+.reader {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.reader-head,
+.reader-body {
+  width: 100%;
+  max-width: 76ch;
+  margin: 0 auto;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+.reader-head {
+  padding-top: 20px;
+  padding-bottom: 8px;
+}
+.reader-title {
+  margin: 0 0 6px;
+  font: 700 22px / 1.25 var(--board-sans);
+  overflow-wrap: anywhere;
+}
+.reader-meta,
+.reader-path {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.reader-path {
+  margin-top: 2px;
+  font: 12px / 1.4 var(--board-mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.reader-message {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: var(--accent-soft);
+}
+.reader-stale {
+  display: block;
+  width: calc(100% - 32px);
+  max-width: calc(76ch - 32px);
+  min-height: var(--board-target);
+  margin: 8px auto 0;
+  border: 1px solid var(--accent-line);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.reader-body {
+  flex: 1;
+  padding-bottom: 24px;
+}
+/* Narrow: the actions are a bar at the bottom, in reach of a thumb. */
+.reader-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.reader-actions button {
+  flex: 1;
+  max-width: 200px;
+  min-height: var(--board-target);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.reader-actions button:hover {
+  background: var(--hover);
+}
+@container (min-width: 760px) {
+  .reader-actions {
+    position: sticky;
+    top: 0;
+    bottom: auto;
+    order: -1;
+    justify-content: flex-end;
+    border-top: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .reader-actions button {
+    flex: none;
+    padding: 0 14px;
+  }
+}
+
+/* -- Code, text and images ---------------------------------------------------- */
+
+.code-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.code-tools button {
+  margin-left: auto;
+  min-height: var(--board-target);
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.code-tools button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.board-code {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font: 13px / 1.55 var(--board-mono);
+  padding: 6px 0;
+}
+.board-code .cl {
+  display: flex;
+  min-width: max-content;
+}
+.board-code.wrap .cl {
+  min-width: 0;
+}
+.board-code .ln {
+  position: sticky;
+  left: 0;
+  flex: none;
+  width: 4.5ch;
+  padding-right: 1.5ch;
+  background: var(--panel);
+  color: var(--subtle);
+  text-align: right;
+  user-select: none;
+}
+.board-code .ct {
+  white-space: pre;
+  padding-right: 16px;
+}
+.board-code.wrap .ct {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.board-code .cl.lit,
+.board-code .cl.lit .ln {
+  background: var(--accent-soft);
+}
+.board-code .cl.lit .ln {
+  color: var(--accent);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.board-code .d-add {
+  background: var(--add-bg);
+}
+.board-code .d-del {
+  background: var(--del-bg);
+}
+.board-code .d-hunk,
+.board-code .d-file {
+  color: var(--muted);
+}
+.code-cut {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.board-image {
+  display: block;
+  margin-top: 8px;
+}
+.board-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  border-radius: 6px;
+  background: repeating-conic-gradient(var(--inset) 0 25%, var(--bg) 0 50%) 0 0 / 16px 16px;
+}
+
+/* -- Documents ---------------------------------------------------------------- */
+
+.doc {
+  font: 17px / 1.6 var(--board-sans);
+  overflow-wrap: break-word;
+}
+@container (min-width: 760px) {
+  .doc {
+    font-size: 16px;
+    line-height: 1.65;
+  }
+}
+.doc > :first-child {
+  margin-top: 0.5em;
+}
+.doc h1,
+.doc h2,
+.doc h3,
+.doc h4,
+.doc h5,
+.doc h6 {
+  margin: 1.6em 0 0.5em;
+  font-weight: 700;
+  line-height: 1.25;
+  scroll-margin-top: 56px;
+}
+.doc h1 {
+  font-size: 1.6em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--line);
+}
+.doc h2 {
+  font-size: 1.3em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--line);
+}
+.doc h3 {
+  font-size: 1.12em;
+}
+.doc h4,
+.doc h5,
+.doc h6 {
+  font-size: 1em;
+}
+.doc p,
+.doc ul,
+.doc ol,
+.doc blockquote,
+.doc pre,
+.doc .doc-table {
+  margin: 0 0 1em;
+}
+.doc ul,
+.doc ol {
+  padding-left: 1.5em;
+}
+.doc li + li,
+.doc li > ul,
+.doc li > ol {
+  margin-top: 0.3em;
+}
+.doc li > ul,
+.doc li > ol {
+  margin-bottom: 0;
+}
+.doc ul.tasks {
+  padding-left: 0.4em;
+  list-style: none;
+}
+.doc li.task input {
+  width: 1em;
+  height: 1em;
+  margin: 0 0.4em 0 0;
+  vertical-align: -0.1em;
+  accent-color: var(--accent);
+}
+.doc a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+.doc .doc-path {
+  color: var(--muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.doc .doc-missing {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+.doc blockquote {
+  padding: 0.1em 1em;
+  border-left: 3px solid var(--accent-line);
+  color: var(--muted);
+}
+.doc hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.doc img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.5em auto;
+  border-radius: 6px;
+}
+.doc code {
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  background: var(--inset);
+  font: 0.86em var(--board-mono);
+  overflow-wrap: anywhere;
+}
+.doc pre {
+  overflow-x: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font: 13px / 1.55 var(--board-mono);
+}
+.doc pre code {
+  padding: 0;
+  background: none;
+  font: inherit;
+  overflow-wrap: normal;
+  white-space: pre;
+}
+/* Tables scroll in their own box; a shadow at an edge says there's more. */
+.doc .doc-table {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(to right, var(--bg) 30%, transparent) left / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--bg) 30%, transparent) right / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.18), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.18), transparent) right / 10px 100% no-repeat scroll;
+}
+.doc table {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+.doc th,
+.doc td {
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  min-width: 7ch;
+  max-width: 40ch;
+}
+.doc th {
+  background: var(--panel);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.doc tr:last-child td {
+  border-bottom: 0;
+}
+.doc td[style*="right"],
+.doc th[style*="right"] {
+  font-variant-numeric: tabular-nums;
+}
+.doc del {
+  color: var(--muted);
+}

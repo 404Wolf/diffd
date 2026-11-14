@@ -1,5 +1,6 @@
 import { createResource, Show } from "solid-js";
 import { match } from "ts-pattern";
+import { Board } from "./components/Board";
 import { Home } from "./components/Home";
 import { ReviewPage } from "./components/ReviewPage";
 import { readBoot } from "./lib/boot";
@@ -12,6 +13,7 @@ export function App() {
         match(b())
           .with({ page: "home" }, ({ reviews }) => <Home reviews={reviews} />)
           .with({ page: "review" }, ({ state }) => <ReviewPage state={state} />)
+          .with({ page: "board" }, ({ scope, items, open }) => <Board scope={scope} items={items} open={open} />)
           .with({ page: "notFound" }, ({ message }) => (
             <div class="p-8">
               <p class="mb-2 font-semibold">{message}</p>
