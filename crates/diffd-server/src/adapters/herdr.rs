@@ -126,14 +126,14 @@ impl AgentInbox for Herdr {
         })
     }
 
-    fn send<'a>(&'a self, terminal: &'a str, text: &'a str) -> BoxFuture<'a, Sent> {
+    fn send<'a>(&'a self, terminal: &'a str, key: &'a str, text: &'a str) -> BoxFuture<'a, Sent> {
         Box::pin(async move {
             if !valid_terminal(terminal) {
                 return Sent::Refused;
             }
-            // `--inbox-only` (`terminal.queue`): queued or refused, never typed.
-            // `--` keeps any text literal.
-            let args = ["send", "--inbox-only", "--", terminal, text];
+            // `--inbox-only` (`terminal.queue`): queued or refused, never typed;
+            // queued once per key. `--` keeps any text literal.
+            let args = ["send", "--inbox-only", "--key", key, "--", terminal, text];
             let mut command = tokio::process::Command::new(&self.program);
             command.args(args).kill_on_drop(true);
             match tokio::time::timeout(self.send_timeout, command.output()).await {
@@ -147,8 +147,9 @@ impl AgentInbox for Herdr {
     }
 }
 
-/// What `hc send --inbox-only` said: queued (`via: inbox`), a refusal hc
-/// names, or anything else, which may have come after the core queued it.
+/// What `hc send --inbox-only` said: queued (`via: inbox`, `repeated` or
+/// not), a refusal hc names, or anything else, which may have come after
+/// the core queued it.
 fn outcome(output: &std::process::Output) -> Sent {
     #[derive(Deserialize)]
     struct Answer {
@@ -265,8 +266,9 @@ case "$1" in
   send)
     printf '%s\n' "$@" > sent
     fail() {{ printf '{{"error":{{"kind":"%s","message":"no"}}}}' "$1" >&2; exit 1; }}
-    case "$4" in
+    case "$6" in
       tinbox) printf '{{"status":"idle","turn":3,"started":true,"via":"inbox","waiting":1}}' ;;
+      tagain) printf '{{"status":"idle","turn":3,"started":null,"via":"inbox","waiting":1,"repeated":true}}' ;;
       tnone) fail not_following ;;
       toldcore) fail unknown_method ;;
       toldhc) printf '{{"error":{{"kind":"usage","message":"unexpected argument --inbox-only"}}}}' >&2; exit 2 ;;
@@ -299,20 +301,21 @@ esac
         let dir = tempfile::tempdir().unwrap();
         let hc = fake_core(dir.path(), r#","features":["queue"]"#);
         let text = "--help; New feedback on your diffd review";
-        assert_eq!(hc.send("tinbox", text).await, Sent::Queued);
+        assert_eq!(hc.send("tinbox", "diffd-k1", text).await, Sent::Queued);
         let sent = std::fs::read_to_string(dir.path().join("sent")).unwrap();
-        assert_eq!(sent, format!("send\n--inbox-only\n--\ntinbox\n{text}\n"), "argv is literal, the text after --");
+        assert_eq!(sent, format!("send\n--inbox-only\n--key\ndiffd-k1\n--\ntinbox\n{text}\n"), "argv is literal, the text after --");
+        assert_eq!(hc.send("tagain", "diffd-k1", text).await, Sent::Queued, "queued before under that key");
         // Definitely not queued.
         for terminal in ["tnone", "toldcore", "toldhc"] {
-            assert_eq!(hc.send(terminal, text).await, Sent::Refused, "{terminal}");
+            assert_eq!(hc.send(terminal, "diffd-k1", text).await, Sent::Refused, "{terminal}");
         }
-        assert_eq!(Herdr { program: "/no/such/hc".into(), ..Herdr::default() }.send("tinbox", text).await, Sent::Refused);
+        assert_eq!(Herdr { program: "/no/such/hc".into(), ..Herdr::default() }.send("tinbox", "diffd-k1", text).await, Sent::Refused);
         // Maybe queued: a lost core, an unreadable failure, an answer without `via`, no answer in time.
         for terminal in ["tlost", "tgarbled", "tnovia", "tslow"] {
-            assert_eq!(hc.send(terminal, text).await, Sent::Unknown, "{terminal}");
+            assert_eq!(hc.send(terminal, "diffd-k1", text).await, Sent::Unknown, "{terminal}");
         }
         std::fs::remove_file(dir.path().join("sent")).unwrap();
-        assert_eq!(hc.send("t1;id", text).await, Sent::Refused);
+        assert_eq!(hc.send("t1;id", "diffd-k1", text).await, Sent::Refused);
         assert!(!dir.path().join("sent").exists(), "an invalid address never reaches hc");
     }
 }

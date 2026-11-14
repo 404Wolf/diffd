@@ -21,10 +21,15 @@
 //!   back to `Hooks`, un-marks the messages and wakes the hook waiters, which
 //!   announce them at once. It stays with the hooks until the next feedback.
 //!
-//! A send whose outcome is unknown (no answer in time, a lost core) may have
-//! been queued, so its messages stay told: announcing them again could
-//! repeat them. The agent still gets the feedback itself from
-//! `wait_for_feedback`, which hands out what it hasn't delivered.
+//! Each notice has a key, and the core queues a key once (it remembers the
+//! keys it queued, with the terminal, across restarts). So a send whose
+//! outcome is unknown (no answer in time, a lost core) is simply sent again
+//! with the same key, backing off from 1 s to a minute, until the core says
+//! queued (now, or before: `repeated`) or definitely refuses (then the
+//! hooks). Its messages stay told meanwhile: neither lost nor announced twice.
+//!
+//! A pass that fails part way (the database) hands the reviews it was
+//! taking to the hooks, so their feedback is still announced.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -33,8 +38,8 @@ use std::time::Duration;
 
 use diffd_core::model::ReviewId;
 
-use super::wake::{Look, Taker};
-use super::{App, Live, Result};
+use super::wake::{Look, Taker, Told};
+use super::{App, Live, Result, new_id};
 use crate::adapters::store::ReviewSpec;
 use crate::ports::{AgentInbox, InboxCore, Sent};
 
@@ -49,6 +54,11 @@ pub(crate) enum Delivery {
     /// The agent's Herdr inbox.
     Inbox,
 }
+
+/// How long the first retry of a send with an unknown outcome waits, and the
+/// longest any waits.
+const RETRY_FIRST: Duration = Duration::from_secs(1);
+const RETRY_MAX: Duration = Duration::from_secs(60);
 
 /// The agent's Herdr terminal and that terminal's core, from a review's spec.
 pub(super) fn route_of(spec: &ReviewSpec) -> Option<(String, String)> {
@@ -144,7 +154,19 @@ impl App {
         }
         let mut held: Option<Duration> = None;
         for (terminal, lives) in by_terminal {
-            let still_held = match self.take_notice(&lives, Taker::Inbox).await? {
+            let look = match self.take_notice(&lives, Taker::Inbox).await {
+                Ok(look) => look,
+                Err(e) => {
+                    // Nothing was sent, and take_notice un-marked what it took: the hooks can announce it.
+                    tracing::warn!(error = %e, "can't take feedback for a Herdr inbox; the hooks announce it");
+                    for (_, live) in &lives {
+                        live.inner.lock().expect("live lock").delivery = Delivery::Hooks;
+                        live.feedback.notify_waiters();
+                    }
+                    continue;
+                }
+            };
+            let still_held = match look {
                 Look::Notice(notice, told, still_held) => {
                     let (Some(app), inbox) = (self.me.upgrade(), inbox.clone()) else { break };
                     // A send waits on the core for a moment; others needn't wait behind it.
@@ -161,17 +183,27 @@ impl App {
         Ok(held)
     }
 
-    /// Sends one notice, and acts on how it ended.
-    async fn deliver_notice(&self, inbox: &dyn AgentInbox, terminal: &str, text: &str, told: Vec<super::wake::Told>) {
-        match inbox.send(terminal, text).await {
-            Sent::Queued => {}
-            Sent::Refused => {
-                tracing::debug!(terminal, "Herdr inbox refused; the hooks deliver this feedback");
-                self.hand_to_hooks(told);
-            }
-            Sent::Unknown => {
-                tracing::warn!(terminal, "no answer from Herdr's inbox; the notice may have gone in, so it isn't repeated");
+    /// Sends one notice under one key until the core says queued or refused.
+    async fn deliver_notice(&self, inbox: &dyn AgentInbox, terminal: &str, text: &str, told: Vec<Told>) {
+        let key = new_id("diffd-");
+        let mut wait = RETRY_FIRST;
+        loop {
+            match inbox.send(terminal, &key, text).await {
+                Sent::Queued => return,
+                Sent::Refused => {
+                    tracing::debug!(terminal, "Herdr inbox refused; the hooks deliver this feedback");
+                    return self.hand_to_hooks(told);
+                }
+                Sent::Unknown => {
+                    tracing::warn!(terminal, ?wait, "no clear answer from Herdr's inbox; asking again with the same key");
+                    tokio::time::sleep(wait).await;
+                    wait = (wait * 2).min(RETRY_MAX);
+                }
             }
         }
     }
 }
+
+#[cfg(test)]
+#[path = "push_tests.rs"]
+mod tests;

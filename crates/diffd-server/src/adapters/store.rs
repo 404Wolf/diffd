@@ -155,6 +155,12 @@ impl Store {
         Ok(Self { pool })
     }
 
+    /// The database itself, for tests that break it on purpose.
+    #[cfg(test)]
+    pub(crate) fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     pub async fn insert_review(&self, meta: &ReviewMeta, spec: &ReviewSpec) -> anyhow::Result<()> {
         let (id, spec, rev) = (&meta.id.0, json(spec), meta.revision as i64);
         let (created, updated) = (meta.created_at as i64, meta.updated_at as i64);

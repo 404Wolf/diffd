@@ -212,12 +212,6 @@ impl App {
         self.store.thread(thread_id).await?.ok_or_else(|| AppError::NotFound(format!("no thread with id `{thread_id}`")))
     }
 
-    /// The user touched something: hold feedback until they pause, and wake the agent.
-    fn user_activity(&self, live: &Live) {
-        live.inner.lock().expect("live lock").gate.touch(self.now());
-        self.feedback_changed(live);
-    }
-
     // -- From the page -------------------------------------------------------
 
     /// The user starts a thread on a selection. With page-chosen ids, a
@@ -248,6 +242,7 @@ impl App {
             None => (ThreadId(new_id("t")), None),
         };
         let message = self.message(message_id, Author::User, body)?;
+        let _activity = self.user_activity(&live);
         let thread = Thread {
             id: thread_id,
             kind: ThreadKind::Comment,
@@ -268,7 +263,6 @@ impl App {
         let item = self.store.add_activity(id, self.now(), kind).await?;
         App::broadcast(&live, ServerMsg::Thread { thread: thread.clone() });
         App::broadcast(&live, ServerMsg::Activity { item });
-        self.user_activity(&live);
         Ok(thread)
     }
 
@@ -288,6 +282,7 @@ impl App {
         }
         let live = self.live(&id).await?;
         let msg = self.message(message_id, author, body)?;
+        let _activity = (author == Author::User).then(|| self.user_activity(&live));
         if !self.store.insert_message(&id, Some(thread_id), &msg).await? {
             return Ok(thread);
         }
@@ -305,9 +300,8 @@ impl App {
         let item = self.store.add_activity(&id, self.now(), kind).await?;
         App::broadcast(&live, ServerMsg::Thread { thread: thread.clone() });
         App::broadcast(&live, ServerMsg::Activity { item });
-        match author {
-            Author::User => self.user_activity(&live),
-            Author::Agent => self.agent_seen(&live),
+        if author == Author::Agent {
+            self.agent_seen(&live);
         }
         Ok(thread)
     }
@@ -349,11 +343,11 @@ impl App {
             return Ok(());
         }
         let msg = self.message(message_id, Author::User, body)?;
+        let _activity = self.user_activity(&live);
         if !self.store.insert_message(id, None, &msg).await? {
             return Ok(());
         }
         App::broadcast(&live, ServerMsg::Chat { message: msg });
-        self.user_activity(&live);
         Ok(())
     }
 

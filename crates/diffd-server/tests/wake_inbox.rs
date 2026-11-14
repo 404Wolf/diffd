@@ -23,13 +23,32 @@ use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
-/// A Herdr core as the pusher sees it. Its core reads and its sends can be
-/// held at a gate, so a test decides when the pusher gets its answers.
+/// What the modelled core does with the next send.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Next {
+    /// Queues it and says so.
+    Queue,
+    /// Refuses it (nothing follows that inbox).
+    Refuse,
+    /// Queues it, but the answer is lost.
+    QueueLoseAnswer,
+    /// Never gets it (the request is lost).
+    Lose,
+}
+
+/// A Herdr core as the pusher sees it, modelled on herdr-core: it queues a
+/// key once (a repeat answers queued without queuing again). Its core reads
+/// and its sends can be held at a gate, so a test decides when the pusher
+/// gets its answers; `script` decides what the next sends do (then `Queue`).
 struct FakeInbox {
     core: Mutex<Option<InboxCore>>,
-    answer: Mutex<Sent>,
+    script: Mutex<std::collections::VecDeque<Next>>,
     core_reads: AtomicUsize,
+    /// Every send: terminal, key, text, when.
     sends: Mutex<Vec<(String, String, Instant)>>,
+    keys: Mutex<Vec<String>>,
+    /// The keys queued, once each: the messages the agent gets.
+    queued: Mutex<Vec<String>>,
     core_gate: Semaphore,
     send_gate: Semaphore,
 }
@@ -45,16 +64,22 @@ impl FakeInbox {
     fn with_core(core: Option<InboxCore>) -> Arc<Self> {
         Arc::new(Self {
             core: Mutex::new(core),
-            answer: Mutex::new(Sent::Queued),
+            script: Mutex::default(),
             core_reads: AtomicUsize::new(0),
             sends: Mutex::default(),
+            keys: Mutex::default(),
+            queued: Mutex::default(),
             core_gate: Semaphore::new(OPEN),
             send_gate: Semaphore::new(OPEN),
         })
     }
 
-    fn answer(&self, sent: Sent) {
-        *self.answer.lock().unwrap() = sent;
+    fn then(&self, next: &[Next]) {
+        self.script.lock().unwrap().extend(next.iter().copied());
+    }
+
+    fn queued(&self) -> Vec<String> {
+        self.queued.lock().unwrap().clone()
     }
 
     fn sends(&self) -> Vec<(String, String, Instant)> {
@@ -84,11 +109,28 @@ impl AgentInbox for FakeInbox {
         })
     }
 
-    fn send<'a>(&'a self, terminal: &'a str, text: &'a str) -> BoxFuture<'a, Sent> {
+    fn send<'a>(&'a self, terminal: &'a str, key: &'a str, text: &'a str) -> BoxFuture<'a, Sent> {
         Box::pin(async move {
             self.sends.lock().unwrap().push((terminal.to_owned(), text.to_owned(), Instant::now()));
+            self.keys.lock().unwrap().push(key.to_owned());
             drop(self.send_gate.acquire().await.unwrap());
-            *self.answer.lock().unwrap()
+            let next = self.script.lock().unwrap().pop_front().unwrap_or(Next::Queue);
+            let mut queued = self.queued.lock().unwrap();
+            if queued.iter().any(|k| k == key) && next != Next::Lose {
+                return Sent::Queued; // `repeated`: not queued again
+            }
+            match next {
+                Next::Queue => {
+                    queued.push(key.to_owned());
+                    Sent::Queued
+                }
+                Next::Refuse => Sent::Refused,
+                Next::QueueLoseAnswer => {
+                    queued.push(key.to_owned());
+                    Sent::Unknown
+                }
+                Next::Lose => Sent::Unknown,
+            }
         })
     }
 }
@@ -165,6 +207,7 @@ async fn the_inbox_is_preferred_over_a_waiting_hook() {
 
     assert!(hook.await.unwrap().is_none(), "the hook stood down");
     assert_eq!(inbox.sends().len(), 1, "once");
+    assert_eq!(inbox.queued().len(), 1);
     assert_eq!(app.pending_count(&id).await.unwrap(), 1, "told, not yet read: wait_for_feedback still hands it out");
 }
 
@@ -192,7 +235,7 @@ async fn hooks_wait_while_the_pusher_decides() {
 #[tokio::test]
 async fn a_refusal_falls_back_to_the_hooks_at_once() {
     let inbox = FakeInbox::new();
-    inbox.answer(Sent::Refused);
+    inbox.then(&[Next::Refuse]);
     close(&inbox.send_gate);
     let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
     let hook = spawn_hook(&app, &repo, Duration::from_secs(10));
@@ -212,7 +255,6 @@ async fn a_refusal_falls_back_to_the_hooks_at_once() {
     assert_eq!(inbox.sends().len(), 1);
 
     // The agent may follow its inbox again by now: new feedback tries it first.
-    inbox.answer(Sent::Queued);
     app.chat_user(&id, None, "and now?").await.unwrap();
     assert!(until(Duration::from_secs(5), || inbox.sends().len() == 2).await, "tried again");
     assert!(inbox.sends()[1].1.contains("> and now?"));
@@ -222,7 +264,7 @@ async fn a_refusal_falls_back_to_the_hooks_at_once() {
 #[tokio::test]
 async fn a_refused_notice_waits_for_the_next_hook() {
     let inbox = FakeInbox::new();
-    inbox.answer(Sent::Refused);
+    inbox.then(&[Next::Refuse]);
     let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
     app.chat_user(&id, None, "later is fine").await.unwrap();
     assert!(until(Duration::from_secs(5), || inbox.sends().len() == 1).await);
@@ -231,19 +273,48 @@ async fn a_refused_notice_waits_for_the_next_hook() {
     assert!(notice.is_some_and(|n| n.message.contains("> later is fine")));
 }
 
-/// No answer may still mean queued: the hooks don't announce it again.
+/// No clear answer: the same notice is sent again under the same key until
+/// the core says queued or refused. However the answers were lost, the agent
+/// gets exactly one message, and the hooks never announce it too.
 #[tokio::test]
-async fn an_unknown_outcome_is_never_announced_twice() {
+async fn an_unclear_send_is_retried_under_its_key_until_settled() {
+    let cases: [(&str, &[Next], usize); 4] = [
+        ("queued, answer lost", &[Next::QueueLoseAnswer], 2),
+        ("request lost", &[Next::Lose], 2),
+        ("lost twice, then queued", &[Next::Lose, Next::QueueLoseAnswer], 3),
+        ("queued, then the retry's answer lost too", &[Next::QueueLoseAnswer, Next::Lose], 3),
+    ];
+    for (case, script, sends) in cases {
+        let inbox = FakeInbox::new();
+        inbox.then(script);
+        let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
+        let hook = spawn_hook(&app, &repo, Duration::from_secs(6));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        app.chat_user(&id, None, "did it go in?").await.unwrap();
+        // Retries after 1 s, then 2 s.
+        assert!(until(Duration::from_secs(8), || inbox.sends().len() == sends).await, "{case}: {:?}", inbox.sends());
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let keys = inbox.keys.lock().unwrap().clone();
+        assert!(keys.iter().all(|k| *k == keys[0]), "{case}: one key for one notice: {keys:?}");
+        assert_eq!(inbox.queued().len(), 1, "{case}: the agent gets it once");
+        assert_eq!(inbox.sends().len(), sends, "{case}: settled, no more sends");
+        assert!(hook.await.unwrap().is_none(), "{case}: no second notice from the hook");
+    }
+}
+
+/// No clear answer, then a definite refusal: the hooks announce it, once.
+#[tokio::test]
+async fn an_unclear_send_then_refused_goes_to_the_hooks() {
     let inbox = FakeInbox::new();
-    inbox.answer(Sent::Unknown); // e.g. the core queued it, then the answer was lost
+    inbox.then(&[Next::Lose, Next::Refuse]);
     let (repo, app, id) = setup(Some(&inbox), ROUTE).await;
-    let hook = spawn_hook(&app, &repo, Duration::from_secs(4));
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    app.chat_user(&id, None, "did it go in?").await.unwrap();
-    assert!(until(Duration::from_secs(5), || inbox.sends().len() == 1).await);
-    assert!(hook.await.unwrap().is_none(), "no second notice from the hook");
-    assert_eq!(inbox.sends().len(), 1);
-    assert_eq!(app.pending_count(&id).await.unwrap(), 1, "the feedback itself is still there to read");
+    let hook = spawn_hook(&app, &repo, Duration::from_secs(10));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    app.chat_user(&id, None, "anyone?").await.unwrap();
+    let notice = tokio::time::timeout(Duration::from_secs(6), hook).await.expect("hook woken").unwrap();
+    assert!(notice.is_some_and(|m| m.contains("> anyone?")));
+    assert_eq!(inbox.sends().len(), 2);
+    assert!(inbox.queued().is_empty());
 }
 
 /// No route, a route on another core, no Herdr, a core that predates

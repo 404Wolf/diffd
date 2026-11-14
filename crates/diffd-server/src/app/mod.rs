@@ -299,16 +299,32 @@ impl App {
         Ok(meta)
     }
 
+    /// On a review the agent can be reached at in Herdr, the hooks stand down
+    /// until the pusher decides (see `push`).
+    fn to_pusher(&self, inner: &mut LiveInner) {
+        if self.pushing.load(Ordering::SeqCst) && inner.route.is_some() && inner.delivery == push::Delivery::Hooks {
+            inner.delivery = push::Delivery::Deciding;
+        }
+    }
+
+    /// The user is about to write feedback on `live`: from now on, a hook
+    /// waiter holds it for their pause and leaves a routed review to the
+    /// pusher, so none sees the new feedback, once it's written, under the
+    /// old rules. Keep the guard until it's written: dropping it tells
+    /// everyone to look (see [`App::feedback_changed`]).
+    fn user_activity<'a>(&'a self, live: &'a Live) -> FeedbackComing<'a> {
+        {
+            let mut inner = live.inner.lock().expect("live lock");
+            inner.gate.touch(self.now());
+            self.to_pusher(&mut inner);
+        }
+        FeedbackComing { app: self, live }
+    }
+
     /// Feedback on `live` changed (a message, a pause, a draft opened or
     /// closed): hook waiters, waiting agents and the inbox pusher look again.
     fn feedback_changed(&self, live: &Live) {
-        if self.pushing.load(Ordering::SeqCst) {
-            // A review the agent can be reached at in Herdr: the hooks stand down until the pusher decides.
-            let mut inner = live.inner.lock().expect("live lock");
-            if inner.route.is_some() && inner.delivery == push::Delivery::Hooks {
-                inner.delivery = push::Delivery::Deciding;
-            }
-        }
+        self.to_pusher(&mut live.inner.lock().expect("live lock"));
         live.feedback.notify_waiters();
         // A permit, kept if the pusher is busy: it looks again after.
         self.pushes.notify_one();
@@ -344,6 +360,18 @@ impl App {
     fn agent_seen(&self, live: &Live) {
         live.inner.lock().expect("live lock").last_agent = Some(self.now());
         self.update_presence(live);
+    }
+}
+
+/// See [`App::user_activity`].
+struct FeedbackComing<'a> {
+    app: &'a App,
+    live: &'a Live,
+}
+
+impl Drop for FeedbackComing<'_> {
+    fn drop(&mut self) {
+        self.app.feedback_changed(self.live);
     }
 }
 

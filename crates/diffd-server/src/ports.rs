@@ -113,8 +113,11 @@ pub trait TreeWatch: Send + Sync {
 pub trait AgentInbox: Send + Sync {
     /// The core on this machine, if one answers.
     fn local_core(&self) -> BoxFuture<'_, Option<InboxCore>>;
-    /// Queue `text` in `terminal`'s inbox. Never typed into the terminal.
-    fn send<'a>(&'a self, terminal: &'a str, text: &'a str) -> BoxFuture<'a, Sent>;
+    /// Queue `text` in `terminal`'s inbox under `key`. Never typed into the
+    /// terminal. Sending the same key again doesn't queue it twice (the core
+    /// remembers the keys it queued, across restarts), so an `Unknown`
+    /// outcome can be retried safely.
+    fn send<'a>(&'a self, terminal: &'a str, key: &'a str, text: &'a str) -> BoxFuture<'a, Sent>;
 }
 
 /// The local Herdr core, as an [`AgentInbox`] sees it.
@@ -128,7 +131,7 @@ pub struct InboxCore {
 /// How an inbox send ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sent {
-    /// The core queued it.
+    /// The core queued it, now or under the same key before.
     Queued,
     /// It definitely wasn't queued: nothing follows that inbox, the core or
     /// hc predates inbox-only messages, the address is bad, or hc is missing.
