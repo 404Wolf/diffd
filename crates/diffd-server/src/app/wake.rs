@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use diffd_core::model::{Author, Millis, ReviewId};
+use diffd_core::model::{Author, MessageId, Millis, ReviewId};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
@@ -57,13 +57,20 @@ pub(super) struct Waiters {
 }
 
 /// What a waiter found when it looked.
-enum Look {
-    /// Feedback to wake the agent for.
-    Notice(WakeNotice),
+pub(super) enum Look {
+    /// Feedback to wake the agent for, and the messages now marked told.
+    Notice(WakeNotice, Vec<Told>),
     /// Feedback held back until the user pauses: look again after this long.
     Held(Duration),
     /// Nothing new (or only feedback behind an open draft, whose closing wakes the waiter).
     Nothing,
+}
+
+/// Messages of one review marked told for a notice: un-marked again if the
+/// notice couldn't be sent (see [`App::untell`]).
+pub(super) struct Told {
+    live: Arc<Live>,
+    ids: Vec<MessageId>,
 }
 
 /// A hook seen this recently means its agent can end its turn and still hear the user.
@@ -127,8 +134,9 @@ impl App {
             // Look again only when held feedback could go out, or to find new reviews:
             // a settled review has nothing to wait for, so it mustn't make the waiter
             // poll (it once did, ten times a second per waiter, ~170% CPU on SQLite).
+            self.waiters.lock().expect("waiters lock").looks += 1;
             let recheck = match self.take_notice(&lives).await? {
-                Look::Notice(notice) => return Ok(Some(notice)),
+                Look::Notice(notice, _) => return Ok(Some(notice)),
                 Look::Held(wait) => wait.min(RESCAN),
                 Look::Nothing => RESCAN,
             };
@@ -186,8 +194,25 @@ impl App {
 
     /// Feedback nobody was told about yet, if the user has paused; marks it told.
     /// Otherwise, how long until feedback held back for the pause could go out.
-    async fn take_notice(&self, lives: &[(ReviewId, Arc<Live>)]) -> Result<Look> {
-        self.waiters.lock().expect("waiters lock").looks += 1;
+    /// Hook waiters and the inbox pusher both take feedback here: the `told`
+    /// set, checked and marked under the review's lock, gives each message to one.
+    pub(super) async fn take_notice(&self, lives: &[(ReviewId, Arc<Live>)]) -> Result<Look> {
+        let mut told = Vec::new();
+        match self.take_fresh(lives, &mut told).await {
+            Ok(Ok(notice)) => Ok(Look::Notice(notice, told)),
+            Ok(Err(held)) => Ok(held.map_or(Look::Nothing, Look::Held)),
+            Err(e) => {
+                // Marked but never announced: leave it for the next look.
+                self.untell(told);
+                Err(e)
+            }
+        }
+    }
+
+    /// [`App::take_notice`]'s work: the notice, or how long feedback is held
+    /// (`None`: nothing new). Each review's messages are added to `told` as
+    /// they're marked, so a failure part way can un-mark them.
+    async fn take_fresh(&self, lives: &[(ReviewId, Arc<Live>)], told: &mut Vec<Told>) -> Result<std::result::Result<WakeNotice, Option<Duration>>> {
         let now = self.now();
         let mut reviews = Vec::new();
         let mut previews = Vec::new();
@@ -211,6 +236,7 @@ impl App {
                 inner.told.extend(fresh.iter().map(|p| p.message.id.clone()));
                 fresh
             };
+            told.push(Told { live: live.clone(), ids: fresh.iter().map(|p| p.message.id.clone()).collect() });
             let (meta, _) = self.meta(id).await?;
             let comments = fresh.iter().filter(|p| p.thread_id.is_some()).count();
             previews.extend(fresh.iter().filter(|p| p.message.author == Author::User).map(|p| quote(&p.message.body)).take(PREVIEW_ITEMS));
@@ -223,9 +249,23 @@ impl App {
             });
         }
         if reviews.is_empty() {
-            return Ok(held.map_or(Look::Nothing, Look::Held));
+            return Ok(Err(held));
         }
-        Ok(Look::Notice(WakeNotice { message: notice_text(&reviews, &previews), reviews }))
+        Ok(Ok(WakeNotice { message: notice_text(&reviews, &previews), reviews }))
+    }
+
+    /// A notice couldn't be sent: its messages are untold again, and waiting
+    /// hook waiters look again at once, so the fallback delivers them.
+    pub(super) fn untell(&self, told: Vec<Told>) {
+        for Told { live, ids } in told {
+            {
+                let mut inner = live.inner.lock().expect("live lock");
+                for id in &ids {
+                    inner.told.remove(id);
+                }
+            }
+            live.feedback.notify_waiters();
+        }
     }
 }
 

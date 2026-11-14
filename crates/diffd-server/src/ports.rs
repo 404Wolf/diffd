@@ -105,3 +105,16 @@ pub trait TreeWatch: Send + Sync {
     /// Stop following review `id` (it was deleted).
     fn unwatch(&self, id: &ReviewId);
 }
+
+/// A Herdr core's per-terminal inbox: messages an agent's harness reads out
+/// of band, so nothing is ever typed into its input (herdr-core's
+/// `hc send --inbox-only`). Review feedback is pushed there when it can be
+/// (see `app::push`); the harness hooks deliver it otherwise.
+pub trait AgentInbox: Send + Sync {
+    /// The id of the core on this machine, if one answers.
+    fn core_id(&self) -> BoxFuture<'_, Option<String>>;
+    /// Queue `text` in `terminal`'s inbox. `true` only when the core queued it:
+    /// `false` when nothing follows that inbox, the core has no inboxes, or hc
+    /// failed. Never typed into the terminal.
+    fn send<'a>(&'a self, terminal: &'a str, text: &'a str) -> BoxFuture<'a, bool>;
+}

@@ -263,6 +263,8 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     if config.lsp.enabled {
         app.set_code_intel(LspPool::new(config.clone()));
     }
+    // Feedback goes into the agent's Herdr inbox when it follows one; the hooks deliver it otherwise.
+    app.set_inbox(diffd_server::adapters::herdr::inbox());
     let watcher = Watcher::install(&app, tokio::runtime::Handle::current());
     app.resume_watches().await?;
     {

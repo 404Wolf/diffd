@@ -210,7 +210,7 @@ impl App {
     /// The user touched something: hold feedback until they pause, and wake the agent.
     fn user_activity(&self, live: &Live) {
         live.inner.lock().expect("live lock").gate.touch(self.now());
-        live.feedback.notify_waiters();
+        self.feedback_changed(live);
     }
 
     // -- From the page -------------------------------------------------------
@@ -333,7 +333,7 @@ impl App {
             let open = inner.drafting > 0;
             inner.gate.set_drafting(open, self.now());
         }
-        live.feedback.notify_waiters();
+        self.feedback_changed(&live);
         Ok(())
     }
 

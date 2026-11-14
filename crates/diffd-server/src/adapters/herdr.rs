@@ -1,10 +1,19 @@
-//! Optional pane presentation on the core local to this diffd. Every hc call
-//! is bounded, uses argv directly, and never routes a target to a remote core.
+//! Optional pane presentation on the core local to this diffd, and agents'
+//! inboxes there ([`AgentInbox`]). Every hc call is bounded, uses argv
+//! directly, and never routes a target to a remote core.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
+use futures::future::BoxFuture;
 use serde::Deserialize;
+
+use crate::ports::AgentInbox;
+
+/// How long an inbox send may take. The core answers once the message is
+/// queued and it has watched a moment for the agent to start working.
+const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Deserialize)]
 pub(crate) struct Core {
@@ -82,8 +91,47 @@ impl Herdr {
     }
 }
 
+/// Agents' inboxes on the local core.
+pub fn inbox() -> Arc<dyn AgentInbox> {
+    Arc::new(Herdr::default())
+}
+
+impl AgentInbox for Herdr {
+    fn core_id(&self) -> BoxFuture<'_, Option<String>> {
+        Box::pin(async move { self.core().await.map(|core| core.id) })
+    }
+
+    fn send<'a>(&'a self, terminal: &'a str, text: &'a str) -> BoxFuture<'a, bool> {
+        Box::pin(async move {
+            if !valid_terminal(terminal) {
+                return false;
+            }
+            // `--inbox-only`: queued, or refused (`not_following`), never typed.
+            // An hc without inboxes refuses the flag. `--` keeps any text literal.
+            let args = ["send", "--inbox-only", "--", terminal, text];
+            let Some(output) = output_within(&self.program, &args, SEND_TIMEOUT).await else {
+                return false;
+            };
+            queued(&output.stdout)
+        })
+    }
+}
+
+/// Whether `hc send`'s JSON answer says the message went into the inbox.
+fn queued(stdout: &[u8]) -> bool {
+    #[derive(Deserialize)]
+    struct Sent {
+        via: Option<String>,
+    }
+    serde_json::from_slice::<Sent>(stdout).is_ok_and(|sent| sent.via.as_deref() == Some("inbox"))
+}
+
 async fn output(program: &Path, args: &[&str]) -> Option<std::process::Output> {
-    tokio::time::timeout(Duration::from_millis(500), tokio::process::Command::new(program).args(args).kill_on_drop(true).output())
+    output_within(program, args, Duration::from_millis(500)).await
+}
+
+async fn output_within(program: &Path, args: &[&str], limit: Duration) -> Option<std::process::Output> {
+    tokio::time::timeout(limit, tokio::process::Command::new(program).args(args).kill_on_drop(true).output())
         .await
         .ok()?
         .ok()
@@ -154,4 +202,49 @@ esac
         hc.move_label(Some("tworker"), "tworker", "moved", None).await;
         assert_eq!(read("tworker"), "moved", "same-pane presentation never clears its own label");
     }
-}
+
+    /// A fake hc: `send` records its argv and answers as the core would for
+    /// the terminal (`tinbox` follows its inbox, `tnone` doesn't, `told`
+    /// is a core without inboxes); `server status` names core `core-1`.
+    fn fake_core(dir: &Path) -> Herdr {
+        use std::os::unix::fs::PermissionsExt;
+        let program = dir.join("hc");
+        std::fs::write(
+            &program,
+            r#"#!/bin/sh
+cd -- "$(dirname -- "$0")"
+case "$1" in
+  server) printf '{"core":{"id":"core-1","name":"server"}}' ;;
+  send)
+    printf '%s\n' "$@" > sent
+    case "$4" in
+      tinbox) printf '{"status":"idle","turn":3,"started":true,"via":"inbox","waiting":1}' ;;
+      tnone) printf '{"error":{"kind":"not_following","message":"nothing follows tnone'"'"'s inbox; nothing was typed"}}' >&2; exit 1 ;;
+      told) printf '{"error":{"kind":"usage","message":"unexpected argument --inbox-only"}}' >&2; exit 2 ;;
+      ttyped) printf '{"status":"idle","turn":3,"started":true}' ;;
+    esac ;;
+esac
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        Herdr { program }
+    }
+
+    #[tokio::test]
+    async fn the_inbox_takes_messages_only_when_the_core_queued_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let hc = fake_core(dir.path());
+        assert_eq!(hc.core_id().await.as_deref(), Some("core-1"));
+        let text = "--help; New feedback on your diffd review";
+        assert!(hc.send("tinbox", text).await);
+        let sent = std::fs::read_to_string(dir.path().join("sent")).unwrap();
+        assert_eq!(sent, format!("send\n--inbox-only\n--\ntinbox\n{text}\n"), "argv is literal, the text after --");
+        assert!(!hc.send("tnone", text).await, "nothing follows that inbox");
+        assert!(!hc.send("told", text).await, "a core without inboxes refuses the flag");
+        assert!(!hc.send("ttyped", text).await, "an answer that doesn't say inbox isn't a queued message");
+        std::fs::remove_file(dir.path().join("sent")).unwrap();
+        assert!(!hc.send("t1;id", text).await);
+        assert!(!dir.path().join("sent").exists(), "an invalid address never reaches hc");
+        assert!(!Herdr { program: "/no/such/hc".into() }.send("tinbox", text).await);
+    }

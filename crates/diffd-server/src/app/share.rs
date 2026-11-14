@@ -79,6 +79,14 @@ pub struct ShareRequest {
     #[serde(skip)]
     #[schemars(skip)]
     pub core_id: Option<String>,
+    /// The caller's own Herdr terminal (its X-Herdr-Terminal header) and that
+    /// terminal's core, resolved by the transport: where feedback is pushed.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub agent_terminal: Option<String>,
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub agent_core_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -120,6 +128,8 @@ impl App {
         let spec = ReviewSpec {
             terminal: req.terminal.clone(),
             core_id: req.core_id.clone(),
+            agent_terminal: req.agent_terminal.clone(),
+            agent_core_id: req.agent_core_id.clone(),
             base: None,
             merge_base: req.merge_base,
             paths: req.paths.clone(),

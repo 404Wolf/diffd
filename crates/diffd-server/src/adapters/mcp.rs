@@ -37,8 +37,8 @@ in its thread, and keep it short; if you change code, the review updates by itse
 chat box arrive too: answer those with say. If the user asks where something is, or code outside the diff would help, call show:
 it can open any file in the repository. Comments can be on those files too.
 Keep calling wait_for_feedback while you're in a review conversation. When you finish your turn instead, diffd can still reach
-you: with its plugin installed (`diffd install`), a message saying \"New feedback on your diffd review\"
-arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.";
+you: with its plugin installed (`diffd install`), or in Herdr through your terminal's inbox (even mid-turn), a message \
+saying \"New feedback on your diffd review\" arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.";
 
 /// Who's calling: the `agent` in the MCP URL (diffd's plugins register
 /// `/mcp?agent=claude` or `?agent=codex`), else the HTTP client's User-Agent,
@@ -117,6 +117,32 @@ impl DiffdMcp {
     fn remember(&self, id: &ReviewId) {
         *self.last.lock().expect("mcp lock") = Some(id.clone());
     }
+
+    /// Follow the agent to the Herdr terminal it calls from now, if that
+    /// changed (it restarted elsewhere): feedback is pushed there. Best effort.
+    async fn note_agent(&self, context: &RequestContext<RoleServer>, id: &ReviewId) {
+        let Some(terminal) = herdr_terminal(context) else { return };
+        if self.app.agent_terminal(id).await.ok().flatten().as_deref() == Some(terminal.as_str()) {
+            return;
+        }
+        let Some(core) = Herdr::default().core().await else { return };
+        if let Err(e) = self.app.agent_at(id, terminal, core.id).await {
+            tracing::debug!(review = %id, error = %e, "can't note the agent's terminal");
+        }
+    }
+}
+
+/// The caller's Herdr terminal, from its X-Herdr-Terminal header. Each tool
+/// POST carries its own HTTP headers; never retain one client's terminal on
+/// the shared MCP service or infer it from the service's env.
+fn herdr_terminal(context: &RequestContext<RoleServer>) -> Option<String> {
+    context
+        .extensions
+        .get::<axum::http::request::Parts>()
+        .and_then(|p| p.headers.get("x-herdr-terminal"))
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| valid_terminal(v))
+        .map(str::to_owned)
 }
 
 fn ok<T: Serialize>(value: &T) -> Result<CallToolResult, ErrorData> {
@@ -308,15 +334,7 @@ machine's diffd for that machine. Use present_review to move an already shared r
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         req.agent = which_agent(&context);
-        // Each tool POST carries its own HTTP headers; never retain one client's
-        // terminal on the shared MCP service or infer it from the service's env.
-        let header = context
-            .extensions
-            .get::<axum::http::request::Parts>()
-            .and_then(|p| p.headers.get("x-herdr-terminal"))
-            .and_then(|v| v.to_str().ok())
-            .filter(|v| valid_terminal(v))
-            .map(str::to_owned);
+        let header = herdr_terminal(&context);
         let hc = Herdr::default();
         let core = if req.present_in.is_some() || header.is_some() { hc.core().await } else { None };
         req.terminal = match req.present_in.as_deref() {
@@ -324,9 +342,12 @@ machine's diffd for that machine. Use present_review to move an already shared r
                 Ok(terminal) => Some(terminal),
                 Err(error) => return fail(error),
             },
-            None => header,
+            None => header.clone(),
         };
-        req.core_id = req.terminal.as_ref().and_then(|_| core.map(|c| c.id));
+        req.core_id = req.terminal.as_ref().and_then(|_| core.as_ref().map(|c| c.id.clone()));
+        // Feedback is pushed to the caller's own terminal, whichever pane presents the review.
+        req.agent_core_id = header.as_ref().and_then(|_| core.map(|c| c.id));
+        req.agent_terminal = header.filter(|_| req.agent_core_id.is_some());
         let terminal = req.terminal.clone();
         let result = try_app!(self.app.share(req).await);
         self.remember(&ReviewId(result.review_id.clone()));
@@ -375,6 +396,7 @@ reviewing together.")]
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
+        self.note_agent(&context, &id).await;
         let timeout = Duration::from_secs(p.timeout_seconds.unwrap_or(MAX_WAIT_SECS).clamp(1, MAX_WAIT_SECS));
         // An agent that stopped waiting must not have feedback marked delivered to it:
         // dropping the wait before it returns leaves the feedback pending.
@@ -404,8 +426,9 @@ regroup the files (`groups`) and label them (`labels`).")]
 
     #[tool(description = "Write in the review's chat box, for anything not tied to specific lines: answering the \
 user's chat messages, or telling them what you're doing. Refer to code as `path:line`.")]
-    async fn say(&self, Parameters(p): Parameters<SayParams>) -> Result<CallToolResult, ErrorData> {
+    async fn say(&self, Parameters(p): Parameters<SayParams>, context: RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
+        self.note_agent(&context, &id).await;
         let msg = try_app!(self.app.say(&id, &p.body).await);
         ok(&serde_json::json!({ "message_id": msg.id.0 }))
     }

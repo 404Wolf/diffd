@@ -5,6 +5,7 @@ mod context;
 mod conversation;
 mod feedback;
 mod history;
+mod push;
 mod rebuild;
 mod share;
 mod wake;
@@ -61,6 +62,9 @@ pub struct App {
     code: Mutex<Option<Arc<dyn CodeIntel>>>,
     /// Harness hooks waiting to wake their agent (see `wake`).
     waiters: Mutex<wake::Waiters>,
+    /// Told when feedback changed anywhere: the inbox pusher, if
+    /// [`App::set_inbox`] started one, looks again (see `push`).
+    pushes: Arc<Notify>,
     /// Held while diffing commits ahead of time (see `history`), so background
     /// work never takes more than one diff's worth of the machine.
     prefetching: tokio::sync::Mutex<()>,
@@ -85,7 +89,9 @@ struct LiveInner {
     listeners: u32,
     /// Pages showing the review. Language servers run for it only while there are some.
     viewers: u32,
-    /// User messages a harness hook already woke the agent for (see `wake`).
+    /// User messages the agent was already told about, by a harness hook
+    /// (see `wake`) or in its Herdr inbox (see `push`): whichever takes a
+    /// message first marks it here, so it's announced once.
     told: std::collections::HashSet<diffd_core::model::MessageId>,
     last_agent: Option<Millis>,
     presence: Presence,
@@ -117,6 +123,7 @@ impl App {
             watcher: Mutex::new(None),
             code: Mutex::new(None),
             waiters: Mutex::default(),
+            pushes: Arc::new(Notify::new()),
             prefetching: tokio::sync::Mutex::new(()),
             me: me.clone(),
         })
@@ -273,6 +280,14 @@ impl App {
         self.store.set_spec(id, &spec).await?;
         self.store.touch_review(id, self.now()).await?;
         Ok(meta)
+    }
+
+    /// Feedback on `live` changed (a message, a pause, a draft opened or
+    /// closed): hook waiters, waiting agents and the inbox pusher look again.
+    fn feedback_changed(&self, live: &Live) {
+        live.feedback.notify_waiters();
+        // A permit, kept if the pusher is busy: it looks again after.
+        self.pushes.notify_one();
     }
 
     fn broadcast(live: &Live, msg: ServerMsg) {

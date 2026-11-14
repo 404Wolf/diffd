@@ -104,6 +104,17 @@ message into the session with `codex queue`. You can keep talking to the
 agent in its terminal at the same time; feedback that arrives mid-turn is
 picked up with that turn or right after it.
 
+**In Herdr it hears you within seconds, even mid-turn.** When the agent
+runs in a Herdr terminal and its harness follows that terminal's inbox
+(for Claude Code, the herdr-messages mod), diffd puts the same message into
+the inbox instead (`hc send --inbox-only`): the agent gets it right away
+when idle, or after its next tool call in the middle of a turn, and nothing
+is typed into its prompt. diffd sends it to the terminal the agent calls
+from (its `X-Herdr-Terminal`), not the pane presenting the review. Each
+message is announced once, by the inbox or by the hooks; when the inbox
+can't take it (no Herdr, an older core, nothing following that inbox), the
+hooks deliver it as above.
+
 Other agents can use the MCP server at `http://localhost:3433/mcp` directly.
 For their hooks, `diffd hook wait` blocks until there's feedback on a
 review of the current directory, then prints what to do and exits 2
