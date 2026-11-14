@@ -71,14 +71,12 @@ impl Herdr {
         if !self.label(new, review).await {
             return false;
         }
-        if let Some(old) = old.filter(|old| *old != new) {
-            if let Some(output) = self.output(&["get", old, "--json"]).await {
-                if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-                    if value["labels"]["diffd.review"].as_str() == Some(review) {
-                        self.label(old, replacement.unwrap_or("")).await;
-                    }
-                }
-            }
+        if let Some(old) = old.filter(|old| *old != new)
+            && let Some(output) = self.output(&["get", old, "--json"]).await
+            && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+            && value["labels"]["diffd.review"].as_str() == Some(review)
+        {
+            self.label(old, replacement.unwrap_or("")).await;
         }
         true
     }

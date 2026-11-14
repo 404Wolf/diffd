@@ -52,12 +52,45 @@ async fn feedback_wakes_the_agent_once_after_the_user_pauses() {
     app.chat_user(&id, None, "why call b here?").await.unwrap();
     let message = waiting.await.unwrap().expect("woken");
     assert!(started.elapsed() >= Duration::from_millis(1400), "it waits for the user to pause");
+    assert!(started.elapsed() < Duration::from_millis(4500), "and goes out once they have, not at the next rescan");
     assert!(message.contains(&format!("review_id={}", id.0)), "{message}");
     assert!(message.contains("1 chat message") && message.contains("> why call b here?"), "{message}");
 
     // The same message doesn't wake anyone again.
     let again = app.wait_for_wake(&repo.path(), "claude:s1", Duration::from_millis(1800)).await.unwrap();
     assert!(again.is_none());
+}
+
+/// A waiter with nothing to say looks again only every few seconds (for newly shared
+/// reviews) or when told something happened. It used to look ten times a second
+/// whenever a review near it was settled, which is the normal state: with a waiter
+/// per Claude session, the server's diffd sat at ~170% CPU reading SQLite.
+#[tokio::test]
+async fn an_idle_waiter_doesnt_poll() {
+    let (repo, app, id) = setup().await;
+    let idle = |waiter: &'static str| {
+        let (app, cwd) = (app.clone(), repo.path().to_owned());
+        async move {
+            let before = app.wake_looks();
+            let ended = app.wait_for_wake(&cwd, waiter, Duration::from_millis(2500)).await.unwrap();
+            (ended.is_none(), app.wake_looks() - before)
+        }
+    };
+
+    // A settled review with no feedback.
+    let (ended, looks) = idle("claude:idle").await;
+    assert!(ended);
+    assert!(looks <= 2, "{looks} looks in 2.5 s with nothing to say");
+
+    // Feedback the agent was told about but hasn't read yet is nothing new either.
+    let woken = spawn_wait(&app, repo.path(), "claude:told", 10);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    app.chat_user(&id, None, "one thing").await.unwrap();
+    assert!(woken.await.unwrap().is_some());
+    assert_eq!(app.pending_count(&id).await.unwrap(), 1, "told, not yet read");
+    let (ended, looks) = idle("claude:idle").await;
+    assert!(ended);
+    assert!(looks <= 2, "{looks} looks in 2.5 s with only told feedback");
 }
 
 #[tokio::test]

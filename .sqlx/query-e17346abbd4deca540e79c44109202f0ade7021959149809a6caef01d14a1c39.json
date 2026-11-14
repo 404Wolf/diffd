@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, title, summary, repo_path, repo_name, from_rev, to_rev, spec, revision, status, created_at, updated_at\n             FROM reviews WHERE id = ?",
+  "query": "SELECT id, title, summary, repo_path, repo_name, from_rev, to_rev, spec, revision, created_at, updated_at\n             FROM reviews WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -49,18 +49,13 @@
         "type_info": "Integer"
       },
       {
-        "name": "status",
-        "ordinal": 9,
-        "type_info": "Text"
-      },
-      {
         "name": "created_at",
-        "ordinal": 10,
+        "ordinal": 9,
         "type_info": "Integer"
       },
       {
         "name": "updated_at",
-        "ordinal": 11,
+        "ordinal": 10,
         "type_info": "Integer"
       }
     ],
@@ -78,9 +73,8 @@
       false,
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "7f9c25faa78b35584f5a5148f5c22c1746bba3a0a0e89ef71e27f9ade0dc8027"
+  "hash": "e17346abbd4deca540e79c44109202f0ade7021959149809a6caef01d14a1c39"
 }

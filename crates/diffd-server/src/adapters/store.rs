@@ -63,6 +63,43 @@ fn json<T: Serialize>(v: &T) -> String {
     serde_json::to_string(v).expect("serializing a model type cannot fail")
 }
 
+/// A row of `reviews`, as [`Store::review`] and [`Store::reviews_since`] read it.
+struct ReviewRow {
+    id: String,
+    title: String,
+    summary: Option<String>,
+    repo_path: String,
+    repo_name: String,
+    from_rev: String,
+    to_rev: Option<String>,
+    spec: String,
+    revision: i64,
+    created_at: i64,
+    updated_at: i64,
+}
+
+impl ReviewRow {
+    fn parse(self) -> anyhow::Result<(ReviewMeta, ReviewSpec)> {
+        let spec: ReviewSpec = parse(&self.spec)?;
+        let meta = ReviewMeta {
+            id: ReviewId(self.id),
+            title: self.title,
+            summary: self.summary,
+            repo_path: self.repo_path,
+            repo_name: self.repo_name,
+            terminal: spec.terminal.clone(),
+            core_id: spec.core_id.clone(),
+            from: self.from_rev,
+            to: self.to_rev,
+            revision: self.revision as Revision,
+            status: ReviewStatus::Open,
+            created_at: self.created_at as Millis,
+            updated_at: self.updated_at as Millis,
+        };
+        Ok((meta, spec))
+    }
+}
+
 fn parse<T: for<'de> Deserialize<'de>>(s: &str) -> anyhow::Result<T> {
     serde_json::from_str(s).with_context(|| format!("corrupt JSON in database: {s}"))
 }
@@ -144,33 +181,31 @@ impl Store {
     }
 
     pub async fn review(&self, id: &ReviewId) -> anyhow::Result<Option<(ReviewMeta, ReviewSpec)>> {
-        let row = sqlx::query!(
-            "SELECT id, title, summary, repo_path, repo_name, from_rev, to_rev, spec, revision, status, created_at, updated_at
+        let row = sqlx::query_as!(
+            ReviewRow,
+            "SELECT id, title, summary, repo_path, repo_name, from_rev, to_rev, spec, revision, created_at, updated_at
              FROM reviews WHERE id = ?",
             id.0
         )
         .fetch_optional(&self.pool)
         .await?;
-        row.map(|r| {
-            let spec: ReviewSpec = parse(&r.spec)?;
-            let meta = ReviewMeta {
-                id: ReviewId(r.id),
-                title: r.title,
-                summary: r.summary,
-                repo_path: r.repo_path,
-                repo_name: r.repo_name,
-                terminal: spec.terminal.clone(),
-                core_id: spec.core_id.clone(),
-                from: r.from_rev,
-                to: r.to_rev,
-                revision: r.revision as Revision,
-                status: ReviewStatus::Open,
-                created_at: r.created_at as Millis,
-                updated_at: r.updated_at as Millis,
-            };
-            Ok((meta, spec))
-        })
-        .transpose()
+        row.map(ReviewRow::parse).transpose()
+    }
+
+    /// Reviews updated at `since` or later, newest first, in one query: cheap
+    /// enough for the wake waiters, which look every few seconds.
+    pub async fn reviews_since(&self, since: Millis, limit: i64) -> anyhow::Result<Vec<ReviewMeta>> {
+        let since = since as i64;
+        let rows = sqlx::query_as!(
+            ReviewRow,
+            "SELECT id, title, summary, repo_path, repo_name, from_rev, to_rev, spec, revision, created_at, updated_at
+             FROM reviews WHERE updated_at >= ? ORDER BY updated_at DESC LIMIT ?",
+            since,
+            limit
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(|r| r.parse().map(|(meta, _)| meta)).collect()
     }
 
     /// Reviews, most recently active first, with their unread activity counts.
