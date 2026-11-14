@@ -370,8 +370,10 @@ would start a core that isn't running. On that one connection it checks the
 core's id is still the one the review was presented on, then writes, so a
 replaced core whose short addresses name other terminals is never labelled.
 The Herdr app's review controller acts on
-each request once and answers on the same terminal with
-`diffd.shown=<seq>:<state>`; diffd waits at most 3 s in all for it and returns
+each request once and answers on the same terminal in that request's own label,
+`diffd.shown.<seq>=<state>` (one key per request: the core's label write can't
+compare, so a late answer must never land on a newer request's); diffd waits at
+most 3 s in all for its own and returns
 `herdr: {herdr, terminal, core_id, seq, shown, reason}`:
 
 - `herdr: false`: no core running here, or the core was replaced since the

@@ -17,7 +17,7 @@ use crate::app::HerdrView;
 use crate::ports::{AgentInbox, InboxCore, Outgoing, Sent};
 
 /// How long a show waits, in all, for a Herdr app to say what it did
-/// (`diffd.shown`). The app looks at labels every 1.5 s.
+/// (`diffd.shown.<seq>`). The app looks at labels every 1.5 s.
 const ACK_WAIT: Duration = Duration::from_secs(3);
 const ACK_POLL: Duration = Duration::from_millis(500);
 /// The longest one call to the core may take (connecting included).
@@ -113,10 +113,17 @@ fn next_seq() -> u64 {
     }
 }
 
-/// The app's answer `<seq>:<state>`, when it is for this request.
-fn answer_for(value: &str, seq: u64) -> Option<String> {
-    let (of, state) = value.split_once(':')?;
-    (of.parse::<u64>().ok()? == seq && matches!(state, "open" | "front" | "badge" | "closed")).then(|| state.to_owned())
+/// The app answers each request under its own label, `diffd.shown.<seq>`: the core's
+/// label write is unconditional and answers come from separate processes (and maybe two
+/// windows), so a shared label could go backwards; a key per request can't.
+fn answer_key(seq: u64) -> String {
+    format!("diffd.shown.{seq}")
+}
+
+/// Request `seq`'s answer among a terminal's labels, when it is one the app gives.
+fn answer_for(labels: &Value, seq: u64) -> Option<String> {
+    let state = labels[answer_key(seq)].as_str()?;
+    matches!(state, "open" | "front" | "badge" | "closed").then(|| state.to_owned())
 }
 
 /// Review ids go into a label value split on `:`; diffd's own ids never hold one.
@@ -290,7 +297,7 @@ impl Herdr {
     /// `terminal_label`, so no window sees one without the other). `moved_from`
     /// (the old terminal and the review it should show now) is repaired only if
     /// its label still names this review. Then the app's answer,
-    /// `diffd.shown=<seq>:<state>`, is awaited for at most `ack_wait`. Without
+    /// `diffd.shown.<seq>=<state>`, is awaited for at most `ack_wait`. Without
     /// that core nothing is labelled.
     pub async fn present(
         &self,
@@ -340,7 +347,7 @@ impl Herdr {
         let answer = tokio::time::timeout(self.ack_wait, async {
             loop {
                 if let Some(labels) = session.labels(terminal).await
-                    && let Some(state) = labels["diffd.shown"].as_str().and_then(|v| answer_for(v, seq))
+                    && let Some(state) = answer_for(&labels, seq)
                 {
                     return state;
                 }
@@ -465,7 +472,7 @@ pub(crate) mod fake {
         pub calls: Vec<(usize, String, Value)>,
         /// Terminals that don't exist (labelling them fails).
         pub missing: Vec<String>,
-        /// The app: when a `diffd.show` arrives, answer `<seq>:<state>` after a delay.
+        /// The app: when a `diffd.show` arrives, answer `diffd.shown.<seq>=<state>` after a delay.
         pub app: Option<(&'static str, Duration)>,
         /// Each `terminal.get` takes this long.
         pub slow_get: Option<Duration>,
@@ -552,7 +559,7 @@ pub(crate) mod fake {
                                     .labels
                                     .entry(terminal)
                                     .or_default()
-                                    .insert("diffd.shown".into(), format!("{seq}:{answer}"));
+                                    .insert(format!("diffd.shown.{seq}"), answer.to_owned());
                             });
                         }
                         (Ok(json!({})), false)
@@ -730,7 +737,9 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let core = fake::core("core-1");
             core.lock().unwrap().slow_get = slow;
-            // An earlier request's answer is not this one's.
+            // Another request's answer, older or newer (and the old shared label), is not this one's.
+            core.lock().unwrap().labels.entry("tworker".into()).or_default().insert("diffd.shown.17".into(), "open".into());
+            core.lock().unwrap().labels.entry("tworker".into()).or_default().insert("diffd.shown.9999999999999".into(), "open".into());
             core.lock().unwrap().labels.entry("tworker".into()).or_default().insert("diffd.shown".into(), "17:open".into());
             let hc = herdr(fake::listen(dir.path(), core.clone()), Duration::from_millis(1000));
             let start = std::time::Instant::now();
@@ -762,10 +771,15 @@ mod tests {
     fn requests_are_numbered_once_and_answers_match_their_request() {
         let (a, b) = (next_seq(), next_seq());
         assert!(b > a);
-        assert_eq!(answer_for(&format!("{b}:closed"), b).as_deref(), Some("closed"));
-        for value in [format!("{a}:open"), format!("{b}:typed"), format!("{b}"), "x:open".into()] {
-            assert_eq!(answer_for(&value, b), None, "{value}");
-        }
+        let labels = serde_json::json!({ answer_key(b): "closed", answer_key(a): "open", "diffd.shown": format!("{b}:open") });
+        assert_eq!(answer_for(&labels, b).as_deref(), Some("closed"), "its own key, never another request's");
+        assert_eq!(answer_for(&labels, a).as_deref(), Some("open"));
+        assert_eq!(answer_for(&serde_json::json!({ answer_key(b): "typed" }), b), None);
+        assert_eq!(
+            answer_for(&serde_json::json!({ "diffd.shown": format!("{b}:open") }), b),
+            None,
+            "the old shared label is not an answer"
+        );
     }
 
     #[tokio::test]
