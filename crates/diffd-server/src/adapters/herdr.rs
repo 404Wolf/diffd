@@ -4,12 +4,19 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures::future::BoxFuture;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
+use crate::app::HerdrView;
 use crate::ports::{AgentInbox, InboxCore, Outgoing, Sent};
+
+/// How long a show waits for a Herdr app to say what it did (`diffd.shown`).
+/// The app looks at labels every 1.5 s.
+const ACK_WAIT: Duration = Duration::from_secs(3);
+const ACK_POLL: Duration = Duration::from_millis(500);
 
 /// How long an inbox send may take. The core answers once the message is
 /// queued and it has watched a moment for the agent to start working.
@@ -39,12 +46,59 @@ pub(crate) struct Core {
 pub(crate) struct Herdr {
     program: PathBuf,
     send_timeout: Duration,
+    ack_wait: Duration,
 }
 
 impl Default for Herdr {
     fn default() -> Self {
-        Self { program: PathBuf::from("hc"), send_timeout: SEND_TIMEOUT }
+        Self { program: PathBuf::from("hc"), send_timeout: SEND_TIMEOUT, ack_wait: ACK_WAIT }
     }
+}
+
+/// What a show did, for the agent: whether Herdr is there, where the request
+/// went, and what the app answered (`open`, `front`, `badge`, `closed`), or
+/// `pending` when no app answered in time (it acts when one is opened, for a
+/// while), or `none` when nothing was to be shown.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct Shown {
+    pub herdr: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub core_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shown: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl Shown {
+    pub fn absent(reason: &str) -> Self {
+        Self { herdr: false, terminal: None, core_id: None, seq: None, shown: None, reason: Some(reason.into()) }
+    }
+}
+
+/// A request number per show: milliseconds, and never the same twice in this process,
+/// so the app handles each request once and its answer names the request it is for.
+fn next_seq() -> u64 {
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let mut last = LAST.load(Ordering::Relaxed);
+    loop {
+        let next = now.max(last + 1);
+        match LAST.compare_exchange_weak(last, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return next,
+            Err(seen) => last = seen,
+        }
+    }
+}
+
+/// The app's answer `<seq>:<state>`, when it is for this request.
+fn answer_for(value: &str, seq: u64) -> Option<String> {
+    let (of, state) = value.split_once(':')?;
+    (of.parse::<u64>().ok()? == seq && matches!(state, "open" | "front" | "badge" | "closed")).then(|| state.to_owned())
 }
 
 pub(crate) fn valid_terminal(value: &str) -> bool {
@@ -105,6 +159,63 @@ impl Herdr {
         }
         true
     }
+}
+
+impl Herdr {
+    /// Ask the Herdr app to open (or front, badge, close) a review beside
+    /// `terminal`, on `core` (this diffd's, from [`Herdr::core`]):
+    /// `hc label <terminal> diffd.show=<view>:<review>:<seq>`. The app answers
+    /// with `diffd.shown=<seq>:<state>`, which this waits for briefly. With
+    /// no core there is no Herdr here: nothing is labelled.
+    pub async fn show(&self, core: Option<&Core>, terminal: &str, review: &str, view: HerdrView) -> Shown {
+        let Some(core) = core else { return Shown::absent("herdr-core isn't running here (no hc, or no core answered)") };
+        let seq = next_seq();
+        let mut shown = Shown {
+            herdr: true,
+            terminal: Some(terminal.to_owned()),
+            core_id: Some(core.id.clone()),
+            seq: Some(seq),
+            shown: None,
+            reason: None,
+        };
+        if !valid_terminal(terminal) || !valid_review(review) {
+            shown.reason = Some("not a Herdr terminal or review id".into());
+            return shown;
+        }
+        let label = format!("diffd.show={}:{review}:{seq}", view.as_str());
+        if self.output(&["label", terminal, &label]).await.is_none() {
+            shown.reason = Some(format!("could not label {terminal}: is it still open on this core?"));
+            return shown;
+        }
+        if view == HerdrView::None {
+            shown.shown = Some("none".into());
+            return shown;
+        }
+        shown.shown = Some(self.answer(terminal, seq).await.unwrap_or_else(|| "pending".into()));
+        shown
+    }
+
+    /// The app's answer to request `seq`, read from the terminal's labels until `ack_wait` passes.
+    async fn answer(&self, terminal: &str, seq: u64) -> Option<String> {
+        let until = Instant::now() + self.ack_wait;
+        loop {
+            if let Some(output) = self.output(&["get", terminal, "--json"]).await
+                && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+                && let Some(state) = value["labels"]["diffd.shown"].as_str().and_then(|v| answer_for(v, seq))
+            {
+                return Some(state);
+            }
+            if Instant::now() + ACK_POLL > until {
+                return None;
+            }
+            tokio::time::sleep(ACK_POLL).await;
+        }
+    }
+}
+
+/// Review ids go into a label value split on `:`; diffd's own ids never hold one.
+fn valid_review(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 64 && value.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
 }
 
 /// Agents' inboxes on the local core.
@@ -308,7 +419,7 @@ esac
         )
         .unwrap();
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
-        Herdr { program, send_timeout: Duration::from_millis(500) }
+        Herdr { program, send_timeout: Duration::from_millis(500), ..Herdr::default() }
     }
 
     #[tokio::test]
@@ -322,6 +433,111 @@ esac
         let old = fake_core(dir.path(), "").local_core().await;
         assert!(old.is_some_and(|c| !c.queues), "a core that predates them lists no features");
         assert_eq!(Herdr { program: "/no/such/hc".into(), ..Herdr::default() }.local_core().await, None);
+    }
+
+    /// A fake core with terminals `tmanager` and `tworker` whose labels live in files
+    /// (`<terminal>.<key>`); labelling `tmissing` fails, as for a stale terminal.
+    fn fake_labels(dir: &Path, ack_wait: Duration) -> Herdr {
+        use std::os::unix::fs::PermissionsExt;
+        let program = dir.join("hc");
+        std::fs::write(
+            &program,
+            r#"#!/bin/sh
+cd -- "$(dirname -- "$0")"
+case "$1" in
+  label) [ "$2" != tmissing ] || exit 1; printf '%s\n' "$@" >> calls; printf '%s' "${3#*=}" > "$2.${3%%=*}" ;;
+  get) printf '{"labels":{"diffd.shown":"%s"}}' "$(cat "$2.diffd.shown" 2>/dev/null)" ;;
+esac
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        Herdr { program, ack_wait, ..Herdr::default() }
+    }
+
+    /// A Herdr app: once `diffd.show` is on `terminal`, it answers `<seq>:<state>` after `delay`.
+    fn app_answers(dir: &Path, terminal: &str, state: &'static str, delay: Duration) -> tokio::task::JoinHandle<()> {
+        let (asked, answer) = (dir.join(format!("{terminal}.diffd.show")), dir.join(format!("{terminal}.diffd.shown")));
+        tokio::spawn(async move {
+            let request = loop {
+                if let Ok(request) = std::fs::read_to_string(&asked) {
+                    break request;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            };
+            tokio::time::sleep(delay).await;
+            let seq = request.rsplit(':').next().unwrap().to_owned();
+            std::fs::write(answer, format!("{seq}:{state}")).unwrap();
+        })
+    }
+
+    fn core() -> Core {
+        Core { id: "core-1".into(), name: "server".into() }
+    }
+
+    #[tokio::test]
+    async fn a_show_labels_the_terminal_and_reports_what_the_app_did() {
+        let dir = tempfile::tempdir().unwrap();
+        let hc = fake_labels(dir.path(), Duration::from_secs(3));
+        let app = app_answers(dir.path(), "tmanager", "badge", Duration::from_millis(700));
+        let shown = hc.show(Some(&core()), "tmanager", "rabc23", HerdrView::Open).await;
+        app.await.unwrap();
+        let seq = shown.seq.unwrap();
+        assert_eq!(
+            shown,
+            Shown {
+                herdr: true,
+                terminal: Some("tmanager".into()),
+                core_id: Some("core-1".into()),
+                seq: Some(seq),
+                shown: Some("badge".into()),
+                reason: None,
+            }
+        );
+        let calls = std::fs::read_to_string(dir.path().join("calls")).unwrap();
+        assert_eq!(calls, format!("label\ntmanager\ndiffd.show=open:rabc23:{seq}\n"), "argv is literal");
+    }
+
+    #[tokio::test]
+    async fn without_an_answer_for_this_request_it_is_pending_within_the_bound() {
+        let dir = tempfile::tempdir().unwrap();
+        let hc = fake_labels(dir.path(), Duration::from_secs(1));
+        // An answer to an earlier request is not this one's.
+        std::fs::write(dir.path().join("tworker.diffd.shown"), "17:open").unwrap();
+        let start = Instant::now();
+        let shown = hc.show(Some(&core()), "tworker", "rabc23", HerdrView::Front).await;
+        assert_eq!(shown.shown.as_deref(), Some("pending"));
+        assert!(start.elapsed() < Duration::from_secs(2), "{:?}", start.elapsed());
+        assert!(shown.herdr);
+    }
+
+    #[tokio::test]
+    async fn no_core_stale_terminals_odd_ids_and_none_ask_nothing_of_the_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let hc = fake_labels(dir.path(), Duration::from_secs(3));
+        let absent = hc.show(None, "tmanager", "rabc23", HerdrView::Open).await;
+        assert!(!absent.herdr && absent.seq.is_none() && absent.reason.unwrap().contains("isn't running"));
+        let stale = hc.show(Some(&core()), "tmissing", "rabc23", HerdrView::Open).await;
+        assert!(stale.herdr && stale.shown.is_none() && stale.reason.unwrap().contains("tmissing"));
+        for (terminal, review) in [("tmanager", "r:1"), ("tmanager", ""), ("--help", "rabc23")] {
+            assert!(hc.show(Some(&core()), terminal, review, HerdrView::Open).await.shown.is_none(), "{terminal} {review}");
+        }
+        assert!(!dir.path().join("calls").exists(), "nothing was labelled");
+        let start = Instant::now();
+        let none = hc.show(Some(&core()), "tmanager", "rabc23", HerdrView::None).await;
+        assert_eq!(none.shown.as_deref(), Some("none"));
+        assert!(start.elapsed() < Duration::from_millis(400), "none waits for no answer");
+        assert!(std::fs::read_to_string(dir.path().join("tmanager.diffd.show")).unwrap().starts_with("none:rabc23:"));
+    }
+
+    #[test]
+    fn requests_are_numbered_once_and_answers_match_their_request() {
+        let (a, b) = (next_seq(), next_seq());
+        assert!(b > a);
+        assert_eq!(answer_for(&format!("{b}:closed"), b).as_deref(), Some("closed"));
+        for value in [format!("{a}:open"), format!("{b}:typed"), format!("{b}"), "x:open".into()] {
+            assert_eq!(answer_for(&value, b), None, "{value}");
+        }
     }
 
     fn outgoing(terminal: &str) -> Outgoing {

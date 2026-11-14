@@ -127,6 +127,7 @@ agent without installing the service.
 | --- | --- |
 | `share_diff` | Start a review (optional `present_in` selects a Herdr reviewing pane): `from`/`to` revisions (default: the working tree), a title and summary, notes on tricky code, files to collapse, test regions and folds, groups of related changes and labels. |
 | `present_review` | Show an existing review beside a chosen Herdr terminal on this core (`review_id`, `present_in`), e.g. surface a worker's review in a manager's pane. |
+| `show_in_herdr` | Decide whether the user's Herdr window shows a review (`review_id`, `view`: `open`, `front`, `badge`, `close`, `none`; optional `present_in`). Herdr never takes the user's focus for it. `share_diff` and `present_review` take the same `view` (default `open`). |
 | `wait_for_feedback` | Wait (up to 50 s) for your comments and chat messages, batched once you pause. |
 | `reply` | Answer in a thread, where the code is. |
 | `say` | Answer in the chat. |
@@ -354,6 +355,28 @@ is shown, even when that pane never shared the review. Clients should prefer
 the live label over guessing from a repository path.
 `GET /api/reviews?terminal=t2r` filters by the current presentation target before
 applying the recent list limit; `coreId` distinguishes replaced cores.
+
+#### Whether the review is on screen (`view`, `show_in_herdr`)
+
+The agent decides what the Herdr window does with a review: `view` on
+`share_diff` and `present_review` (default `open`), and `show_in_herdr` later.
+diffd puts the request on the presenting terminal as a second label,
+`diffd.show=<view>:<review id>:<seq>` (`seq`: milliseconds, unique per
+request), after `diffd.review`. The Herdr app's review controller acts on
+each request once and answers on the same terminal with
+`diffd.shown=<seq>:<state>`; diffd waits up to 3 s for it and returns
+`herdr: {herdr, terminal, core_id, seq, shown, reason}`:
+
+- `herdr: false`: no `hc` or no core here (or, for `show_in_herdr`, the review
+  was presented on an earlier core). Nothing was labelled; don't retry.
+- `shown`: `open`, `front`, `badge` or `closed` as the window did it;
+  `pending` when no window answered (one opened soon after still acts);
+  `none` for `view: none`.
+
+The window never takes the user's keyboard focus for a request. While they
+are typing in the pane a review would open beside (the window is active
+and that pane is focused), `open` only badges it, and they open it with
+alt-r. `close` leaves a review pane the user is in, or has a draft in.
 
 Claude Code's HTTP MCP `headers` can use
 `"X-Herdr-Terminal": "${HC_TERMINAL_ID:-}"`. Codex's `env_http_headers` can use
