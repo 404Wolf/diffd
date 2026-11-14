@@ -20,6 +20,13 @@
 //! - a send the core definitely refused (nothing follows that inbox) puts it
 //!   back to `Hooks`, un-marks the messages and wakes the hook waiters, which
 //!   announce them at once. It stays with the hooks until the next feedback.
+//!   The change of hands and the un-marking are one step under the review's
+//!   lock.
+//!
+//! Every change of a review's delivery starts a new epoch. A pass notes each
+//! review's epoch when it starts and, after waiting on the core, decides only
+//! the reviews still at that epoch: a stale pass never takes a review back
+//! from the hooks.
 //!
 //! Each notice has a key, and the core queues a key once: it remembers the
 //! keys it queued for `queue_keys_kept_ms` (an hour), with the terminal,
@@ -145,21 +152,36 @@ impl App {
     async fn push(&self, inbox: &Arc<dyn AgentInbox>) -> Result<Option<Duration>> {
         let lives: Vec<(ReviewId, Arc<Live>)> =
             self.live.lock().expect("live lock").iter().map(|(id, l)| (id.clone(), l.clone())).collect();
-        let lives: Vec<_> =
-            lives.into_iter().filter(|(_, l)| l.inner.lock().expect("live lock").delivery != Delivery::Hooks).collect();
+        // Each with the epoch of its delivery as this pass saw it.
+        let lives: Vec<_> = lives
+            .into_iter()
+            .filter_map(|(id, live)| {
+                let epoch = {
+                    let inner = live.inner.lock().expect("live lock");
+                    (inner.delivery != Delivery::Hooks).then_some(inner.delivery_epoch)
+                };
+                epoch.map(|epoch| (id, live, epoch))
+            })
+            .collect();
         if lives.is_empty() {
             return Ok(None);
         }
         let core = inbox.local_core().await;
         let mut by_terminal: BTreeMap<String, Vec<(ReviewId, Arc<Live>)>> = BTreeMap::new();
-        for (id, live) in lives {
+        for (id, live, epoch) in lives {
             let (decided, terminal) = {
                 let mut inner = live.inner.lock().expect("live lock");
+                // It changed hands while the core answered: this pass's view
+                // is stale. Whoever changed it already told the next owner to
+                // look (after a handoff the hooks, after new feedback the pusher).
+                if inner.delivery_epoch != epoch {
+                    continue;
+                }
                 let usable = match (&inner.route, &core) {
                     (Some((_, route_core)), Some(core)) => core.queues && *route_core == core.id,
                     _ => false,
                 };
-                inner.delivery = if usable { Delivery::Inbox } else { Delivery::Hooks };
+                inner.set_delivery(if usable { Delivery::Inbox } else { Delivery::Hooks });
                 (inner.delivery, inner.route.as_ref().map(|(terminal, _)| terminal.clone()))
             };
             match (decided, terminal) {
@@ -178,7 +200,7 @@ impl App {
                     // Nothing was sent, and take_notice un-marked what it took: the hooks can announce it.
                     tracing::warn!(error = %e, "can't take feedback for a Herdr inbox; the hooks announce it");
                     for (_, live) in &lives {
-                        live.inner.lock().expect("live lock").delivery = Delivery::Hooks;
+                        live.inner.lock().expect("live lock").set_delivery(Delivery::Hooks);
                         live.feedback.notify_waiters();
                     }
                     continue;

@@ -99,8 +99,12 @@ struct LiveInner {
     told: std::collections::HashSet<diffd_core::model::MessageId>,
     /// The agent's Herdr route (its terminal, that terminal's core), as in the spec.
     route: Option<(String, String)>,
-    /// Who announces this review's feedback (see `push`).
+    /// Who announces this review's feedback (see `push`). Changed only by
+    /// [`LiveInner::set_delivery`].
     delivery: push::Delivery,
+    /// Counts changes of `delivery`, so a pusher pass that looked before an
+    /// await can tell its view went stale (see `push`).
+    delivery_epoch: u64,
     last_agent: Option<Millis>,
     presence: Presence,
     snapshot: Arc<Snapshot>,
@@ -219,6 +223,7 @@ impl App {
                         told: Default::default(),
                         route: None,
                         delivery: push::Delivery::Hooks,
+                        delivery_epoch: 0,
                         last_agent: None,
                         presence: Presence::Away,
                         snapshot: Arc::new(snapshot),
@@ -303,7 +308,7 @@ impl App {
     /// until the pusher decides (see `push`).
     fn to_pusher(&self, inner: &mut LiveInner) {
         if self.pushing.load(Ordering::SeqCst) && inner.route.is_some() && inner.delivery == push::Delivery::Hooks {
-            inner.delivery = push::Delivery::Deciding;
+            inner.set_delivery(push::Delivery::Deciding);
         }
     }
 
@@ -360,6 +365,14 @@ impl App {
     fn agent_seen(&self, live: &Live) {
         live.inner.lock().expect("live lock").last_agent = Some(self.now());
         self.update_presence(live);
+    }
+}
+
+impl LiveInner {
+    /// The one way `delivery` changes: each change starts a new epoch.
+    fn set_delivery(&mut self, delivery: push::Delivery) {
+        self.delivery = delivery;
+        self.delivery_epoch += 1;
     }
 }
 

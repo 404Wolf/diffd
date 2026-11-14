@@ -290,13 +290,21 @@ impl App {
         }
     }
 
-    /// The inbox definitely refused a notice: its reviews go back to the
-    /// hooks, which announce its messages at once.
+    /// The inbox won't announce a notice: its reviews go back to the hooks,
+    /// which announce its messages at once. Each review changes hands and
+    /// un-marks its messages in one step under its lock, so nobody sees it
+    /// the hooks' with its messages still marked told.
     pub(super) fn hand_to_hooks(&self, told: Vec<Told>) {
-        for t in &told {
-            t.live.inner.lock().expect("live lock").delivery = Delivery::Hooks;
+        for Told { live, ids } in told {
+            {
+                let mut inner = live.inner.lock().expect("live lock");
+                inner.set_delivery(Delivery::Hooks);
+                for id in &ids {
+                    inner.told.remove(id);
+                }
+            }
+            live.feedback.notify_waiters();
         }
-        self.untell(told);
     }
 }
 
