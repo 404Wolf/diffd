@@ -22,6 +22,19 @@ allowed_hosts = []
 # "https://mybox.tailnet.ts.net:3433". Empty means http://localhost:<port>.
 public_url = ""
 
+[present]
+# Agents put files in front of you on a Showing board (the `present` tool, or
+# `diffd present FILE`): Markdown rendered, code highlighted, images. They can
+# show files in git work trees that git doesn't ignore, and files under these
+# directories (`~/` is your home; ones that don't exist are skipped, so one
+# list can serve several machines), e.g. ["~/notes", "~/reports"].
+roots = []
+# Files never shown, wherever they are, on top of the built-in patterns for
+# keys and certificates, `.env` files, and `.ssh`, `.gnupg`, `.git` and
+# `secrets` directories. Globs match anywhere in the path unless they start
+# with `/`, e.g. ["*.secret", "private/**"].
+deny = []
+
 [lsp]
 # Language servers power go to definition (gd), go to type definition (gt),
 # hover (K, or the mouse) and error/warning squiggles. They're started in the

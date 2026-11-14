@@ -40,6 +40,8 @@ pub trait RepoSource: Send + Sync {
     /// One file on the `to` side, or `None` when there's no such file (or the path leads out of the
     /// repository). Paths are repository-relative.
     fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Contents>>;
+    /// Whether git ignores `path` (an absolute path inside `repo`): build output, a local `.env`, ….
+    fn ignored(&self, repo: &Repo, path: &Path) -> anyhow::Result<bool>;
 }
 
 /// Files larger than this are listed but never read.

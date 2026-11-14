@@ -16,6 +16,17 @@ pub const DEFAULT_CONFIG: &str = include_str!("../config.default.toml");
 pub struct Config {
     pub server: ServerSection,
     pub lsp: LspConfig,
+    pub present: PresentSection,
+}
+
+/// Which files agents may put on a Showing board (`present`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PresentSection {
+    /// Directories whose files may be shown, besides git work trees (`~/` is the home directory).
+    pub roots: Vec<String>,
+    /// Globs for files never shown, on top of the built-in ones.
+    pub deny: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

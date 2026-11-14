@@ -15,7 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::herdr::{Herdr, target, valid_terminal};
-use crate::app::{App, AppError, LayoutInput, NoteInput, RegionInput, ShareRequest};
+use crate::app::{App, AppError, LayoutInput, NoteInput, PresentRequest, RegionInput, ShareRequest};
 
 const INSTRUCTIONS: &str = "\
 diffd shows your code changes to the user as a live review in their browser, and lets you talk about them there.
@@ -38,7 +38,10 @@ chat box arrive too: answer those with say. If the user asks where something is,
 it can open any file in the repository. Comments can be on those files too.
 Keep calling wait_for_feedback while you're in a review conversation. When you finish your turn instead, diffd can still reach
 you: with its plugin installed (`diffd install`), a message saying \"New feedback on your diffd review\"
-arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.";
+arrives with the review_id. Then call wait_for_feedback with that review_id and answer as usual.
+
+To put a file in front of the user (a report, a plan, some code, a screenshot), call present instead of giving them its path,
+and give them the url: their Showing board renders Markdown with its tables, code and images, and works on their phone.";
 
 /// Who's calling: the `agent` in the MCP URL (diffd's plugins register
 /// `/mcp?agent=claude` or `?agent=codex`), else the HTTP client's User-Agent,
@@ -55,6 +58,19 @@ fn which_agent(context: &RequestContext<RoleServer>) -> Option<String> {
         .and_then(|name| agent_name(&name))
         .or_else(|| user_agent.and_then(|ua| known_agent(&ua)))
         .or_else(|| client.and_then(|name| agent_name(&name)))
+}
+
+/// The caller's Herdr terminal, from its own request's `X-Herdr-Terminal`
+/// header. Each tool POST carries its own headers: never retain one client's
+/// terminal on the shared MCP service or infer it from the service's env.
+fn terminal_header(context: &RequestContext<RoleServer>) -> Option<String> {
+    context
+        .extensions
+        .get::<axum::http::request::Parts>()
+        .and_then(|p| p.headers.get("x-herdr-terminal"))
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| valid_terminal(v))
+        .map(str::to_owned)
 }
 
 /// A well-known agent named anywhere in `text`.
@@ -308,15 +324,7 @@ machine's diffd for that machine. Use present_review to move an already shared r
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         req.agent = which_agent(&context);
-        // Each tool POST carries its own HTTP headers; never retain one client's
-        // terminal on the shared MCP service or infer it from the service's env.
-        let header = context
-            .extensions
-            .get::<axum::http::request::Parts>()
-            .and_then(|p| p.headers.get("x-herdr-terminal"))
-            .and_then(|v| v.to_str().ok())
-            .filter(|v| valid_terminal(v))
-            .map(str::to_owned);
+        let header = terminal_header(&context);
         let hc = Herdr::default();
         let core = if req.present_in.is_some() || header.is_some() { hc.core().await } else { None };
         req.terminal = match req.present_in.as_deref() {
@@ -363,6 +371,24 @@ Labeling is best effort; labelled=false means hc was unavailable or the terminal
         let labelled = hc.move_label(old_terminal, &terminal, &id.0, replacement.as_ref().map(|(meta, _)| meta.id.0.as_str())).await;
         self.remember(&id);
         ok(&serde_json::json!({ "review_id": id.0, "present_in": terminal, "core_id": core_id, "labelled": labelled }))
+    }
+
+    #[tool(description = "Put a file in front of the user on their Showing board, a page they read on their phone or \
+desktop: Markdown rendered (tables, code blocks, and the local images it shows), code highlighted, images shown, other \
+text as it is. Use it instead of telling the user a file path, which they may have no way to open, and give them the \
+`url` it returns. Presenting the same file again updates its item, marked as new, rather than adding another; pass \
+`new` for a second item. For code, `lines` lights up a range and scrolls to it. The board is yours by default (in \
+Herdr: your project's, or the deacon's for the deacon); a project manager or the deacon may pass `scope: \"deacon\"`. \
+The file must be in a git work tree and not ignored by git, or under a directory diffd's config allows; keys, `.env` \
+files and the like are never shown. For code changes, use share_diff instead: it shows them as a review.")]
+    async fn present(
+        &self,
+        Parameters(req): Parameters<PresentRequest>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let caller = Herdr::default().caller(terminal_header(&context), which_agent(&context)).await;
+        let result = try_app!(self.app.present_file(req, caller).await);
+        ok(&result)
     }
 
     #[tool(description = "Wait for the user's comments on the review, and return them. Returns as soon as the user has \

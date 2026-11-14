@@ -131,6 +131,24 @@ impl RepoSource for GitCli {
         Ok(paths)
     }
 
+    fn ignored(&self, repo: &Repo, path: &Path) -> anyhow::Result<bool> {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&repo.root)
+            .args(["check-ignore", "--quiet", "--"])
+            .arg(path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .context("running git (is it installed?)")?;
+        // 0: ignored; 1: not ignored; anything else: git couldn't tell.
+        match status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            _ => bail!("git check-ignore failed for {} ({status})", path.display()),
+        }
+    }
+
     fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Contents>> {
         // Like a symlink out of the repository below: there's no such file in it.
         if !safe_path(path) {

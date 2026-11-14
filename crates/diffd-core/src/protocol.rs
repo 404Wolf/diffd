@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::model::{
-    ActivityItem, Anchor, CodeAnswer, CodeQuery, Diagnostic, FileDiff, History, LanguageServerStatus, Layout, Message, MessageId, Presence,
+    ActivityItem, Anchor, BoardItem, BoardItemContent, CodeAnswer, CodeQuery, Diagnostic, FileDiff, History, LanguageServerStatus, Layout, Message, MessageId, Presence,
     Region, ReviewMeta, Revision, ShowRequest, Snapshot, Symbol, Thread, ThreadId,
 };
 
@@ -251,6 +251,9 @@ pub enum Boot {
     Home { reviews: Vec<ReviewSummary> },
     Review { state: Box<ReviewState> },
     NotFound { message: String },
+    /// A Showing board: every scope's items (`scope` is `None`) or one scope's,
+    /// with the item in the URL opened.
+    Board { scope: Option<String>, items: Vec<BoardItem>, open: Option<Box<BoardItemContent>> },
 }
 
 impl ClientMsg {

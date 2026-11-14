@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use diffd_core::model::{
-    ActivityItem, ActivityKind, Anchor, Author, Message, MessageId, Millis, ReviewId, ReviewMeta, ReviewStatus, Revision, Snapshot, Thread,
+    ActivityItem, ActivityKind, Anchor, Author, BoardItem, BoardItemId, BoardItemState, Message, MessageId, Millis, ReviewId, ReviewMeta, ReviewStatus, Revision, Snapshot, Thread,
     ThreadId, ThreadKind,
 };
 use serde::{Deserialize, Serialize};
@@ -327,7 +327,233 @@ impl Store {
     }
 
     /// `Ok(false)`: a message with this id is already saved (sent twice).
-    pub async fn insert_message(&self, review: &ReviewId, thread: Option<&ThreadId>, m: &Message) -> anyhow::Result<bool> {
+    pub /// A board item's file (named `""`) or one of its images, as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoardAsset {
+    pub name: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+
+/// A board item as stored.
+struct BoardItemRow {
+    id: String,
+    scope: String,
+    kind: String,
+    title: String,
+    message: Option<String>,
+    lines: Option<String>,
+    language: Option<String>,
+    source: String,
+    assets: String,
+    revision: i64,
+    state: String,
+    seen_revision: i64,
+    created_at: i64,
+    updated_at: i64,
+}
+
+impl TryFrom<BoardItemRow> for BoardItem {
+    type Error = anyhow::Error;
+
+    fn try_from(r: BoardItemRow) -> anyhow::Result<Self> {
+        Ok(BoardItem {
+            id: BoardItemId(r.id),
+            scope: r.scope,
+            kind: from_word(&r.kind)?,
+            title: r.title,
+            message: r.message,
+            lines: r.lines.as_deref().map(parse).transpose()?,
+            language: r.language,
+            source: parse(&r.source)?,
+            revision: r.revision as u32,
+            state: from_word(&r.state)?,
+            seen_revision: r.seen_revision as u32,
+            assets: parse(&r.assets)?,
+            created_at: r.created_at as Millis,
+            updated_at: r.updated_at as Millis,
+        })
+    }
+}
+
+/// A unit enum as the plain word it serializes to (`"markdown"`, `"open"`).
+fn word<T: Serialize>(v: &T) -> String {
+    match serde_json::to_value(v) {
+        Ok(serde_json::Value::String(s)) => s,
+        _ => unreachable!("only unit enums are stored as words"),
+    }
+}
+
+fn from_word<T: for<'de> Deserialize<'de>>(s: &str) -> anyhow::Result<T> {
+    serde_json::from_value(serde_json::Value::String(s.to_owned())).with_context(|| format!("unknown word in database: {s}"))
+}
+
+/// Items listed on a board at most: a board is for what's current.
+pub const BOARD_LIMIT: i64 = 500;
+
+impl Store {
+    /// Save a presented file. A file already on this scope's board (same `key`)
+    /// gets its next revision instead of a second item: new content, back in
+    /// view, and newer than what the user saw. Returns the item as saved, and
+    /// whether it replaced one.
+    pub async fn present_item(&self, item: &BoardItem, key: &str, assets: &[BoardAsset]) -> anyhow::Result<(BoardItem, bool)> {
+        let mut saved = item.clone();
+        saved.state = BoardItemState::Open;
+        let (kind, state) = (word(&item.kind), word(&saved.state));
+        let lines = item.lines.map(|l| json(&l));
+        let (source, asset_names, updated) = (json(&item.source), json(&item.assets), item.updated_at as i64);
+        let mut tx = self.pool.begin().await?;
+        let existing = sqlx::query!(
+            "SELECT id, revision, seen_revision, created_at FROM board_items WHERE scope = ? AND key = ?",
+            item.scope,
+            key
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        let replaced = existing.is_some();
+        if let Some(row) = existing {
+            saved.id = BoardItemId(row.id);
+            saved.revision = row.revision as u32 + 1;
+            saved.seen_revision = row.seen_revision as u32;
+            saved.created_at = row.created_at as Millis;
+            let rev = i64::from(saved.revision);
+            sqlx::query!(
+                "UPDATE board_items SET kind = ?, title = ?, message = ?, lines = ?, language = ?, source = ?, assets = ?,
+                 revision = ?, state = ?, updated_at = ? WHERE id = ?",
+                kind,
+                item.title,
+                item.message,
+                lines,
+                item.language,
+                source,
+                asset_names,
+                rev,
+                state,
+                updated,
+                saved.id.0
+            )
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query!("DELETE FROM board_assets WHERE item_id = ?", saved.id.0).execute(&mut *tx).await?;
+        } else {
+            saved.revision = 1;
+            saved.seen_revision = 0;
+            let (rev, created) = (1_i64, item.created_at as i64);
+            sqlx::query!(
+                "INSERT INTO board_items (id, scope, key, kind, title, message, lines, language, source, assets, revision, state,
+                 seen_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                saved.id.0,
+                item.scope,
+                key,
+                kind,
+                item.title,
+                item.message,
+                lines,
+                item.language,
+                source,
+                asset_names,
+                rev,
+                state,
+                created,
+                updated
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+        for asset in assets {
+            let blob = zstd::encode_all(asset.bytes.as_slice(), 3)?;
+            sqlx::query!(
+                "INSERT INTO board_assets (item_id, name, mime, bytes) VALUES (?, ?, ?, ?)",
+                saved.id.0,
+                asset.name,
+                asset.mime,
+                blob
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok((saved, replaced))
+    }
+
+    /// A board's items (every board's, without a scope), most recently presented first.
+    pub async fn board_items(&self, scope: Option<&str>) -> anyhow::Result<Vec<BoardItem>> {
+        let limit = BOARD_LIMIT;
+        let rows = match scope {
+            Some(scope) => {
+                sqlx::query_as!(
+                    BoardItemRow,
+                    "SELECT id, scope, kind, title, message, lines, language, source, assets, revision, state, seen_revision,
+                     created_at, updated_at FROM board_items WHERE scope = ? ORDER BY updated_at DESC LIMIT ?",
+                    scope,
+                    limit
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+            None => {
+                sqlx::query_as!(
+                    BoardItemRow,
+                    "SELECT id, scope, kind, title, message, lines, language, source, assets, revision, state, seen_revision,
+                     created_at, updated_at FROM board_items ORDER BY updated_at DESC LIMIT ?",
+                    limit
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
+        rows.into_iter().map(BoardItem::try_from).collect()
+    }
+
+    pub async fn board_item(&self, id: &BoardItemId) -> anyhow::Result<Option<BoardItem>> {
+        let row = sqlx::query_as!(
+            BoardItemRow,
+            "SELECT id, scope, kind, title, message, lines, language, source, assets, revision, state, seen_revision,
+             created_at, updated_at FROM board_items WHERE id = ?",
+            id.0
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(BoardItem::try_from).transpose()
+    }
+
+    /// A board item's file (`name` `""`) or one of its images.
+    pub async fn board_asset(&self, id: &BoardItemId, name: &str) -> anyhow::Result<Option<BoardAsset>> {
+        let row = sqlx::query!("SELECT name, mime, bytes FROM board_assets WHERE item_id = ? AND name = ?", id.0, name)
+            .fetch_optional(&self.pool)
+            .await?;
+        row.map(|r| Ok(BoardAsset { name: r.name, mime: r.mime, bytes: zstd::decode_all(r.bytes.as_slice())? })).transpose()
+    }
+
+    /// Move an item between open, minimised and hidden, and/or note the
+    /// revision the user has seen (never backwards, never past the latest).
+    pub async fn set_board_item_state(
+        &self,
+        id: &BoardItemId,
+        state: Option<BoardItemState>,
+        seen: Option<u32>,
+    ) -> anyhow::Result<Option<BoardItem>> {
+        let mut tx = self.pool.begin().await?;
+        if let Some(state) = state {
+            let state = word(&state);
+            sqlx::query!("UPDATE board_items SET state = ? WHERE id = ?", state, id.0).execute(&mut *tx).await?;
+        }
+        if let Some(seen) = seen {
+            let seen = i64::from(seen);
+            sqlx::query!(
+                "UPDATE board_items SET seen_revision = MAX(seen_revision, MIN(?, revision)) WHERE id = ?",
+                seen,
+                id.0
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        self.board_item(id).await
+    }
+}
+
+async fn insert_message(&self, review: &ReviewId, thread: Option<&ThreadId>, m: &Message) -> anyhow::Result<bool> {
         insert_message(&self.pool, review, thread, m).await
     }
 

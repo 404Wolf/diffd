@@ -2,6 +2,7 @@
 
 mod hook;
 mod install;
+mod present;
 mod setup;
 
 use std::net::{IpAddr, SocketAddr};
@@ -13,6 +14,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use diffd_server::App;
+use diffd_server::app::PresentPolicy;
 use diffd_server::adapters::difft::{Difftastic, NoEngine};
 use diffd_server::adapters::git::GitCli;
 use diffd_server::adapters::http;
@@ -94,6 +96,10 @@ enum Command {
         #[arg(long)]
         no_mcp: bool,
     },
+    /// Put files in front of you on your Showing board (Markdown rendered,
+    /// code highlighted, images) and print their links. For agents in a shell
+    /// and scripts; agents with MCP use the `present` tool.
+    Present(present::Args),
     /// Run by an agent's hooks (see `diffd setup`): wait for your feedback, then wake the agent.
     Hook {
         #[arg(long, env = "DIFFD_PORT", default_value_t = 3433)]
@@ -190,6 +196,10 @@ async fn main() -> anyhow::Result<ExitCode> {
             HookAction::Wait { cwd, session, json } => hook::wait_generic(port, cwd, session, json).await,
         };
     }
+    // Prints links (or JSON) for the caller to use: no logging either.
+    if let Some(Command::Present(args)) = cli.command {
+        return present::run(args).await;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "diffd=info,diffd_server=info".into()))
         .init();
@@ -225,7 +235,7 @@ async fn main() -> anyhow::Result<ExitCode> {
             print!("{DEFAULT_CONFIG}");
             Ok(())
         }
-        Some(Command::Hook { .. }) => unreachable!("handled above"),
+        Some(Command::Hook { .. } | Command::Present(_)) => unreachable!("handled above"),
         Some(Command::Serve(args)) => serve(args).await,
         None => serve(cli.serve).await,
     }
@@ -263,6 +273,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     if config.lsp.enabled {
         app.set_code_intel(LspPool::new(config.clone()));
     }
+    app.set_present_policy(PresentPolicy::new(&config.present.roots, &config.present.deny).context("in [present]")?);
     let watcher = Watcher::install(&app, tokio::runtime::Handle::current());
     app.resume_watches().await?;
     {

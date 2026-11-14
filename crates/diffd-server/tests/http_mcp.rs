@@ -59,7 +59,7 @@ async fn agent_and_page_talk_through_the_server() {
     let info = client.peer_info().unwrap();
     assert!(info.instructions.as_deref().unwrap_or("").contains("wait_for_feedback"));
     let tools: Vec<String> = client.list_all_tools().await.unwrap().into_iter().map(|t| t.name.into_owned()).collect();
-    for t in ["share_diff", "present_review", "wait_for_feedback", "reply", "annotate", "say", "show", "refresh", "get_review"] {
+    for t in ["share_diff", "present_review", "present", "wait_for_feedback", "reply", "annotate", "say", "show", "refresh", "get_review"] {
         assert!(tools.contains(&t.to_owned()), "missing tool {t}: {tools:?}");
     }
 

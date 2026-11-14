@@ -5,6 +5,7 @@ mod context;
 mod conversation;
 mod feedback;
 mod history;
+mod present;
 mod rebuild;
 mod share;
 mod wake;
@@ -21,6 +22,7 @@ pub use code::{VIEW_GRACE, Viewing};
 pub use conversation::{LayoutInput, NoteInput, RegionInput};
 pub use feedback::{FeedbackBatch, FeedbackItem, ThreadMessage};
 pub use history::RangeEnd;
+pub use present::{Caller, PresentPolicy, PresentRequest, PresentResult, Skipped};
 pub use share::{ShareRequest, ShareResult};
 pub use wake::{WakeNotice, WakeReview};
 
@@ -61,6 +63,8 @@ pub struct App {
     code: Mutex<Option<Arc<dyn CodeIntel>>>,
     /// Harness hooks waiting to wake their agent (see `wake`).
     waiters: Mutex<wake::Waiters>,
+    /// Which files `present` may read (see [`App::set_present_policy`]).
+    present: Mutex<Arc<PresentPolicy>>,
     /// Held while diffing commits ahead of time (see `history`), so background
     /// work never takes more than one diff's worth of the machine.
     prefetching: tokio::sync::Mutex<()>,
@@ -117,6 +121,7 @@ impl App {
             watcher: Mutex::new(None),
             code: Mutex::new(None),
             waiters: Mutex::default(),
+            present: Mutex::new(Arc::new(PresentPolicy::default())),
             prefetching: tokio::sync::Mutex::new(()),
             me: me.clone(),
         })

@@ -41,6 +41,10 @@ id_type!(
     /// One message in a thread or in the chat.
     MessageId
 );
+id_type!(
+    /// An item on a Showing board: a file an agent presented to the user.
+    BoardItemId
+);
 
 /// Revisions count up from 1 each time the diff is rebuilt with new content.
 pub type Revision = u32;
@@ -423,6 +427,88 @@ pub struct ReviewMeta {
     pub status: ReviewStatus,
     pub created_at: Millis,
     pub updated_at: Millis,
+}
+
+/// What kind of file a board item shows, which decides how the page renders it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum BoardItemKind {
+    /// A Markdown document: rendered, with its images.
+    Markdown,
+    /// Source code in a language diffd highlights, or a `.diff`/`.patch`.
+    Code,
+    /// A PNG, JPEG, GIF, WebP or SVG image.
+    Image,
+    /// Any other UTF-8 text, shown as it is.
+    Text,
+}
+
+/// Where the user keeps a board item: in view, folded to a chip, or put away.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum BoardItemState {
+    Open,
+    Minimised,
+    Hidden,
+}
+
+/// Who presented a board item, and from where.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardItemSource {
+    /// The file's real path when it was presented.
+    pub path: String,
+    /// The Herdr machine (core) it was presented on, if known.
+    pub machine: Option<String>,
+    /// The Herdr terminal that presented it, if any.
+    pub terminal: Option<String>,
+    /// The agent that presented it (`Claude`, `Codex`, …), if known.
+    pub agent: Option<String>,
+    /// The presenting terminal's `role` label (`deacon`, `pm`, `worker`), if any.
+    pub role: Option<String>,
+    /// The presenting terminal's `project` label, if any.
+    pub project: Option<String>,
+}
+
+/// One file an agent put in front of the user, on a scope's board (without its content).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardItem {
+    pub id: BoardItemId,
+    /// The board it's on: `deacon`, a project, or a repository's name.
+    pub scope: String,
+    pub kind: BoardItemKind,
+    pub title: String,
+    /// One line from the agent, shown with the item.
+    pub message: Option<String>,
+    /// For code: the lines to light up and scroll to, first and last.
+    #[schema(min_items = 2, max_items = 2)]
+    pub lines: Option<[u32; 2]>,
+    /// For code: the language's display name (`Rust`, `Diff`, …).
+    pub language: Option<String>,
+    pub source: BoardItemSource,
+    /// Counts up from 1 each time the agent presents the same file again.
+    pub revision: u32,
+    pub state: BoardItemState,
+    /// The revision the user last saw: newer means the item has news.
+    pub seen_revision: u32,
+    /// Images bundled with a Markdown document, by the path it names them with.
+    pub assets: Vec<String>,
+    pub created_at: Millis,
+    pub updated_at: Millis,
+}
+
+/// A board item with what it shows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardItemContent {
+    pub item: BoardItem,
+    /// The text of a Markdown, code or text item; `None` for an image.
+    pub text: Option<String>,
+    /// For code: per line, flattened `[start, end, class, …]` runs, as in a diff's `syntax`.
+    pub syntax: Vec<Vec<u32>>,
+    /// The file's line count when `text` was cut short to keep the page fast.
+    pub total_lines: Option<u32>,
 }
 
 /// How bad a language server's diagnostic is.

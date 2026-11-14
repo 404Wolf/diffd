@@ -1,10 +1,13 @@
 //! Optional pane presentation on the core local to this diffd. Every hc call
 //! is bounded, uses argv directly, and never routes a target to a remote core.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::Deserialize;
+
+use crate::app::Caller;
 
 #[derive(Deserialize)]
 pub(crate) struct Core {
@@ -65,6 +68,26 @@ impl Herdr {
         success
     }
 
+    /// A terminal's labels (`role`, `project`, …); `None` when hc doesn't know it.
+    pub async fn labels(&self, terminal: &str) -> Option<BTreeMap<String, String>> {
+        if !valid_terminal(terminal) {
+            return None;
+        }
+        let output = self.output(&["get", terminal, "--json"]).await?;
+        labels_of(&output.stdout)
+    }
+
+    /// Who is presenting from `terminal` (the caller's own, from its request):
+    /// its role and project labels and this core's name, as far as hc can tell.
+    pub async fn caller(&self, terminal: Option<String>, agent: Option<String>) -> Caller {
+        let Some(terminal) = terminal.filter(|t| valid_terminal(t)) else {
+            return Caller { agent, ..Caller::default() };
+        };
+        let (labels, core) = tokio::join!(self.labels(&terminal), self.core());
+        let label = |key: &str| labels.as_ref().and_then(|l| l.get(key)).map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+        Caller { role: label("role"), project: label("project"), machine: core.map(|c| c.name), terminal: Some(terminal), agent }
+    }
+
     /// Only repair an old label that still points to this review. A newer
     /// review's label is untouched; failure to label the destination keeps the old one.
     pub async fn move_label(&self, old: Option<&str>, new: &str, review: &str, replacement: Option<&str>) -> bool {
@@ -82,6 +105,13 @@ impl Herdr {
         }
         true
     }
+}
+
+/// The `labels` of `hc get --json`'s answer; values that aren't strings are left out.
+fn labels_of(json: &[u8]) -> Option<BTreeMap<String, String>> {
+    let value: serde_json::Value = serde_json::from_slice(json).ok()?;
+    let labels = value.get("labels")?.as_object()?;
+    Some(labels.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_owned()))).collect())
 }
 
 async fn output(program: &Path, args: &[&str]) -> Option<std::process::Output> {
@@ -108,6 +138,27 @@ mod tests {
         }
         assert!(target("laptop/t2r", Some(&core)).unwrap_err().contains("that machine's diffd"));
         assert!(target("server/t2r", None).is_err(), "a qualified address needs a known local core");
+    }
+
+    #[test]
+    fn labels_come_from_hc_get() {
+        let json = br#"{"address":"t1n7","labels":{"role":"worker","project":"herdr-android","n":3},"argv":["claude"]}"#;
+        let labels = labels_of(json).unwrap();
+        assert_eq!(labels.get("role").map(String::as_str), Some("worker"));
+        assert_eq!(labels.get("project").map(String::as_str), Some("herdr-android"));
+        assert!(!labels.contains_key("n"));
+        assert!(labels_of(b"{}").is_none());
+        assert!(labels_of(b"not json").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_caller_without_a_terminal_asks_hc_nothing() {
+        let hc = Herdr { program: PathBuf::from("/no/such/hc") };
+        let caller = hc.caller(None, Some("Claude".into())).await;
+        assert_eq!(caller, Caller { agent: Some("Claude".into()), ..Caller::default() });
+        let caller = hc.caller(Some("t1n7".into()), None).await;
+        assert_eq!(caller, Caller { terminal: Some("t1n7".into()), ..Caller::default() }, "hc unavailable: no labels, no machine");
+        assert_eq!(hc.caller(Some("--help".into()), None).await.terminal, None);
     }
 
     #[tokio::test]

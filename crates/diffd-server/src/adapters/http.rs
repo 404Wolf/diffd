@@ -7,9 +7,9 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use diffd_core::lang::Lang;
-use diffd_core::model::{Author, FileDiff, ReviewId, Revision, Snapshot};
+use diffd_core::model::{Author, BoardItem, BoardItemContent, BoardItemId, BoardItemState, FileDiff, ReviewId, Revision, Snapshot};
 use diffd_core::protocol::{Boot, ClientMsg, ReviewState, ReviewSummary, ServerMsg};
 use futures::{SinkExt, StreamExt};
 use hyper_util::rt::TokioIo;
@@ -27,8 +27,9 @@ use utoipa::{IntoParams, OpenApi};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+use super::herdr::Herdr;
 use super::mcp::DiffdMcp;
-use crate::app::{App, AppError, WakeNotice};
+use crate::app::{App, AppError, PresentRequest, WakeNotice};
 
 /// Where the page bundle puts the boot data.
 const BOOT_MARKER: &str = "<!--diffd-boot-->";
@@ -83,6 +84,11 @@ pub fn router_with_access(app: Arc<App>, template: &'static str, shutdown: Cance
     Router::new()
         .route("/", get(home))
         .route("/r/{id}", get(review_page))
+        .route("/show", get(board_all))
+        .route("/show/{scope}", get(board_scope))
+        .route("/show/{scope}/{id}", get(board_open))
+        .route("/api/board/{id}/asset", get(board_asset))
+        .route("/api/present", post(present_file))
         .route("/api/reviews/{id}/ws", get(ws))
         .route("/api/openapi.json", get(move || std::future::ready(axum::Json(doc.clone()))))
         .merge(api)
@@ -106,6 +112,9 @@ fn api() -> OpenApiRouter<Web> {
         .routes(routes!(context_file))
         .routes(routes!(wake, cancel_wake))
         .routes(routes!(highlight))
+        .routes(routes!(list_board))
+        .routes(routes!(board_item))
+        .routes(routes!(set_board_item_state))
 }
 
 /// diffd's HTTP API. The WebSocket's messages and the page's boot data aren't
@@ -171,6 +180,11 @@ async fn local_only(access: Access, req: Request, next: Next) -> Response {
     if path.starts_with("/api/wake") && !is_loopback(hostname) {
         return (StatusCode::FORBIDDEN, "diffd only answers agent hooks for localhost").into_response();
     }
+    // Presenting reads a file from this machine: only programs on it (`diffd
+    // present`) may ask, never a page, not even one of ours.
+    if path.starts_with("/api/present") && (!is_loopback(hostname) || req.headers().contains_key(header::ORIGIN)) {
+        return (StatusCode::FORBIDDEN, "diffd only takes files to present from programs on this machine").into_response();
+    }
     if !access.allows(hostname) {
         return (StatusCode::FORBIDDEN, "diffd only answers requests for localhost and its configured hosts").into_response();
     }
@@ -217,6 +231,135 @@ async fn review_page(State(web): State<Web>, Path(id): Path<String>) -> Response
     match web.app.state(&ReviewId(id)).await {
         Ok(state) => page(web.template, &Boot::Review { state: Box::new(state) }, StatusCode::OK),
         Err(AppError::NotFound(message)) => page(web.template, &Boot::NotFound { message }, StatusCode::NOT_FOUND),
+        Err(e) => error_response(e),
+    }
+}
+
+/// What a Showing board page may load and run: only itself (the bundle is
+/// inline) and its own item images. Rendered documents are sanitized too; this
+/// is the second line.
+const BOARD_CSP: &str = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; \
+    img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; \
+    frame-ancestors 'none'";
+
+/// A board page: [`page`], with [`BOARD_CSP`].
+fn board_response(template: &str, boot: &Boot, status: StatusCode) -> Response {
+    let mut res = page(template, boot, status);
+    res.headers_mut().insert(header::CONTENT_SECURITY_POLICY, axum::http::HeaderValue::from_static(BOARD_CSP));
+    res
+}
+
+/// Every board's items.
+async fn board_all(State(web): State<Web>) -> Response {
+    board_page(&web, None, None).await
+}
+
+/// One scope's board.
+async fn board_scope(State(web): State<Web>, Path(scope): Path<String>) -> Response {
+    board_page(&web, Some(scope), None).await
+}
+
+/// A board with one item opened: the link `present` hands out.
+async fn board_open(State(web): State<Web>, Path((scope, id)): Path<(String, String)>) -> Response {
+    board_page(&web, Some(scope), Some(BoardItemId(id))).await
+}
+
+async fn board_page(web: &Web, scope: Option<String>, open: Option<BoardItemId>) -> Response {
+    let open = match open {
+        Some(id) => match web.app.board_item(&id).await {
+            Ok(content) => Some(Box::new(content)),
+            Err(AppError::NotFound(message)) => return board_response(web.template, &Boot::NotFound { message }, StatusCode::NOT_FOUND),
+            Err(e) => return error_response(e),
+        },
+        None => None,
+    };
+    // An item is shown on its own board, whatever board the link named.
+    let scope = open.as_ref().map(|c| c.item.scope.clone()).or(scope);
+    match web.app.board(scope.as_deref()).await {
+        Ok(items) => board_response(web.template, &Boot::Board { scope, items, open }, StatusCode::OK),
+        Err(e) => error_response(e),
+    }
+}
+
+#[derive(Default, serde::Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+struct BoardQuery {
+    /// One board (`deacon`, a project); every board's items without it.
+    scope: Option<String>,
+}
+
+/// A Showing board's items (every board's, without a scope), most recently presented first.
+#[utoipa::path(get, path = "/api/board", params(BoardQuery), responses((status = 200, body = Vec<BoardItem>)))]
+async fn list_board(State(web): State<Web>, Query(q): Query<BoardQuery>) -> Response {
+    match web.app.board(q.scope.as_deref()).await {
+        Ok(items) => axum::Json(items).into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+/// A board item with what it shows.
+#[utoipa::path(get, path = "/api/board/{id}", params(("id" = String, Path, description = "The item's id")),
+    responses((status = 200, body = BoardItemContent), (status = 404, body = String)))]
+async fn board_item(State(web): State<Web>, Path(id): Path<String>) -> Response {
+    match web.app.board_item(&BoardItemId(id)).await {
+        Ok(content) => axum::Json(content).into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+/// What the user did with a board item.
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+struct BoardItemChange {
+    /// Open, minimise or hide it; unchanged when `null`.
+    #[serde(default)]
+    state: Option<BoardItemState>,
+    /// The revision the user has now seen.
+    #[serde(default)]
+    seen: Option<u32>,
+}
+
+/// Open, minimise or hide a board item, or note which revision the user saw.
+#[utoipa::path(post, path = "/api/board/{id}/state", params(("id" = String, Path, description = "The item's id")),
+    request_body = BoardItemChange, responses((status = 200, body = BoardItem), (status = 404, body = String)))]
+async fn set_board_item_state(State(web): State<Web>, Path(id): Path<String>, axum::Json(change): axum::Json<BoardItemChange>) -> Response {
+    match web.app.set_board_item_state(&BoardItemId(id), change.state, change.seen).await {
+        Ok(item) => axum::Json(item).into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct AssetQuery {
+    /// The path the document names the image by, or empty for an image item's picture.
+    #[serde(default)]
+    name: String,
+}
+
+/// An image on a board. Served inert, so even an SVG can't run anything:
+/// its own type only (`nosniff`) and a sandboxing CSP.
+async fn board_asset(State(web): State<Web>, Path(id): Path<String>, Query(q): Query<AssetQuery>) -> Response {
+    match web.app.board_asset(&BoardItemId(id), &q.name).await {
+        Ok(asset) => (
+            [
+                (header::CONTENT_TYPE, asset.mime),
+                (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
+                (header::CONTENT_SECURITY_POLICY, "default-src 'none'; style-src 'unsafe-inline'; sandbox".to_owned()),
+                // The page asks with the item's revision in the URL, so a new revision is a new URL.
+                (header::CACHE_CONTROL, "private, max-age=86400".to_owned()),
+            ],
+            asset.bytes,
+        )
+            .into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+/// Put a file on a board, for `diffd present` (programs on this machine only; see `local_only`).
+async fn present_file(State(web): State<Web>, headers: axum::http::HeaderMap, axum::Json(req): axum::Json<PresentRequest>) -> Response {
+    let terminal = headers.get("x-herdr-terminal").and_then(|v| v.to_str().ok()).map(str::to_owned);
+    let caller = Herdr::default().caller(terminal, None).await;
+    match web.app.present_file(req, caller).await {
+        Ok(result) => axum::Json(result).into_response(),
         Err(e) => error_response(e),
     }
 }
