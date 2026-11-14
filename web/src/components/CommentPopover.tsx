@@ -3,6 +3,7 @@ import { match } from "ts-pattern";
 import { agentName } from "../lib/agent";
 import { rowOf } from "../lib/diffModel";
 import { composing } from "../lib/keymap";
+import { media, NARROW } from "../lib/media";
 import type { Commands } from "../state/commands";
 import { bufferEl, rowEl, windowed } from "../state/dom";
 import type { Review } from "../state/review";
@@ -11,6 +12,11 @@ import type { View } from "../state/view";
 /**
  * The comment composer: a small popover right under what you selected. It
  * floats over the diff, so opening it, typing and sending never scroll.
+ *
+ * On a narrow screen it's docked along the bottom of the code instead, full
+ * width. The page's viewport resizes for the on-screen keyboard
+ * (`interactive-widget=resizes-content` in index.html), so it sits just above
+ * the keyboard, and the lines it's about are scrolled into the space above it.
  */
 /** A `c` typed this soon after `gc` opened the composer is the end of `gcc`, not text. */
 const GCC_GRACE_MS = 400;
@@ -26,6 +32,7 @@ export function CommentPopover(props: {
   /** When the composer last opened. */
   let openedAt = 0;
   const [pos, setPos] = createSignal({ top: 0, left: 0 });
+  const narrow = media(NARROW);
   const [armed, setArmed] = createSignal(false);
 
   /** The split the composer was opened in: it stays with that code even if another split gets focus. */
@@ -76,7 +83,19 @@ export function CommentPopover(props: {
     return box ? { ...box, left } : null;
   };
 
+  /** Docked (narrow): scroll the lines it's about into view above it, if it covers them. */
+  const reveal = () => {
+    const a = anchor();
+    const buf = bufferEl(pane);
+    if (!a || !buf || !el) return;
+    const r = a.getBoundingClientRect();
+    const room = el.getBoundingClientRect().top - 8;
+    if (r.bottom > room) buf.scrollTop += r.bottom - room;
+    else if (r.top < buf.getBoundingClientRect().top)
+      buf.scrollTop -= buf.getBoundingClientRect().top - r.top + 8;
+  };
   const place = () => {
+    if (narrow()) return;
     const a = anchor();
     const box = props.container()?.getBoundingClientRect();
     const buf = bufferEl(pane)?.getBoundingClientRect();
@@ -96,10 +115,12 @@ export function CommentPopover(props: {
     // Scrolling any split (scroll events don't bubble, but they can be captured).
     const container = props.container();
     container?.addEventListener("scroll", place, { passive: true, capture: true });
-    window.addEventListener("resize", place);
+    // A window resize, or on a phone the on-screen keyboard coming up.
+    const resized = () => (narrow() ? props.view.composer() && reveal() : place());
+    window.addEventListener("resize", resized);
     onCleanup(() => {
       container?.removeEventListener("scroll", place, { capture: true });
-      window.removeEventListener("resize", place);
+      window.removeEventListener("resize", resized);
     });
   });
   createEffect(() => {
@@ -112,8 +133,11 @@ export function CommentPopover(props: {
         // A comment you were writing before a reload comes back as you left it.
         const draft = props.view.persist.session.draft;
         if (input && draft && JSON.stringify(draft.composer) === JSON.stringify(c)) input.value = draft.text;
+        // Still the same box with its text (its range was moved): the saved draft follows the new range.
+        else saveDraft();
         place();
         input?.focus({ preventScroll: true });
+        if (narrow()) requestAnimationFrame(reveal);
       });
     } else {
       props.view.persist.update((s) => {
@@ -161,19 +185,32 @@ export function CommentPopover(props: {
       {(c) => (
         <div
           ref={el}
-          class="absolute z-20 w-[min(420px,calc(100%-20px))] rounded-lg border border-line-strong bg-bg p-2 text-xs shadow-pop"
-          style={{ top: `${pos().top}px`, left: `${pos().left}px` }}
+          class="absolute z-20 w-[min(420px,calc(100%-20px))] rounded-lg border border-line-strong bg-bg p-2 text-xs shadow-pop max-md:inset-x-0 max-md:bottom-0 max-md:w-full max-md:rounded-none max-md:border-x-0 max-md:border-b-0"
+          style={narrow() ? undefined : { top: `${pos().top}px`, left: `${pos().left}px` }}
           role="dialog"
           aria-label="Write a comment"
         >
           {match(c())
             .with({ kind: "new" }, ({ anchor: a, quote }) => (
               <>
-                <div class="mb-1.5 flex items-center gap-1.5 text-muted">
+                <div class="mb-1.5 flex flex-wrap items-center gap-x-1.5 text-muted">
                   Comment on
-                  <span class="font-mono text-[11px] text-fg">
+                  <span class="font-mono text-[11px] whitespace-nowrap text-fg" data-composer-range>
                     {a.path.split("/").pop()} · {a.side}{" "}
                     {a.start === a.end ? `L${a.start}` : `L${a.start}–${a.end}`}
+                  </span>
+                  <Show when={a.start !== a.end}>
+                    <button
+                      type="button"
+                      class="cursor-pointer rounded px-1 text-[11px] text-accent hover:bg-hover touch:min-h-11 touch:px-3 touch:text-sm"
+                      onClick={() => props.cmd.clearComposerRange()}
+                    >
+                      Clear range
+                    </button>
+                  </Show>
+                  {/* Without shift-click or j/k, this is how a finger changes the range. */}
+                  <span class="hidden basis-full text-subtle touch:block">
+                    Tap another line number to move the range's end
                   </span>
                 </div>
                 <pre class="mb-1.5 max-h-[58px] overflow-hidden rounded bg-inset px-1.5 py-1 font-mono text-[11px] leading-snug whitespace-pre-wrap text-muted">
@@ -191,7 +228,7 @@ export function CommentPopover(props: {
             ref={input}
             aria-label="Comment"
             placeholder={`What should ${agentName()} know about this code?`}
-            class="block min-h-16 w-full resize-y rounded-md border border-line-strong bg-bg px-2 py-1.5 text-[12.5px] leading-normal focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
+            class="block min-h-16 w-full resize-y rounded-md border border-line-strong bg-bg px-2 py-1.5 text-[12.5px] leading-normal touch:text-base focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-soft)] focus:outline-none"
             onKeyDown={onKey}
             onInput={saveDraft}
           />
@@ -200,18 +237,21 @@ export function CommentPopover(props: {
             <span class="flex-1" />
             <button
               type="button"
-              class="cursor-pointer rounded-md px-2 py-1 text-muted hover:bg-hover hover:text-fg"
+              class="cursor-pointer rounded-md px-2 py-1 text-muted hover:bg-hover hover:text-fg touch:min-h-11 touch:px-4 touch:text-sm"
               onClick={() => props.cmd.closeComposer()}
             >
               Cancel
             </button>
             <button
               type="button"
-              class="inline-flex cursor-pointer items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-medium text-accent-fg hover:brightness-110"
+              class="inline-flex cursor-pointer items-center gap-1 rounded-md bg-accent px-2.5 py-1 font-medium text-accent-fg hover:brightness-110 touch:min-h-11 touch:px-5 touch:text-sm"
               onClick={() => props.cmd.sendComposer(input?.value ?? "")}
             >
-              Comment <kbd>⌘</kbd>
-              <kbd>↵</kbd>
+              Comment
+              <span class="contents touch:hidden">
+                <kbd>⌘</kbd>
+                <kbd>↵</kbd>
+              </span>
             </button>
           </div>
         </div>
@@ -274,12 +314,12 @@ export function SelectionBubble(props: {
       {(s) => (
         <button
           type="button"
-          class="absolute z-20 inline-flex cursor-pointer items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-fg shadow-pop"
+          class="absolute z-20 inline-flex cursor-pointer items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-fg shadow-pop touch:min-h-11 touch:px-4 touch:text-sm"
           style={{ top: `${s().top}px`, left: `${s().left}px` }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => props.cmd.commentSelection()}
         >
-          Comment <kbd>gc</kbd>
+          Comment <kbd class="touch:hidden">gc</kbd>
         </button>
       )}
     </Show>

@@ -10,6 +10,7 @@ import {
   Show,
 } from "solid-js";
 import { match } from "ts-pattern";
+import type { Side } from "../api";
 import { columnAtPoint, wordAt } from "../lib/code";
 import { rowOf } from "../lib/diffModel";
 import { changeMarks, fileViewRowHtml, lineHtml, novelClassOf } from "../lib/render";
@@ -56,20 +57,8 @@ export function Buffer(props: Props) {
     if (!side) return;
     const selection = getSelection();
     if (selection && !selection.isCollapsed) return;
-    if (num) {
-      // Clicking a line number starts a comment there; shift-click extends from the cursor.
-      const line = Number(num.dataset.n);
-      const file = Number(row.dataset.f);
-      const cur = props.pane.cursor();
-      const key = side === "old" ? "ol" : "nl";
-      const from =
-        cur && cur.file === file && cur.side === side
-          ? Number(rowEl(cur.file, cur.row, bufferEl(props.pane.id))?.dataset[key] || line)
-          : line;
-      if (!e.shiftKey) props.cmd.place(row, { side, scroll: false });
-      props.cmd.openComposer(file, side, Math.min(from, line), Math.max(from, line));
-      return;
-    }
+    // Line numbers select lines: see onPointerDown.
+    if (num) return;
     const ref = target.closest<HTMLElement>(".ref");
     let word = null;
     if (ref && code) {
@@ -82,6 +71,132 @@ export function Buffer(props: Props) {
     props.cmd.place(row, { side, word, scroll: false });
     if (word && (e.ctrlKey || e.metaKey)) void props.cmd.gotoDefinition(word.text);
   };
+
+  // -- Line numbers select lines: press, drag, release opens the composer ----------
+  // One pointer path for a mouse, a finger or a pen. Line numbers are
+  // `touch-action: none` (styles.css), so a drag that starts on them selects
+  // lines rather than scrolling; anywhere else a finger scrolls as usual.
+  /** The drag in progress: its pointer, file and side, the row it started on, whether it has left it. */
+  let drag: {
+    pointer: number;
+    file: number;
+    side: Side;
+    first: number;
+    moved: boolean;
+    /** A comment is being written on this file and side: a tap moves its range instead of starting another. */
+    extend: boolean;
+  } | null = null;
+  /**
+   * The row of `file` at a height on screen, by geometry rather than hit
+   * testing: what's under the pointer can be a thread card, a gap, or the
+   * sticky file header covering the top rows. Past the rows that are in view
+   * (dragging into the header, or past the buffer's edge), the nearest one.
+   */
+  const rowUnder = (y: number, file: number): HTMLElement | null => {
+    const box = main?.getBoundingClientRect();
+    if (!main || !box) return null;
+    const head = main.querySelector("[data-sticky-head] > div")?.getBoundingClientRect();
+    const top = Math.max(box.top, head?.bottom ?? box.top);
+    let nearest: HTMLElement | null = null;
+    let distance = Number.POSITIVE_INFINITY;
+    for (const row of main.querySelectorAll<HTMLElement>(`.row[data-f="${file}"]`)) {
+      const r = row.getBoundingClientRect();
+      // Hidden (a folded gap's rows), or out of view under the header or past the bottom.
+      if (r.height === 0 || r.bottom <= top || r.top >= box.bottom) continue;
+      if (y >= r.top && y < r.bottom) return row;
+      const d = y < r.top ? r.top - y : y - r.bottom;
+      if (d < distance) [nearest, distance] = [row, d];
+    }
+    return nearest;
+  };
+  const hasLine = (row: HTMLElement, side: Side) =>
+    row.querySelector(`.num[data-side="${side}"][data-n]`) !== null;
+  /** Where the pointer was last, for scrolling while it's held still at an edge. */
+  let lastY = 0;
+  const dragTo = (y: number) => {
+    const d = drag;
+    const row = d ? rowUnder(y, d.file) : null;
+    if (!d || !row || !hasLine(row, d.side)) return;
+    if (Number(row.dataset.r) !== d.first) d.moved = true;
+    props.cmd.place(row, { side: d.side, scroll: false });
+  };
+  /** Held near the buffer's top or bottom edge while dragging: keep scrolling that way. */
+  const EDGE_PX = 40;
+  let edgeFrame = 0;
+  const scrollAtEdge = () => {
+    const box = main?.getBoundingClientRect();
+    if (!drag || !main || !box) return;
+    const y = lastY;
+    const by =
+      y < box.top + EDGE_PX
+        ? y - (box.top + EDGE_PX)
+        : y > box.bottom - EDGE_PX
+          ? y - (box.bottom - EDGE_PX)
+          : 0;
+    if (by !== 0) {
+      main.scrollTop += Math.round(by / 3);
+      dragTo(y);
+    }
+    edgeFrame = requestAnimationFrame(scrollAtEdge);
+  };
+  const onPointerDown = (e: PointerEvent) => {
+    props.view.focusPane(props.pane.id);
+    const num = (e.target as HTMLElement).closest<HTMLElement>(".num[data-n][data-side]");
+    const row = num?.closest<HTMLElement>(".row[data-f]");
+    // The main button only, and one finger: a second one is a pinch.
+    if (!num || !row || !main || e.button !== 0 || !e.isPrimary || drag) return;
+    e.preventDefault();
+    const side = num.dataset.side as Side;
+    const file = Number(row.dataset.f);
+    const line = Number(num.dataset.n);
+    const writing = props.view.composer();
+    const extend =
+      writing?.kind === "new" &&
+      writing.anchor.side === side &&
+      writing.anchor.path === props.review.paths()[file];
+    const cur = props.pane.cursor();
+    // Shift extends from the cursor, as shift-click does in an editor.
+    const fromCursor = e.shiftKey && cur && cur.file === file && cur.side === side;
+    if (!fromCursor) props.cmd.place(row, { side, scroll: false });
+    props.cmd.startVisual();
+    if (fromCursor) props.cmd.place(row, { side, scroll: false });
+    drag = {
+      pointer: e.pointerId,
+      file,
+      side,
+      first: Number(row.dataset.r),
+      moved: Boolean(fromCursor),
+      extend,
+    };
+    lastY = e.clientY;
+    main.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== drag?.pointer) return;
+      lastY = ev.clientY;
+      dragTo(ev.clientY);
+    };
+    const end = (ev: PointerEvent) => {
+      const d = drag;
+      if (!d || ev.pointerId !== d.pointer) return;
+      drag = null;
+      cancelAnimationFrame(edgeFrame);
+      main?.removeEventListener("pointermove", move);
+      main?.removeEventListener("pointerup", end);
+      main?.removeEventListener("pointercancel", end);
+      if (ev.type === "pointercancel") return props.view.setVisual(null);
+      // A tap on another line of the file while writing a comment there: the comment's range reaches it.
+      if (!d.moved && d.extend) {
+        props.view.setVisual(null);
+        return props.cmd.extendComposer(d.file, d.side, line);
+      }
+      props.cmd.comment();
+    };
+    main.addEventListener("pointermove", move);
+    main.addEventListener("pointerup", end);
+    main.addEventListener("pointercancel", end);
+    edgeFrame = requestAnimationFrame(scrollAtEdge);
+  };
+  onCleanup(() => cancelAnimationFrame(edgeFrame));
 
   // Right-click on code: the language-server actions for what's under the pointer.
   // Shift+right-click, or right-clicking a selection, keeps the browser's own menu.
@@ -115,7 +230,7 @@ export function Buffer(props: Props) {
       tabindex="-1"
       class="buffer min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-inset pb-6 outline-none [overflow-anchor:none]"
       classList={{ sym: props.view.symKey(), focused: props.view.focused().id === props.pane.id }}
-      onPointerDown={() => props.view.focusPane(props.pane.id)}
+      onPointerDown={onPointerDown}
       onFocusIn={() => props.view.focusPane(props.pane.id)}
       onClick={onClick}
       onContextMenu={onContextMenu}
