@@ -1500,6 +1500,8 @@ try {
         await sleep(350);
       };
       check((await panes()) >= 410 && !(await left.isVisible()) && !(await right.isVisible()), "the code has the whole width; both drawers start put away");
+      const wide = await p.evaluate(() => [document.documentElement.scrollWidth, document.body.scrollWidth, innerWidth]);
+      check(wide[0] === wide[2] && wide[1] === wide[2], `the sheets waiting off screen don't widen the page (${wide.join(" / ")})`);
       const toggle = await p.locator("[data-drawer-toggle=left]").boundingBox();
       check(toggle.width >= 44 && toggle.height >= 44, "the files button is big enough to tap");
 
@@ -1542,6 +1544,13 @@ try {
       await p.keyboard.press("Escape");
       await sheet("right", "closed");
       check(!(await right.isVisible()) && (await p.locator("[data-drawer-backdrop]").count()) === 0, "esc in the chat puts it away, backdrop and all");
+      // With a keyboard (a phone with one, a narrow window): ctrl-h brings the files out, into focus.
+      await p.locator(".buffer.focused").focus();
+      await p.keyboard.press("Control+h");
+      await sheet("left", "open");
+      check((await focusIn()) === "left", "ctrl-h opens the files with focus in them, not in the code behind");
+      await p.keyboard.press("Escape");
+      await sheet("left", "closed");
 
       // Unfolded (the inner screen): the drawers sit beside the code again.
       await p.setViewportSize({ width: 884, height: 1050 });

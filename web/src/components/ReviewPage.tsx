@@ -324,7 +324,8 @@ export function ReviewPage(props: { state: ReviewState }) {
   return (
     <div ref={root} class="flex h-full flex-col bg-bg">
       <TopBar review={review} view={v} />
-      <div ref={container} class="relative flex min-h-0 flex-1">
+      {/* On a phone the sheets wait off screen beside it: clipped, so the page can't scroll to them. */}
+      <div ref={container} class="relative flex min-h-0 flex-1 max-md:overflow-x-clip">
         <Drawer
           side="left"
           label="Files"
