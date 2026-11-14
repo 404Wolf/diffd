@@ -229,6 +229,12 @@ impl App {
         }
     }
 
+    /// `item` with its link filled in.
+    fn linked(&self, mut item: BoardItem) -> BoardItem {
+        item.url = self.board_url(&item.scope, Some(&item.id));
+        item
+    }
+
     /// Put a file on a board: read it (if the policy allows), snapshot it with
     /// its images, and save it as a new item or the next revision of the item
     /// already showing it.
@@ -260,6 +266,7 @@ impl App {
         let item = BoardItem {
             id,
             scope,
+            url: String::new(),
             kind: capture.kind,
             title,
             message: clean(req.message.as_deref(), 300),
@@ -299,13 +306,13 @@ impl App {
 
     /// A board's items, or every board's.
     pub async fn board(&self, scope: Option<&str>) -> Result<Vec<BoardItem>> {
-        Ok(self.store.board_items(scope).await?)
+        Ok(self.store.board_items(scope).await?.into_iter().map(|item| self.linked(item)).collect())
     }
 
     /// An item with what it shows: the text (cut at [`MAX_SHOWN_LINES`] for
     /// code and text), highlighted when it's code.
     pub async fn board_item(&self, id: &BoardItemId) -> Result<BoardItemContent> {
-        let item = self.store.board_item(id).await?.ok_or_else(|| no_item(id))?;
+        let item = self.linked(self.store.board_item(id).await?.ok_or_else(|| no_item(id))?);
         if item.kind == BoardItemKind::Image {
             return Ok(BoardItemContent { item, text: None, syntax: Vec::new(), total_lines: None });
         }
@@ -348,7 +355,8 @@ impl App {
 
     /// Open, minimise or hide an item, and/or note which revision the user saw.
     pub async fn set_board_item_state(&self, id: &BoardItemId, state: Option<BoardItemState>, seen: Option<u32>) -> Result<BoardItem> {
-        self.store.set_board_item_state(id, state, seen).await?.ok_or_else(|| no_item(id))
+        let item = self.store.set_board_item_state(id, state, seen).await?.ok_or_else(|| no_item(id))?;
+        Ok(self.linked(item))
     }
 }
 

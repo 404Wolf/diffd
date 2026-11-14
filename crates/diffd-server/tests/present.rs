@@ -77,6 +77,7 @@ async fn presenting_a_report_bundles_its_images_and_updates_in_place() {
     let items = app.board(Some("herdr-android")).await.unwrap();
     assert_eq!(items.len(), 1);
     let item = &items[0];
+    assert_eq!(item.url, first.url, "listed items carry the same link `present` replied with");
     assert_eq!(item.assets, ["shots/cover.png"]);
     assert_eq!(item.message.as_deref(), Some("the plan, needs your OK"));
     assert_eq!(item.source.path, plan.to_string_lossy());
@@ -87,6 +88,7 @@ async fn presenting_a_report_bundles_its_images_and_updates_in_place() {
     assert_eq!(app.board(None).await.unwrap().len(), 1);
 
     let content = app.board_item(&id).await.unwrap();
+    assert_eq!(content.item.url, first.url);
     assert!(content.text.as_deref().unwrap().starts_with("# The plan"));
     assert!(content.syntax.is_empty());
     let image = app.board_asset(&id, "shots/cover.png").await.unwrap();
@@ -95,7 +97,8 @@ async fn presenting_a_report_bundles_its_images_and_updates_in_place() {
     assert!(matches!(app.board_asset(&id, "").await, Err(AppError::NotFound(_))), "a document's own text isn't an image");
 
     // Wolf put it away and saw it; then the agent presents a new version: one item, back in view, with news.
-    app.set_board_item_state(&id, Some(BoardItemState::Hidden), Some(1)).await.unwrap();
+    let hidden = app.set_board_item_state(&id, Some(BoardItemState::Hidden), Some(1)).await.unwrap();
+    assert_eq!(hidden.url, first.url);
     repo.write("reports/plan.md", "# The plan, v2\n\nNo images now.\n");
     let second = app.present_file(request(&plan), worker()).await.unwrap();
     assert_eq!((second.id.as_str(), second.revision, second.replaced), (first.id.as_str(), 2, true));
@@ -331,8 +334,14 @@ async fn the_board_over_http() {
     let items: Value = get("box.tailnet.ts.net", format!("/api/board?scope={scope}")).await.unwrap().json().await.unwrap();
     assert_eq!(items[0]["id"], id.as_str());
     assert_eq!(items[0]["assets"], json!(["shots/cover.png"]));
+    // Each item carries its link on diffd's base_url, as `present` built it, so other
+    // clients (the desktop Herdr chip) open that instead of guessing the address.
+    let link = format!("http://localhost:3433/show/{scope}/{id}");
+    assert_eq!(presented["url"], link.as_str());
+    assert_eq!(items[0]["url"], link.as_str());
     let content: Value = get("box.tailnet.ts.net", format!("/api/board/{id}")).await.unwrap().json().await.unwrap();
     assert_eq!(content["item"]["kind"], "markdown");
+    assert_eq!(content["item"]["url"], link.as_str());
 
     // Images are served inert.
     let image = get("box.tailnet.ts.net", format!("/api/board/{id}/asset?name=shots%2Fcover.png&rev=1")).await.unwrap();
@@ -357,6 +366,7 @@ async fn the_board_over_http() {
     assert_eq!(changed.status(), 200);
     let changed: Value = changed.json().await.unwrap();
     assert_eq!((changed["state"].as_str(), changed["seenRevision"].as_u64()), (Some("hidden"), Some(1)));
+    assert_eq!(changed["url"], link.as_str());
 }
 
 /// Agents present through MCP, with the same rules.

@@ -15,6 +15,7 @@ import { assetFor, renderDocument } from "./document";
 const item = (over: Partial<BoardItem> = {}): BoardItem => ({
   id: "s1",
   scope: "herdr-android",
+  url: "http://localhost:3433/show/herdr-android/s1",
   kind: "markdown",
   title: "Plan",
   message: null,

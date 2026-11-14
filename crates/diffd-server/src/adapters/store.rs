@@ -360,6 +360,8 @@ impl TryFrom<BoardItemRow> for BoardItem {
         Ok(BoardItem {
             id: BoardItemId(r.id),
             scope: r.scope,
+            // The store doesn't know diffd's address: the app adds the link.
+            url: String::new(),
             kind: from_word(&r.kind)?,
             title: r.title,
             message: r.message,

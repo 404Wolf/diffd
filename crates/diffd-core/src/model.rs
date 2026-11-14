@@ -477,6 +477,9 @@ pub struct BoardItem {
     pub id: BoardItemId,
     /// The board it's on: `deacon`, a project, or a repository's name.
     pub scope: String,
+    /// The link that opens this item on its board, on diffd's `base_url`
+    /// (the same link `present` replies with).
+    pub url: String,
     pub kind: BoardItemKind,
     pub title: String,
     /// One line from the agent, shown with the item.
