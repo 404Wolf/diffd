@@ -1,0 +1,25 @@
+import { createRequire } from "node:module";
+const require = createRequire("/home/wolf/.herdr/worktrees/diffd/mobile-sidebar/web/package.json");
+const { chromium } = require("playwright");
+const browser = await chromium.launch({ executablePath: "/home/wolf/.nix-profile/bin/google-chrome-stable" });
+const ctx = await browser.newContext({ viewport: { width: 884, height: 1050 }, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true });
+const q = await ctx.newPage();
+q.on("console", (m) => console.log("console:", m.text()));
+const cdp = await ctx.newCDPSession(q);
+await q.goto(process.argv[2]);
+await q.waitForSelector(".buffer.focused .row");
+const file = "tools/logreport.py";
+const n = (k) => q.locator(`.buffer.focused [data-file-section]:has([data-path$="${file}"]) .num[data-side="new"][data-n="${k}"]`).first();
+for (let i = 0; i < 80 && !(await n(7).count()); i++) { await q.evaluate(() => { const b = document.querySelector(".buffer.focused"); b.scrollTop += b.clientHeight * 0.6; }); await q.waitForTimeout(50); }
+await n(4).scrollIntoViewIfNeeded();
+await q.waitForTimeout(300);
+const [a, b] = [await n(4).boundingBox(), await n(7).boundingBox()];
+console.log(JSON.stringify(a), JSON.stringify(b));
+await q.evaluate(() => { for (const t of ["pointerdown","pointermove","pointerup","pointercancel"]) document.querySelector(".buffer.focused").addEventListener(t, (e) => console.log(t, Math.round(e.clientY), e.target.className), true); });
+const x = a.x + a.width / 2;
+await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: a.y + a.height / 2 }] });
+for (let i = 1; i <= 6; i++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: a.y + a.height / 2 + ((b.y - a.y) * i) / 6 }] });
+await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+await q.waitForTimeout(500);
+console.log(await q.locator("[data-composer-range]").innerText().catch(() => "none"));
+await browser.close();

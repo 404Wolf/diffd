@@ -1,0 +1,24 @@
+import { createRequire } from "node:module";
+const require = createRequire("/home/wolf/.herdr/worktrees/diffd/mobile-sidebar/web/package.json");
+const { chromium } = require("playwright");
+const [url, out] = process.argv.slice(2);
+const browser = await chromium.launch({ executablePath: "/home/wolf/.nix-profile/bin/google-chrome-stable" });
+const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true });
+const p = await ctx.newPage();
+await p.goto(url); await p.waitForSelector(".buffer.focused .row");
+const sel = (n) => `.buffer.focused [data-file-section]:has([data-path$="src/lib.rs"]) .num[data-side="new"][data-n="${n}"]`;
+for (let i = 0; i < 60 && !(await p.locator(sel(50)).count()); i++) { await p.evaluate(() => { const b = document.querySelector(".buffer.focused"); b.scrollTop += b.clientHeight * 0.6; }); await p.waitForTimeout(60); }
+await p.locator(sel(45)).first().scrollIntoViewIfNeeded();
+await p.locator(sel(45)).first().tap(); await p.waitForTimeout(300);
+await p.locator(sel(50)).first().tap(); await p.waitForTimeout(300);
+await p.setViewportSize({ width: 412, height: 520 }); await p.waitForTimeout(500);
+await p.getByRole("dialog", { name: "Write a comment" }).getByRole("textbox").fill("Does refill run before every acquire?");
+await p.screenshot({ path: `${out}-keyboard.png` });
+await p.getByRole("dialog", { name: "Write a comment" }).getByRole("button", { name: "Comment", exact: true }).tap();
+await p.setViewportSize({ width: 412, height: 915 }); await p.waitForTimeout(600);
+const t = p.locator("[data-thread]").filter({ hasText: "Does refill run" });
+await t.scrollIntoViewIfNeeded();
+await p.evaluate(() => { const b = document.querySelector(".buffer.focused"); b.scrollTop -= 250; });
+await p.waitForTimeout(300);
+await p.screenshot({ path: `${out}-thread.png` });
+await browser.close();
