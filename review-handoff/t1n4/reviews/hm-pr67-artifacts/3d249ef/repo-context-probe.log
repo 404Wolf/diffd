@@ -1,0 +1,29 @@
+{
+  "otherRepo": {
+    "spaceFolder": "/var/tmp/hm-pr67-context-6CD006/repo-a",
+    "focusedCwd": "/var/tmp/hm-pr67-context-6CD006/repo-a",
+    "firstPaneCwd": "/var/tmp/hm-pr67-context-6CD006/repo-b",
+    "prompt": {
+      "space": "s",
+      "repo": "repo-b",
+      "cwd": "/var/tmp/hm-pr67-context-6CD006/repo-b",
+      "on": null
+    }
+  },
+  "outsideRepo": {
+    "spaceFolder": "/var/tmp/hm-pr67-context-6CD006/repo-a",
+    "focusedCwd": "/var/tmp/hm-pr67-context-6CD006/repo-a",
+    "firstPaneCwd": "/var/tmp/hm-pr67-context-6CD006/not-git",
+    "prompt": null,
+    "state": {
+      "error": "repo-a is in no git repository, so it has no worktrees.",
+      "step": "repo",
+      "retry": "Retry",
+      "name": null,
+      "space": "s",
+      "at": 2
+    }
+  }
+}
+(node:1362410) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

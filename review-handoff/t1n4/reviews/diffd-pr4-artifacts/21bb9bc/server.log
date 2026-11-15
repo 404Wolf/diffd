@@ -1,0 +1,16 @@
+2026-11-14T03:04:37.650864Z  INFO diffd: diffd is running at http://localhost:43461  ·  MCP: http://localhost:43461/mcp db=/tmp/diffd-pr4-21bb9bc.db addr=127.0.0.1:43461 allowed_hosts=[]
+2026-11-14T03:04:43.872204Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:05:56.869222Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:06:19.804293Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:06:49.846299Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:09:14.235721Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:09:45.094175Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:10:54.833991Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:11:26.694104Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:12:21.749454Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:12:52.935200Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-21bb9bc-manual
+2026-11-14T03:13:23.973065Z  INFO diffd_server::adapters::lsp: language server started server="gopls" root=/tmp/diffd-pr4-21bb9bc-e2e
+2026-11-14T03:13:24.138195Z  INFO diffd_server::adapters::lsp: language server started server="rust-analyzer" root=/tmp/diffd-pr4-21bb9bc-e2e
+2026-11-14T03:13:26.824326Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-21bb9bc-e2e
+2026-11-14T03:13:30.386518Z  INFO diffd_server::adapters::lsp: language server started server="typescript" root=/tmp/diffd-pr4-21bb9bc-e2e/web
+2026-11-14T03:13:30.478669Z  INFO diffd_server::adapters::lsp: language server started server="nil" root=/tmp/diffd-pr4-21bb9bc-e2e

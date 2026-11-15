@@ -1,0 +1,123 @@
+[
+  {
+    "test": "native touch code scroll",
+    "before": 0,
+    "target": "<div class=\"flex flex-wrap items-baseline gap-x-2 text-xs\"><b class=\"font-semibold\">You</b><span class=\"text-[11px] text-subtle\">just now</span><span class=\"text-[10.5px] font-medi",
+    "after": 342,
+    "events": [
+      {
+        "type": "pointerdown",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 650
+      },
+      {
+        "type": "touchstart",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 650
+      },
+      {
+        "type": "pointermove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 630
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 630
+      },
+      {
+        "type": "pointercancel",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 0
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 610
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 590
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 570
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 550
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 530
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 510
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 490
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 470
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 450
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 430
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 410
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 370
+      },
+      {
+        "type": "touchmove",
+        "target": "flex flex-wrap items-baseline gap-x-2 text-xs",
+        "defaultPrevented": false,
+        "y": 350
+      }
+    ],
+    "composers": 0
+  },
+  {
+    "test": "pen pointer drag",
+    "range": "long.py · new L3–6"
+  }
+]

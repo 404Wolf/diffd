@@ -1,0 +1,10 @@
+--- old effect
++++ new effect
+@@ -1,5 +1,5 @@
+--    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input"];
+-+    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input", "viewer_visibility", "viewer_focus"];
+++    "viewer_visibility",
+++    "viewer_focus",
+ +        errors ["not_found", "machine_unknown"];
+ +    "terminal.viewers" => terminal_viewers, ViewerListParams => crate::viewers::ViewerListResult,
+ +        "Read-only local snapshot of attached viewers and the active sizing selector; never queries peers.",

@@ -1,0 +1,88 @@
+interactive-grid
+patching file crates/herdr-core/src/SKILL.md
+patching file crates/herdr-core/src/api.rs
+patching file crates/herdr-core/src/api/types.rs
+patching file crates/herdr-core/src/remote/viewers.rs
+patching file crates/herdr-core/src/viewers.rs
+patching file crates/herdr-core/src/viewers/tests.rs
+patching file crates/herdr-core/tests/common/framed.rs
+patching file crates/herdr-core/tests/redraw_grid.rs
+patching file crates/herdr-core/tests/resize_negotiation.rs
+patching file schema/hc.openrpc.json
+
+viewer-visibility
+patching file crates/herdr-core/src/SKILL.md
+patching file crates/herdr-core/src/api.rs
+patching file crates/herdr-core/src/api/types.rs
+patching file crates/herdr-core/src/remote.rs
+patching file crates/herdr-core/src/remote/tests.rs
+patching file crates/herdr-core/src/remote/viewers.rs
+patching file crates/herdr-core/src/runtime/tests.rs
+patching file crates/herdr-core/src/server.rs
+patching file crates/herdr-core/src/viewers.rs
+patching file crates/herdr-core/src/viewers/tests.rs
+patching file crates/herdr-core/src/wire.rs
+patching file schema/README.md
+patching file schema/hc.openrpc.json
+
+visibility-fallback
+patching file crates/herdr-core/src/remote/tests.rs
+patching file crates/herdr-core/src/remote/viewers.rs
+patching file crates/herdr-core/tests/resize_negotiation.rs
+
+visibility-reoffer
+patching file crates/herdr-core/src/viewers.rs
+patching file crates/herdr-core/src/viewers/tests.rs
+
+desktop-priority
+patching file crates/herdr-core/src/SKILL.md
+patching file crates/herdr-core/src/config.rs
+patching file crates/herdr-core/src/viewers.rs
+patching file crates/herdr-core/src/viewers/tests.rs
+
+viewer-diagnostics
+patching file crates/herdr-core/src/SKILL.md
+patching file crates/herdr-core/src/api.rs
+patching file crates/herdr-core/src/api/types.rs
+patching file crates/herdr-core/src/cli.rs
+patching file crates/herdr-core/src/cli/output.rs
+patching file crates/herdr-core/src/help.txt
+patching file crates/herdr-core/src/platform/desktop_peer.rs
+patching file crates/herdr-core/src/platform/mod.rs
+patching file crates/herdr-core/src/server.rs
+patching file crates/herdr-core/src/viewers.rs
+patching file crates/herdr-core/src/viewers/tests.rs
+patching file crates/herdr-core/src/wire.rs
+patching file schema/hc.openrpc.json
+
+build-skew
+patching file crates/herdr-core/src/SKILL.md
+patching file crates/herdr-core/src/api.rs
+patching file crates/herdr-core/src/api/types.rs
+patching file crates/herdr-core/src/cli/machine.rs
+patching file crates/herdr-core/src/client.rs
+patching file crates/herdr-core/src/remote.rs
+patching file crates/herdr-core/src/remote/tests.rs
+patching file schema/hc.openrpc.json
+
+focused-window
+patching file crates/herdr-core/src/SKILL.md
+patching file crates/herdr-core/src/api.rs
+patching file crates/herdr-core/src/api/types.rs
+patching file crates/herdr-core/src/cli/output.rs
+patching file crates/herdr-core/src/remote.rs
+patching file crates/herdr-core/src/remote/tests.rs
+patching file crates/herdr-core/src/remote/viewers.rs
+patching file crates/herdr-core/src/runtime/tests.rs
+patching file crates/herdr-core/src/server.rs
+patching file crates/herdr-core/src/viewers.rs
+patching file crates/herdr-core/src/viewers/tests.rs
+patching file crates/herdr-core/src/wire.rs
+patching file crates/herdr-core/tests/focused_window.rs
+patching file docs/commands.md
+patching file schema/hc.openrpc.json
+
+hidden-reporter-fallback
+patching file crates/herdr-core/src/viewers.rs
+patching file crates/herdr-core/src/viewers/tests.rs
+patching file crates/herdr-core/tests/focused_window.rs

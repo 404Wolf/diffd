@@ -1,0 +1,228 @@
+{
+  "root": "/var/tmp/hm-pr59-t1n4-j03amije",
+  "stack": [
+    "interactive-grid",
+    "viewer-visibility",
+    "visibility-fallback",
+    "visibility-reoffer",
+    "desktop-priority",
+    "viewer-diagnostics",
+    "build-skew",
+    "focused-window",
+    "hidden-reporter-fallback"
+  ],
+  "files": 26,
+  "apply": {
+    "old": [
+      {
+        "patch": "interactive-grid",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "viewer-visibility",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "visibility-fallback",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "visibility-reoffer",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "desktop-priority",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "viewer-diagnostics",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "build-skew",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "focused-window",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "hidden-reporter-fallback",
+        "exit": 0,
+        "output": ""
+      }
+    ],
+    "new": [
+      {
+        "patch": "interactive-grid",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "viewer-visibility",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "visibility-fallback",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "visibility-reoffer",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "desktop-priority",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "viewer-diagnostics",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "build-skew",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "focused-window",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "patch": "hidden-reporter-fallback",
+        "exit": 0,
+        "output": ""
+      }
+    ]
+  },
+  "patch_payload_differences": {
+    "viewer-visibility": {
+      "old_lines": 378,
+      "new_lines": 377
+    },
+    "visibility-fallback": {
+      "old_lines": 131,
+      "new_lines": 131
+    },
+    "focused-window": {
+      "old_lines": 685,
+      "new_lines": 684
+    }
+  },
+  "effect_payload_differences": {
+    "crates/herdr-core/src/api.rs": {
+      "old_lines": 20,
+      "new_lines": 20
+    },
+    "crates/herdr-core/src/remote/tests.rs": {
+      "old_lines": 303,
+      "new_lines": 303
+    }
+  },
+  "old_changed_files": [
+    "crates/herdr-core/src/SKILL.md",
+    "crates/herdr-core/src/api.rs",
+    "crates/herdr-core/src/api/types.rs",
+    "crates/herdr-core/src/cli.rs",
+    "crates/herdr-core/src/cli/machine.rs",
+    "crates/herdr-core/src/cli/output.rs",
+    "crates/herdr-core/src/client.rs",
+    "crates/herdr-core/src/config.rs",
+    "crates/herdr-core/src/help.txt",
+    "crates/herdr-core/src/platform/desktop_peer.rs",
+    "crates/herdr-core/src/platform/mod.rs",
+    "crates/herdr-core/src/remote.rs",
+    "crates/herdr-core/src/remote/tests.rs",
+    "crates/herdr-core/src/remote/viewers.rs",
+    "crates/herdr-core/src/runtime/tests.rs",
+    "crates/herdr-core/src/server.rs",
+    "crates/herdr-core/src/viewers.rs",
+    "crates/herdr-core/src/viewers/tests.rs",
+    "crates/herdr-core/src/wire.rs",
+    "crates/herdr-core/tests/common/framed.rs",
+    "crates/herdr-core/tests/focused_window.rs",
+    "crates/herdr-core/tests/redraw_grid.rs",
+    "crates/herdr-core/tests/resize_negotiation.rs",
+    "docs/commands.md",
+    "schema/README.md",
+    "schema/hc.openrpc.json"
+  ],
+  "new_changed_files": [
+    "crates/herdr-core/src/SKILL.md",
+    "crates/herdr-core/src/api.rs",
+    "crates/herdr-core/src/api/types.rs",
+    "crates/herdr-core/src/cli.rs",
+    "crates/herdr-core/src/cli/machine.rs",
+    "crates/herdr-core/src/cli/output.rs",
+    "crates/herdr-core/src/client.rs",
+    "crates/herdr-core/src/config.rs",
+    "crates/herdr-core/src/help.txt",
+    "crates/herdr-core/src/platform/desktop_peer.rs",
+    "crates/herdr-core/src/platform/mod.rs",
+    "crates/herdr-core/src/remote.rs",
+    "crates/herdr-core/src/remote/tests.rs",
+    "crates/herdr-core/src/remote/viewers.rs",
+    "crates/herdr-core/src/runtime/tests.rs",
+    "crates/herdr-core/src/server.rs",
+    "crates/herdr-core/src/viewers.rs",
+    "crates/herdr-core/src/viewers/tests.rs",
+    "crates/herdr-core/src/wire.rs",
+    "crates/herdr-core/tests/common/framed.rs",
+    "crates/herdr-core/tests/focused_window.rs",
+    "crates/herdr-core/tests/redraw_grid.rs",
+    "crates/herdr-core/tests/resize_negotiation.rs",
+    "docs/commands.md",
+    "schema/README.md",
+    "schema/hc.openrpc.json"
+  ],
+  "sha256": {
+    "applied-interdiff.diff": "d9c83de4222ebce93b9610b751d05f71d4e62998fe6309560a397df099df2cc0",
+    "upstream.diff": "d18c91b2097b787dcc4af6d9ec6e842c700133dcf56a11b7b5dacd9a7ceedb4f"
+  },
+  "independent_threeway": {
+    "exact_files": 24,
+    "differences": {
+      "crates/herdr-core/src/api.rs": {
+        "merge_exit": 1,
+        "matches": false,
+        "diff_lines": 27
+      },
+      "crates/herdr-core/src/remote/tests.rs": {
+        "merge_exit": 0,
+        "matches": false,
+        "diff_lines": 83
+      }
+    }
+  },
+  "verified_residuals": {
+    "api": "only conflict is FEATURES; new upstream features plus viewer_visibility/viewer_focus; resolved whole file byte-identical",
+    "remote_tests": "12 test bodies and preamble byte-identical after test reordering",
+    "patch_payload_multisets": {
+      "viewer-visibility": "FEATURES array adaptation",
+      "focused-window": "FEATURES array adaptation"
+    },
+    "gnu_patch": "9/9 apply with fuzz=0, no offsets; all 26 resulting files identical to git apply"
+  },
+  "schema_equivalence": {
+    "AttachResult": "identical JSON value",
+    "terminal.attach": "identical method schema"
+  },
+  "raw_patch_whitespace": {
+    "exit": 2,
+    "context_blank_warnings": 58,
+    "all_flagged_lines_are_patch_context_markers": true
+  }
+}

@@ -1,0 +1,381 @@
+
+1. The review page loads
+  ✓ title in the top bar
+  ✓ the diff lists files in tree order
+  ✓ novel tokens are highlighted
+  ✓ syntax is highlighted
+  ✓ status line shows NORMAL mode
+  ✓ the page's WebSocket is compressed (permessage-deflate)
+
+2. Hunks, files and the note tour
+  ✓ ]c walks hunks (hunk 2/36)
+  ✓ ]f skips collapsed files (schema.sql, bucket.rs, legacy.rs, lib.rs, routes.rs, limiter.rs, logreport.py, report.py, QuotaBadge.tsx, api.test.ts, api.ts, badge.css, README.md, flake.nix)
+  ✓ ]a starts the tour at Claude's first note
+  ✓ ]a goes to the next note
+
+3. Symbol mode, go to definition, jump list
+  ✓ w walks symbols to `clamp`
+  ✓ enter jumps to clamp's definition in bucket.rs
+  ✓ ctrl-o comes back
+  ✓ ctrl-i goes forward again
+  ✓ grr lists references under the code
+
+4. File view and back
+  ✓ g enter shows the plain file
+  ✓ gutter marks added and changed lines
+  ✓ ctrl-o returns to the diff
+  ✓ and to the same place
+
+5. Folds, expanding context, tests
+  ✓ Claude's fold shows its summary
+  ✓ g e reveals 5 lines (5754 → 5749 hidden)
+  ✓ without moving the page
+  ✓ / opens the page's search, which sees folded lines
+  ✓ test code is marked along its side
+  ✓ whole test files get a chip
+
+6. Commenting: gcc, visual lines, mouse selection
+  ✓ gcc opens the comment popover
+  ✓ the comment lands inline without moving the page
+  ✓ V j j selects three lines
+  ✓ a mouse selection offers a Comment button
+  ✓ it sits just below where the selection ends (-12px off)
+  ✓ three threads were created
+  ✓ they show as Sent
+
+7. The agent hears the comments and answers inline
+  ✓ wait_for_feedback returned all three comments in one batch
+  ✓ with the exact lines and code
+  ✓ the page shows the comments were seen
+  ✓ replies appear inline, marked Claude replied
+  ✓ the activity feed counts 3 unread
+  ✓ ]n jumps to the oldest unread reply
+  ✓ path:line links in replies jump to the code
+
+8. Chat with the agent
+  ✓ the chat message reaches the agent
+  ✓ the agent's answer shows in the chat
+  ✓ code blocks in messages are highlighted like the diff
+
+9. The agent shows you something
+  ✓ a prompt appears instead of a jump
+  ✓ enter takes you there
+
+10. Live updates while you read
+  ✓ the edit arrives as revision 2
+  ✓ the page didn't move
+  ✓ changed lines are marked since the last revision
+  ✓ the activity feed notes the revision
+  ✓ an edit above keeps the same code at the top (52 → 52)
+  ✓ and the cursor on the same line of code
+
+11. The agent adds notes, a fold and test marks later
+  ✓ a new fold appears with its summary
+  ✓ and the new note appears inline
+
+12. Pickers, search, help
+  ✓ space f opens a file
+  ✓ space / finds text anywhere, hidden lines included
+  ✓ and jumps to it
+  ✓ saying which match of how many
+  ✓ the match is highlighted
+  ✓ n goes to the next match
+  ✓ / opens the find bar
+  ✓ and finds the nearest match in this file as you type
+  ✓ enter closes it, staying on the match
+  ✓ n goes to the next one in the file
+  ✓ N back
+  ✓ esc clears the highlights
+  ✓ gS lists symbols across the diff
+  ✓ esc closes a picker
+  ✓ ? shows every key
+
+13. Drawers, viewed files, resolving
+  ✓ dragging the tree to the edge leaves only a handle
+  ✓ clicking the handle brings it back
+  ✓ marking a file viewed collapses it
+  ✓ resolving a thread marks it resolved
+
+14. Splits
+  ✓ ctrl-\ splits the view in two
+  ✓ the new split has focus
+  ✓ and opens at the same place
+  ✓ with the same cursor
+  ✓ ]f moves only this split's cursor (routes.rs)
+  ✓ ctrl-h focuses the left split, with its own cursor
+  ✓ ctrl-l back to the right one
+  ✓ g space opens the plain file
+  ✓ in the other split; this one keeps the diff
+  ✓ at the same line
+  ✓ ctrl-o takes that split back to its diff
+  ✓ a comment in one split shows up in both
+  ✓ and the other split didn't move ({"scroll":3847,"row":"6:18@82"} → {"scroll":3947,"row":"6:18@82"})
+  ✓ the agent hears it
+  ✓ clicking in a split focuses it
+  ✓ and puts the cursor there
+  ✓ ctrl-esc closes the focused split
+  ✓ the last split stays
+  ✓ g space splits when there's only one
+  ✓ and closes again
+
+15. Files outside the diff
+  ✓ double-clicking a file in the tree lists the other files in its folder
+  ✓ files in the diff aren't listed twice
+  ✓ clicking one opens it as a plain file
+  ✓ marked as not part of the diff
+  ✓ highlighted like the rest
+  ✓ and it joins the tree
+  ✓ comments work on it, and show inline
+  ✓ the agent gets the file, line and code (  if (total < 60) return `${total}s`;)
+  ✓ and its reply shows there too
+  ✓ the tree counts the thread
+  ✓ the agent can show a file that isn't in the diff
+  ✓ at the lines it chose
+  ✓ ctrl-o walks back to the diff
+  ✓ a folder's ⋯ lists everything in it
+  ✓ and hides them again
+  ✓ ]f only walks the diff
+
+16. Marks
+  ✓ m a lists the mark
+  ✓ and shows its letter in the gutter
+  ✓ 'a jumps back to it
+  ✓ `a too
+  ✓ an unset mark says so
+
+17. Text objects
+  ✓ vaf selects the whole function (10 lines)
+  ✓ and gc comments on it
+  ✓ vi{ selects inside the braces (2 lines)
+  ✓ vaB takes the braces' lines too
+  ✓ vip selects the paragraph (11 lines)
+  ✓ vat selects the enclosing element (4 lines)
+  ✓ vih selects the hunk
+
+18. Offline comments queue and send on reconnect
+  ✓ the page notices the server is gone
+  ✓ an offline comment shows inline without moving the page
+  ✓ it is marked Queued offline
+  ✓ the top bar counts what's queued: "Offline · 2 queued"
+  ✓ the outbox is saved to localStorage
+  ✓ on reconnect everything is sent and confirmed
+  ✓ the agent receives the queued comment and chat (chat,thread)
+  ✓ the cursor comes back to main.go
+  ✓ and the page is where you were reading (378 → 378)
+  ✓ the half-written comment is still there
+  ✓ lines you expanded stay expanded (18 → 18 rows of routes.rs)
+  ✓ after a reload the comment exists exactly once
+  ✓ marks survive a reload
+  ✓ files outside the diff with threads come back after a reload
+
+19. Several tabs at once
+  ✓ each tab gets its own id
+  ✓ a comment in one tab appears in the other
+  ✓ a mark set in one tab shows in the other
+  ✓ and neither tab's marks overwrite the other's
+  ✓ a duplicated tab picks a new id
+  ✓ the open tab sends its own queued comment and the closed tab's
+  ✓ the agent gets both
+  ✓ and no outbox is left behind
+
+20. Walking the commits one at a time
+  ✓ the commits panel lists all changes, three commits and uncommitted changes
+  ✓ ]r shows only the first commit's files: src/bucket.rs, src/legacy.rs, src/lib.rs, tests/limiter.rs, Cargo.lock
+  ✓ the file tree follows
+  ✓ Claude's notes on that code still show
+  ✓ ]r again shows the second commit
+  ✓ an earlier comment shows where its code is in this commit
+  ✓ the agent hears which commit it was on (c1f7653945c39bd910daa8e6371e75837ca0a470..943765b1b3717fe5282e628e56919113f6d3cb34)
+  ✓ the reply shows up while you're still on that commit
+  ✓ shift-click takes in the next commit too
+  ✓ the top bar shows the range
+  ✓ the last step is the uncommitted changes
+  ✓ past the last step it's all changes again
+  ✓ a new commit appears in the panel by itself
+  ✓ and the whole diff is unchanged
+  ✓ space c picks from the commits
+
+21. Language servers: diagnostics, go to definition, hover
+  ✓ web/src/api.ts: ✖1
+  ✓ src/bucket.rs: ✖1
+  ✓ cmd/probe/main.go: ✖1
+  ✓ tools/logreport.py: ✖1
+  ✓ flake.nix: ✖1
+  ✓ .github/workflows/ci.yml: ✖2
+  ✓ every language's errors show in the tree
+  ✓ the status line shows the language servers (gopls nil pyright rust-analyzer: cargo check typescript yaml)
+  ✓ errors are underlined in the code (9 ranges)
+  ✓ the status bar shows the error on the cursor's line
+  ✓ hovering the error explains it
+  ✓ gd goes where the language server says, even outside the diff
+  ✓ gd opens library code outside the repository
+  ✓ gt goes to the type's definition
+  ✓ K shows the language server's docs
+  ✓ on the old side, gd falls back to the diff's symbols
+
+22. Right-click menu, context around a hunk, chat panel, tree neighbours
+  ✓ right-clicking code opens a menu
+  ✓ it's about the symbol clicked (clamp)
+  ✓ with go to definition, type definition, references and docs
+  ✓ escape closes it
+  ✓ arrow keys and enter pick an item (find references lists them under the code, not in a popup)
+  ✓ ctrl+enter shows more lines around the hunk (13 → 23)
+  ✓ ctrl+shift+enter shows fewer again
+  ✓ the chat is 30% of the side panel (30%)
+  ✓ dragging its top edge resizes it (50%)
+  ✓ and arrow keys on the edge shrink it back
+  ✓ a single click just opens the file
+  ✓ a double click lists its neighbours
+  ✓ double-clicking again hides them
+  ✓ the Project tab lists the whole repository
+  ✓ collapse all closes every folder
+  ✓ expand all opens them
+  ✓ changed files are marked in the project tree
+  ✓ and the Diff tab is back to the changes
+  ✓ dragging its edge widens the files drawer (160 → 459px)
+
+23. Codex: groups of related changes, labels, generated files, reply toasts
+  ✓ a lockfile starts collapsed without being asked
+  ✓ get_review gives the agent back its tour and labels
+  ✓ and what diffd found each file to be
+  ✓ the page calls the agent Codex
+  ✓ and never Claude
+  ✓ a new file (web/src/gen/quota.ts) is one column, without an empty old side
+  ✓ its code is highlighted as code, not all green
+  ✓ centred, as wide as the new side of a split
+  ✓ a deleted file says so in its header
+  ✓ a test toggle counts the two test files
+  ✓ with frontend and generated toggles
+  ✓ hiding tests takes their files out of the buffer
+  ✓ and out of the tree
+  ✓ hiding frontend takes out the web files
+  ✓ showing them again brings everything back
+  ✓ a review with a tour opens on it
+  ✓ the Tour tab lists the chapters, then the rest (The limiter, The web badge, Storage, Other changes)
+  ✓ the buffer has a header per group
+  ✓ files follow the groups (src/lib.rs, src/bucket.rs, web/src/gen/quota.ts)
+  ✓ ungrouped files come last
+  ✓ ]f goes to the next file in the group
+  ✓ and on into the next group (NORMAL quota.ts:1 new hunk 13/40 ch 2/4 )
+  ✓ the status line says which chapter
+  ✓ [g goes back to the start of the previous chapter
+  ✓ ]g steps chapter by chapter
+  ✓ the summary lists the chapters
+  ✓ and each one goes to its chapter
+  ✓ a chapter starts with what it's about
+  ✓ the sidebar shows each chapter's description under it
+  ✓ and its links go to the spots that matter
+  ✓ collapsing a chapter hides its files
+  ✓ and leaves its header, with how many files
+  ✓ opening one of its files unfolds it
+  ✓ z c folds the chapter the cursor is in
+  ✓ and unfolds it again
+  ✓ space t g goes back to the plain diff, in tree order
+  ✓ on the Diff tab
+  ✓ Codex receives the comment
+  ✓ a toast says Codex replied
+  ✓ with the start of the reply
+  ✓ in the bottom right
+  ✓ clicking the toast shows the reply
+  ✓ and the toast goes
+  ✓ chat answers get a toast too
+
+24. Vim screen motions: zz zt zb, H M L, ctrl-e ctrl-y, 12G, '', uppercase marks
+  ✓ zz puts the cursor's line in the middle
+  ✓ zt puts it at the top, under the file header
+  ✓ zb puts it at the bottom
+  ✓ H goes to the top line on screen
+  ✓ L to the bottom one
+  ✓ M to the middle one
+  ✓ 5 ctrl-e scrolls five lines down (85px)
+  ✓ ctrl-y scrolls back
+  ✓ gg moves away
+  ✓ an uppercase mark (mT, 'T) comes back
+  ✓ 12G goes to line 12 of this file
+  ✓ '' goes back to where the jump came from
+  ✓ } goes down to the next blank line (45 → 54)
+  ✓ { back up
+  ✓ $ puts the cursor on the last word
+  ✓ 0 back on the whole line
+  ✓ * searches this file for the word under the cursor (self)
+  ✓ gv selects the last selection again
+  ✓ o goes to its other end, keeping it
+  ✓ ctrl-h from the code goes to the files drawer
+  ✓ j moves through it
+  ✓ ctrl-l back to the code
+  ✓ and on to the activity drawer
+  ✓ ctrl-h from there back to the code
+
+25. Find bar, replying, gc, keeping the selection, marks anywhere, shift+click to a split
+  ✓ Ctrl+F opens the find bar
+  ✓ not a popup
+  ✓ in the top right
+  ✓ it counts the matches in this file (6/8)
+  ✓ and goes to the first one
+  ✓ enter goes to the next
+  ✓ esc closes it
+  ✓ and n keeps going
+  ✓ gc opens the comment popover
+  ✓ gcc's last c isn't typed into the comment
+  ✓ V … gc keeps the selected lines highlighted while commenting
+  ✓ grr lists references without a popup
+  ✓ with every use (6)
+  ✓ ]q goes to the first
+  ✓ space q closes the list
+  ✓ the chat box grows to fit (26 → 78px)
+  ✓ r opens the reply on screen, next to its thread
+  ✓ a mark set in file view comes back
+  ✓ shift+click on a link opens it in a split
+  ✓ in file view
+
+26. A reload puts everything back: splits, file view, the commit, the cursor
+  ✓ both splits come back
+  ✓ the focused one is still the file view, on the same line (FILE bucket.rs:8 new jumps 0/0)
+  ✓ the commit being looked at comes back
+
+27. On a phone the drawers are sheets over the code, opened from the top bar
+  ✓ the code has the whole width; both drawers start put away
+  ✓ the sheets waiting off screen don't widen the page (412 / 412 / 412)
+  ✓ the top bar is one line (49px)
+  ✓ the rest of it is behind the details button
+  ✓ focus goes into the details
+  ✓ tab reaches its link
+  ✓ esc closes it, back on its button
+  ✓ the files button is big enough to tap
+  ✓ it slides the files over the code, which keeps its width
+  ✓ focus goes into it
+  ✓ esc puts it away, and focus goes back to its button
+  ✓ esc in the filter puts it away too
+  ✓ tree rows are big enough to tap (44px)
+  ✓ tapping a file opens it and puts the files away
+  ✓ the other button brings out activity and the chat
+  ✓ tapping the dimmed code puts it away
+  ✓ esc in the chat puts it away, backdrop and all
+  ✓ ctrl-h opens the files with focus in them, not in the code behind
+  ✓ esc with the details over the files closes only the details
+  ✓ and esc again the files
+  ✓ on a wider screen the files are beside the code
+  ✓ and the details close with their button gone
+  ✓ focus goes to the code rather than the hidden button
+
+28. Reviewing from a phone: drag over line numbers, comment, reply, resolve
+  ✓ dragging a finger down the line numbers selects lines 3 to 6 (logreport.py · new L3–6)
+  ✓ the composer is docked along the bottom, full width
+  ✓ its Comment button is big enough to tap
+  ✓ with the keyboard up the composer is still all on screen (268–496 of 520)
+  ✓ and the selected lines are scrolled into view above it
+  ✓ tapping Comment sends it: the thread shows on those lines
+  ✓ the thread's Reply is big enough to tap
+  ✓ a reply written on the phone joins the thread
+  ✓ Resolve works by tap
+  ✓ a tap on a line number starts a comment on that line
+  ✓ tapping another line number extends it to that line (L10–12)
+  ✓ at 884×1050 a finger drag selects lines 7–9 and the composer is on screen with a 44px button
+  ✓ at 1050×884 a finger drag selects lines 7–9 and the composer is on screen with a 44px button
+  ✓ a mouse drag over line numbers selects lines too (logreport.py · new L7–9)
+
+29. Home page
+  ✓ recent reviews are listed
+  ✓ no console errors
+
+All checks passed.

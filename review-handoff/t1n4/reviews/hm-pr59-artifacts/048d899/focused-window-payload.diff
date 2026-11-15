@@ -1,0 +1,12 @@
+--- old patch payload
++++ new patch payload
+@@ -10,8 +10,7 @@
+ +phones, `hc attach`, relays without the feature) only receive the grid.
+ +Relays forward WINDOW_FOCUS per downstream viewer and confirm `focus_updates`
+ +only when every hop does; `hc viewers` shows `focus=yes|no|n/a` per channel.
+--    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input", "viewer_visibility"];
+-+    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input", "viewer_visibility", "viewer_focus"];
+++    "viewer_focus",
+ +        focus_updates: p.focus_updates,
+ +        focused: p.focus_updates && p.focused,
+ +        focus_updates: p.focus_updates,

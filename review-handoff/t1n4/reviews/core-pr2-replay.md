@@ -1,0 +1,13 @@
+# APPROVE — herdr-core PR #2, attach history soft wraps
+
+Independent static review by t1n4. Fetched `pull/2/head` and confirmed `85da31ed366d63f34f312055534a33532c6a32e2`, one commit on `c645d000865c1f2c28ffaa8451d56c5dee9d1c59`. Read the full three-file diff, `reports/fold-reflow.md` fix C, the surrounding paint/format and core output paths, the Ghostty formatter implementation available in the author's worktree, repository instructions, and `QUALITY.md`.
+
+Verdict: **APPROVE (static)**. No blocking findings.
+
+- The sole behavior change is inside the existing primary-screen history branch of `Terminal::paint`: VT history now uses `format_with(..., false, true)`, enabling soft-wrap joining. The formatter inserts a hard row separator when the original row does not wrap, so real newlines remain distinct while viewers create their own soft wraps.
+- VT emission still includes cell styling. In the formatter's styled path, nonempty or styled cells are emitted rather than trimmed as blank text, including trailing coloured spaces. Unwrapping retains the style transitions across the former row boundary. This addresses the design note's colour/trim concern.
+- The active screen still uses the original exact VT formatter with extras; cursor, modes, title, scrolling region, reset, history limits and alternate-screen handling are untouched. `paint(0)` bypasses the changed branch. Core's normal live output still uses its relay feed and does not call this history formatter, so this change does not rewrite live bytes.
+- The regression is meaningful: a 10-column source contains a long soft-wrapped line, a colour transition at a wrap, trailing background-coloured spaces, and two explicit hard lines. It checks the replayed visible screen and joined text, then widens the replay to 30 columns and compares physical VT history, including styles, against the same input received at 30 columns. The previous formatter would retain the narrow hard breaks. Existing tests continue to cover bounded history and alternate-screen paint.
+- The three `SKILL.md` lines describe precisely the changed primary-screen attach history behavior and preserve the distinction between soft wraps and explicit newlines. They do not promise reflow of application-authored hard wrapping, such as Claude inline transcript lines.
+
+`git diff --check 85da31e^ 85da31e` passes. PM supplied Lane R results: fmt, deny, clippy and Windows clippy green; ghostty-vt 14/14 including this regression; only the known NixOS environment failures shared with master. Those results were not rerun by this reviewer. This was static only: no builds/tests, checkout/source edits, live core restart, push, GitHub comment or merge.

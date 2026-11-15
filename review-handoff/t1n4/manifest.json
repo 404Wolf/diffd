@@ -1,0 +1,749 @@
+{
+  "worker": "t1n4",
+  "project": "herdr-android",
+  "reports_original_root": "/home/wolf/herdr-android/reviews",
+  "files": [
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4.md",
+      "archived": "reviews/diffd-pr4.md",
+      "bytes": 8139,
+      "sha256": "eb2b2e83636dde43f4291128458385f47332cd4e1f759cada279defe98653c49"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr5-cpu.md",
+      "archived": "reviews/diffd-pr5-cpu.md",
+      "bytes": 7265,
+      "sha256": "47b68a82add0d5e76cbbb7ac52fa7e84439ae10126ff4e3a3c4f9e51b9510ff7"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/item41-inbox.md",
+      "archived": "reviews/item41-inbox.md",
+      "bytes": 38920,
+      "sha256": "e5998e9284468cdeb6bf5d3c49cbf4f85f5dd6c5fbe51261e2e136294256e8c5"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr7-show.md",
+      "archived": "reviews/diffd-pr7-show.md",
+      "bytes": 16173,
+      "sha256": "034c36db0d3acaec5c8d95effaf886c8b61517e7fdffa567c40a728a84dfe979"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/core-prompt-origin.md",
+      "archived": "reviews/core-prompt-origin.md",
+      "bytes": 7318,
+      "sha256": "bb5ed031368af820191465522a8bb74d535777e2d232edb8c15159b4b02582c2"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/core-pr2-replay.md",
+      "archived": "reviews/core-pr2-replay.md",
+      "bytes": 2697,
+      "sha256": "19bc8cd5ae2d6b3d9aded9cc037a4c3dd6e6da34226008247d5ab254e6770d98"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-patch-rebase.md",
+      "archived": "reviews/hm-pr59-patch-rebase.md",
+      "bytes": 3867,
+      "sha256": "c3edf9219e0bbd9fbc6079f1a19168847a3927341f953e26d29385aaf3517b7b"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-new-worktree.md",
+      "archived": "reviews/hm-pr67-new-worktree.md",
+      "bytes": 9429,
+      "sha256": "bef1d621081383035b36ae38f20d958e7a2d6caed424db7435a87ec8476cc8d5"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/clear-range-checks.json",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/clear-range-checks.json",
+      "bytes": 193,
+      "sha256": "13e187806fd86421ea3c2d79ae08bcc0563ffb2ab2879c28f627788f34a49676"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/clear-range-checks.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/clear-range-checks.log",
+      "bytes": 177,
+      "sha256": "f037e639296536322bc9a61a392c3ad71717e36f31acfdb46ad23a780d2225d3"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/clear-range-checks.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/clear-range-checks.mjs",
+      "bytes": 2963,
+      "sha256": "5f42470cf313f7cedecae1f540ed30ac7ca47f783d6d77ef15964b9b3ed277ab"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/clear-range-result.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/clear-range-result.png",
+      "bytes": 63745,
+      "sha256": "2c7c9abd1993f3132086ad7803c12295d7deb8d1d67620d2f2af1a73333c22de"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/code-scroll-pen.json",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/code-scroll-pen.json",
+      "bytes": 2789,
+      "sha256": "5320da5c5bfe1b71641ff8b016f4ef498145abbb7315e2a0c8d66c1923de20d8"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/code-scroll-pen.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/code-scroll-pen.log",
+      "bytes": 1750,
+      "sha256": "a319c71b4cf09c11b5d3b17335ded9fa7e941b35fbd0f4636dbfd432f17d9d95"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/code-scroll-pen.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/code-scroll-pen.mjs",
+      "bytes": 3159,
+      "sha256": "a2438bac32e7484b4ba37ca42754bbbeb530a38ce414bfb9427d14349c87c62f"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/draft-after-reload.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/draft-after-reload.png",
+      "bytes": 69510,
+      "sha256": "1a903af954eadc358f4ad1ca85fcb3c7dd676076492dca6163c5893666a13fb0"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/e2e-demo.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/e2e-demo.log",
+      "bytes": 27,
+      "sha256": "3c5053fa3428cff33182c9cb9b6b3365fc7759e3343697dbf9cf5d14a58dade1"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/e2e-url.txt",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/e2e-url.txt",
+      "bytes": 36,
+      "sha256": "0d70ca3607c44e4231850fb0cc2362dbb7f2199db9437c12d072e4552b01542d"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/edge-down.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/edge-down.png",
+      "bytes": 74983,
+      "sha256": "75c21db302478e3085dec66e8d7f848b6f4cae63166d130d3691fe63fc33fdd8"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/edge-up.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/edge-up.png",
+      "bytes": 73957,
+      "sha256": "f1d66c5ddb2070827a0c6c64d2ac2799044a39ecb3923516cac8fcdf1497b5b3"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/fold-checks.json",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/fold-checks.json",
+      "bytes": 2327,
+      "sha256": "48fcccc1fb40f7d9751e0c187f3031f76fe838a71408b148efb9ab30f20e0813"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/fold-checks.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/fold-checks.log",
+      "bytes": 284,
+      "sha256": "2182d762d8693ef51f6f46ddc7af1caac4008bbf99be480b2fa84078caee9aa6"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/fold-checks.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/fold-checks.mjs",
+      "bytes": 4056,
+      "sha256": "73cdb189131eef8159c499c5456447989ae9ae356f0505233ee520b1672776e3"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/fold-debug.json",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/fold-debug.json",
+      "bytes": 741,
+      "sha256": "6cedc3ec53a16cdf3ded36b9fdc71d5ce423b2d7abe9414205a8483820cf0660"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/fold-debug.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/fold-debug.log",
+      "bytes": 323,
+      "sha256": "f44fd861939ca2e73d7e099d317cb907e36af0de5b2333abcb3a25461ecfe6f0"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/fold-debug.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/fold-debug.mjs",
+      "bytes": 4709,
+      "sha256": "75bca30f482f65ec98f50357a54dd405ab26c43d35ce868338144398e2eb9190"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/keyboard-412x520.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/keyboard-412x520.png",
+      "bytes": 41556,
+      "sha256": "44546acd6f6a23e357a424ad908314d7dd8a431418fa4ec22fd432a179d02e7e"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/lane-e-t1n4-web-checks.json",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/lane-e-t1n4-web-checks.json",
+      "bytes": 820,
+      "sha256": "f972d282d47e543226de35b9b03921a585b1eeed37eec0152806cab37716901b"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/lane-e-t1n4-web-checks.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/lane-e-t1n4-web-checks.log",
+      "bytes": 959,
+      "sha256": "10bed1c76ccae7aebcb39ff313a5c1e67487a71322d02ef738872a0b76edf366"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/manual-url.txt",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/manual-url.txt",
+      "bytes": 35,
+      "sha256": "6ca0b55ad13de74e6bf08874174a69b74e20ca1232ff58e412a5613f73deee83"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/probes.json",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/probes.json",
+      "bytes": 11100,
+      "sha256": "7c12b576e506978e5e3ec047c5c0bc14e4df70469ec6a4c844689fa8cbf03569"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/probes.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/probes.log",
+      "bytes": 5117,
+      "sha256": "2f7670372eafdb243bbac975eebbb4cc20ef0fd1bf52f79a0923380e68e0cef2"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/probes.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/probes.mjs",
+      "bytes": 5301,
+      "sha256": "8376a22e3f2c880317ec8d8a574bc6eabcbfca7be36f677c01bb62349a904ff0"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/reverse-debug.json",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/reverse-debug.json",
+      "bytes": 1217,
+      "sha256": "4bc4fb8009d10c371f439211341d1b83f21f6e3fe242a7be0ad1648d3db25cee"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/reverse-debug.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/reverse-debug.log",
+      "bytes": 984,
+      "sha256": "bae4fd0b0fd7fb71990f430106b90807151d32025b4bceda2213433b4e212a06"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/reverse-debug.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/reverse-debug.mjs",
+      "bytes": 2192,
+      "sha256": "09fe26bbb3a1a2d1e46426c58fa713ce5fe473a294f0ffddd122c8fc720a3971"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/reverse-debug.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/reverse-debug.png",
+      "bytes": 65454,
+      "sha256": "ac5405cc4eedfa9f88d410f1e61ad360849a983a6c1f711c5139610cb40c2613"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/reverse-events.json",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/reverse-events.json",
+      "bytes": 2430,
+      "sha256": "fa60912b3cbf8fc0344fd1923642587adfb43ba31176edc7eddabba51d64ac4c"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/reverse-events.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/reverse-events.log",
+      "bytes": 2060,
+      "sha256": "84259350b1b7cd0140f392aebfe4df5e4d943819094348ab5806280f09001a10"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/reverse-events.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/reverse-events.mjs",
+      "bytes": 2643,
+      "sha256": "7b2e6799678aa696a8fb0f534f94891e3bbee9efefcb82a942e0b4b1d6ebeb7a"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/reverse-events.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/reverse-events.png",
+      "bytes": 63580,
+      "sha256": "acde20a810b49d9f51b35f4fa229dd044c2cc3572d53617984ec231e949eb28d"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/selection-1050x884.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/selection-1050x884.png",
+      "bytes": 98617,
+      "sha256": "5b558dd08e7c609f230091f7f3ecb94b12c9f34916095b749c4102a17b09eff0"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/selection-412x915.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/selection-412x915.png",
+      "bytes": 63616,
+      "sha256": "2461eb839a1b3632ea9d270f9bb5a62ac39c86bc94df98e1ac70002c84b8169e"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/selection-884x1050.png",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/selection-884x1050.png",
+      "bytes": 126005,
+      "sha256": "f3d31c1b53584301130b77bbf247b40e93fb6c72ea8a80077012e091b2e5aa72"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/server-control.py",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/server-control.py",
+      "bytes": 1230,
+      "sha256": "87918c35d790c045f13dd6b78bf33610bdd41c5ea16715f5678f85b8629280a5"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/server.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/server.log",
+      "bytes": 2345,
+      "sha256": "8deeafb6e11fd7214e400278829c4e23318e13b70d51b0bea67c7fc8e99af6a2"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/warm-lsp.log",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/warm-lsp.log",
+      "bytes": 377,
+      "sha256": "0c4e8b678a5fed43dc59d4de5f103a04c7f163e485c68a669ecec0eab3296897"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/warm-lsp.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/21bb9bc/warm-lsp.mjs",
+      "bytes": 695,
+      "sha256": "2b7bd84472a56175dbf5c9fb4ed135314f5117686165a51e0267a82c8dc88af0"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/code-scroll-pen.json",
+      "archived": "reviews/diffd-pr4-artifacts/code-scroll-pen.json",
+      "bytes": 2922,
+      "sha256": "09fa66013fd20ac1df09d1285e1d2170a21a6a909e73ff652ddaae9ab2ef35a6"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/code-scroll-pen.log",
+      "archived": "reviews/diffd-pr4-artifacts/code-scroll-pen.log",
+      "bytes": 1829,
+      "sha256": "6e1655ffac3f4b519a9b458a12b944bbd1b5ac2aef6ed76e2e14b4e96dc75cd9"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/code-scroll-pen.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/code-scroll-pen.mjs",
+      "bytes": 3151,
+      "sha256": "4d67290765d4444d8256fd641666678a922f48448c41c0c410f982c9cc5eb8fa"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/diffd-pr4-lint.log",
+      "archived": "reviews/diffd-pr4-artifacts/diffd-pr4-lint.log",
+      "bytes": 70,
+      "sha256": "da0988035b4daf25eb569c881f4ab97ed87d87f8c99cc3bb0033154916a8bc72"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/diffd-pr4-rust-build.log",
+      "archived": "reviews/diffd-pr4-artifacts/diffd-pr4-rust-build.log",
+      "bytes": 1784,
+      "sha256": "55b7a5922981b692bd8d7b2fcf73c9d482947881e3693504d362091f2bc5b394"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/diffd-pr4-typecheck.log",
+      "archived": "reviews/diffd-pr4-artifacts/diffd-pr4-typecheck.log",
+      "bytes": 29,
+      "sha256": "8fa1cf5506304e8abac55868e7f1a136c9b1dde57a3981a382da4c21ea129a6f"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/diffd-pr4-vitest.log",
+      "archived": "reviews/diffd-pr4-artifacts/diffd-pr4-vitest.log",
+      "bytes": 249,
+      "sha256": "97cef8e7a142122fd607ba2c27ce3147e6e1ab842e034065a49b0d2f2690e8f6"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/diffd-pr4-web-build.log",
+      "archived": "reviews/diffd-pr4-artifacts/diffd-pr4-web-build.log",
+      "bytes": 2424,
+      "sha256": "02b8ee28d04fdf6587953e5e02c7bfd931cb7758c48996ed59f416e440ad9d52"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/draft-after-reload.png",
+      "archived": "reviews/diffd-pr4-artifacts/draft-after-reload.png",
+      "bytes": 73266,
+      "sha256": "b803d39860ef5db11267aeeee0c58aebea70da837186dc07a0610158cf0374cf"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-demo.log",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-demo.log",
+      "bytes": 19,
+      "sha256": "06b6f1a8f21bc4bea65b54f576329b26c50188d96ed069cb5f52c854991246b5"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/01-loaded.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/01-loaded.png",
+      "bytes": 183482,
+      "sha256": "863ffe4d2433fe1eca78f940abd66e700681b7ded1ecb72e3c253a0aca30b08a"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/02-tour.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/02-tour.png",
+      "bytes": 202272,
+      "sha256": "ca3168619ae16b506bc56a594cb5e579656cb478002984d53f11363c9fb030fa"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/03-definition.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/03-definition.png",
+      "bytes": 186832,
+      "sha256": "fc8fcf680b192cafa0452f4c69e90a7a66c718b0f0d6b43c57c5df7d7e99f2a4"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/04-file-view.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/04-file-view.png",
+      "bytes": 183384,
+      "sha256": "d21df20526e45b35fbe923dd30516594ff1641148883692ba9d609867f188bb7"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/05-tests.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/05-tests.png",
+      "bytes": 215238,
+      "sha256": "2c86548782060399e0eb74b5f12e504d0e603eb37f230b0483fb22961ec06308"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/06-composer.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/06-composer.png",
+      "bytes": 204484,
+      "sha256": "7a3d6a82ec17e4d774e5face7cc53f0a49c4d9a4e63a87c9deb895a8bcbeffa4"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/07-replies.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/07-replies.png",
+      "bytes": 220979,
+      "sha256": "94e7d3c1d1ae3d4d09174ca7995473a0364dd696687cfbd7f0e43e2c3bb18077"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/08-chat.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/08-chat.png",
+      "bytes": 255982,
+      "sha256": "61b2bc247955b254e8960612e6ed90eab35c7083b4b3b946832f8cffc78460ae"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/09-nudge.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/09-nudge.png",
+      "bytes": 272766,
+      "sha256": "93076a2800a6a1a8013387751f0f03e49a0d517af9d79292a224284d1e434d65"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/10-live-update.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/10-live-update.png",
+      "bytes": 269110,
+      "sha256": "5e6a23b0ee298c3d687ef0b1c7884ba2115a5cce083bc7a9511001dd2c7155ee"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/12-help.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/12-help.png",
+      "bytes": 268779,
+      "sha256": "1290ee29b00ac96588dac514f401bfdd004a5cfc094402a903078ba6b5db762c"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/12-picker.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/12-picker.png",
+      "bytes": 230043,
+      "sha256": "8a6131eba156b34d53f14f83d8d7dd2ad91515d8ca42537da00b9da7f13d4e2c"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/13-drawer-closed.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/13-drawer-closed.png",
+      "bytes": 206878,
+      "sha256": "03849f6e243b8f8b2da60aaee783a74875d9a467c8eb57daf35189d003ff8700"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/14-split-file.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/14-split-file.png",
+      "bytes": 340450,
+      "sha256": "a480dab0458fb3fb8c94d77b6f07fc59ba7f5dc93cfe7f0bb7d0cf595d7f44ac"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/18-offline.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/18-offline.png",
+      "bytes": 256099,
+      "sha256": "e0a8707df155f8e0c32813c0b43c71cede284971e75c841a6d0b81ccbb59518b"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/20-commit-1.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/20-commit-1.png",
+      "bytes": 183877,
+      "sha256": "0c96106f97d3d954d9c14b75d5c4683b48cb93fa62342be8496f19fa1374cd3a"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/20-uncommitted.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/20-uncommitted.png",
+      "bytes": 218318,
+      "sha256": "57481246e3cd576fbab0061cab9495b0f7f7f8144b8f8c7553d5420e91b480c9"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/21-diagnostics.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/21-diagnostics.png",
+      "bytes": 217418,
+      "sha256": "42dac20fcfde2da45919460904677b15681de3c4e94e1f8cd21c299f37a421fa"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/23-reply-toast.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/23-reply-toast.png",
+      "bytes": 196606,
+      "sha256": "80c0ed4535af6293404f59b2523329f0c0d3059a69b2efa72f0ce8c7b47d5eb6"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/27-phone-files.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/27-phone-files.png",
+      "bytes": 154860,
+      "sha256": "3cf9a3ce60fc19c2e2ce0fe7dfbee984860b821a2325eae813fbb31cd25cf27b"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head-shots/29-home.png",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head-shots/29-home.png",
+      "bytes": 34116,
+      "sha256": "f5069b108eaa344add6abf1639a8ca9ff63f570a599f3a8fbbc97e2663b361db"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-head.log",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-head.log",
+      "bytes": 15706,
+      "sha256": "236cde6cd56aa2b0d69386afef26996bed3ce334013b66e8b3368b086f349bc4"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/e2e-url.txt",
+      "archived": "reviews/diffd-pr4-artifacts/e2e-url.txt",
+      "bytes": 36,
+      "sha256": "605886c29adc53cc030b8d65d058dfabcb884d8e725d0305d4ffd552432b8536"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/edge-down.png",
+      "archived": "reviews/diffd-pr4-artifacts/edge-down.png",
+      "bytes": 75111,
+      "sha256": "0a5368c3f26c3a1891c8a953d8aa7bb45835bac7842f6c7e44983452c999e9ed"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/edge-up.png",
+      "archived": "reviews/diffd-pr4-artifacts/edge-up.png",
+      "bytes": 76258,
+      "sha256": "1126124bc508ce617937eca02bdb19db585e7fd9b18299eb0ce6923a9f978191"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/fold-checks.json",
+      "archived": "reviews/diffd-pr4-artifacts/fold-checks.json",
+      "bytes": 2327,
+      "sha256": "48f1d520c3229f5115031aa9a1d47d72452058542911d658faab07f902161c3e"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/fold-checks.log",
+      "archived": "reviews/diffd-pr4-artifacts/fold-checks.log",
+      "bytes": 284,
+      "sha256": "2182d762d8693ef51f6f46ddc7af1caac4008bbf99be480b2fa84078caee9aa6"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/fold-checks.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/fold-checks.mjs",
+      "bytes": 4020,
+      "sha256": "e4e072ea5852b477a3eed0a8d7d2ef0200ff6f9c9033b83c7cf9ee1fef429e33"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/keyboard-412x520.png",
+      "archived": "reviews/diffd-pr4-artifacts/keyboard-412x520.png",
+      "bytes": 42679,
+      "sha256": "9f588849d01d0a5e5ea028472258a81a4147be7d1ad89ea530db50e48d62d19b"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/manual-url.txt",
+      "archived": "reviews/diffd-pr4-artifacts/manual-url.txt",
+      "bytes": 35,
+      "sha256": "76aa563cb7c1a427193cb92d590a1e74062c386635df4817808a5d8568e6321f"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/probes.json",
+      "archived": "reviews/diffd-pr4-artifacts/probes.json",
+      "bytes": 7166,
+      "sha256": "1933d90c97f1164012340049195801c5f4d6980974bf16512219e939f4ddd36f"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/probes.log",
+      "archived": "reviews/diffd-pr4-artifacts/probes.log",
+      "bytes": 3787,
+      "sha256": "466e3449c45e196bd06c58e5150282879bad2bf5933816c6279d0004354d806f"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/probes.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/probes.mjs",
+      "bytes": 5293,
+      "sha256": "3b40006ba26697c266fddebf2f75ba8453eec3941eb54d619f40e1571a0b20c8"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/scroll-pen.json",
+      "archived": "reviews/diffd-pr4-artifacts/scroll-pen.json",
+      "bytes": 3387,
+      "sha256": "9fd4dee4682c9714ab431991ddd0f0f1fb6dc61abc50d94bf835c95fcf45b6a1"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/scroll-pen.log",
+      "archived": "reviews/diffd-pr4-artifacts/scroll-pen.log",
+      "bytes": 2348,
+      "sha256": "63132e23a4d7022657aa6edee78fde7438ce9dc9c3020b7587c373b1e7384c18"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/scroll-pen.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/scroll-pen.mjs",
+      "bytes": 2993,
+      "sha256": "cadaa52e86fa769e695c5a40992add9aba7851c71332444d4e673eeaa98507d2"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/selection-1050x884.png",
+      "archived": "reviews/diffd-pr4-artifacts/selection-1050x884.png",
+      "bytes": 115127,
+      "sha256": "98a3030f4d06b2a38041436b6755c18d0d278ccc4021101abe39f3f070132438"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/selection-412x915.png",
+      "archived": "reviews/diffd-pr4-artifacts/selection-412x915.png",
+      "bytes": 71525,
+      "sha256": "928cbaabc9828e458c1a79a8efcba87f62318c1c1f1cbe2d763cbf25c168cecf"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/selection-884x1050.png",
+      "archived": "reviews/diffd-pr4-artifacts/selection-884x1050.png",
+      "bytes": 159105,
+      "sha256": "e9b6bd053a2b543f1fb52e650a6ff9cace358ec5ef01f8285f4d20155b629741"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/server-control.py",
+      "archived": "reviews/diffd-pr4-artifacts/server-control.py",
+      "bytes": 1222,
+      "sha256": "0bcafdcc3b11e68535884d3af68451caf78aad9218a0194a944e72780e25910e"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/server.log",
+      "archived": "reviews/diffd-pr4-artifacts/server.log",
+      "bytes": 5153,
+      "sha256": "195bb8acfbb17cf38f2ea9a42d3501875bd6d28b178e9178b2e0c343f1fa0806"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/warm-lsp.log",
+      "archived": "reviews/diffd-pr4-artifacts/warm-lsp.log",
+      "bytes": 43,
+      "sha256": "7b24026e421bb51cfcf3367caa7fc2b2d4d19af18490c680e5a98960f86ff904"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/warm-lsp.mjs",
+      "archived": "reviews/diffd-pr4-artifacts/warm-lsp.mjs",
+      "bytes": 687,
+      "sha256": "84e07d2551c599c0337995ceb31394510c1d555372ca8987657b72e3b211db54"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/applied-interdiff.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/applied-interdiff.diff",
+      "bytes": 43108,
+      "sha256": "d9c83de4222ebce93b9610b751d05f71d4e62998fe6309560a397df099df2cc0"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/effect-crates__herdr-core__src__api.rs.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/effect-crates__herdr-core__src__api.rs.diff",
+      "bytes": 596,
+      "sha256": "207b5af0c8ea0375b16d3ad9f01ec663e9cd2ca20663ad1c42a613c1c7639654"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/effect-crates__herdr-core__src__remote__tests.rs.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/effect-crates__herdr-core__src__remote__tests.rs.diff",
+      "bytes": 3623,
+      "sha256": "6b930f3545a2b079d9542b07ffb6d2aec80e9aa911dfee50342b5cb6a60b6121"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/focused-window-payload.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/focused-window-payload.diff",
+      "bytes": 710,
+      "sha256": "748984a171830f2f58daeaea80f1d11fbe8d161a625203500802463bbf3dfe3f"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/merge-crates__herdr-core__src__api.rs.txt",
+      "archived": "reviews/hm-pr59-artifacts/048d899/merge-crates__herdr-core__src__api.rs.txt",
+      "bytes": 39480,
+      "sha256": "6b0b56c3c80cbde619da78f816f00373d885d1cfbe1687db32cdd3d9c34bafa0"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/merge-crates__herdr-core__src__remote__tests.rs.txt",
+      "archived": "reviews/hm-pr59-artifacts/048d899/merge-crates__herdr-core__src__remote__tests.rs.txt",
+      "bytes": 22564,
+      "sha256": "369125786c502c477576217152594201a843e1578cfbba38ca8ad25f0821b6a8"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/merge-vs-new-crates__herdr-core__src__api.rs.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/merge-vs-new-crates__herdr-core__src__api.rs.diff",
+      "bytes": 1106,
+      "sha256": "7d5197c782b5340922242d1fd4f4448000407fa9312004e574e9b299a614745c"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/merge-vs-new-crates__herdr-core__src__remote__tests.rs.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/merge-vs-new-crates__herdr-core__src__remote__tests.rs.diff",
+      "bytes": 3593,
+      "sha256": "2e708a63563bf087b98ae8528b848a84aa1687d2ef63616e8dfb2f5380ead643"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/new-gnu-patch.log",
+      "archived": "reviews/hm-pr59-artifacts/048d899/new-gnu-patch.log",
+      "bytes": 3568,
+      "sha256": "6f722b02d68a63f3df5d3ecb1725fbc31705543a88c3b1aa73796bd5d11c76c4"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/summary.json",
+      "archived": "reviews/hm-pr59-artifacts/048d899/summary.json",
+      "bytes": 6076,
+      "sha256": "7df718f58670f4ec2c6710baf8db72fb3e6002ba1b23be515bf003ddeb732d28"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/upstream.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/upstream.diff",
+      "bytes": 39384,
+      "sha256": "d18c91b2097b787dcc4af6d9ec6e842c700133dcf56a11b7b5dacd9a7ceedb4f"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/viewer-visibility-payload.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/viewer-visibility-payload.diff",
+      "bytes": 644,
+      "sha256": "4996278ed99c99d6532810a27e9d82c915974404b18ca2723c94e50b444c0562"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr59-artifacts/048d899/visibility-fallback-payload.diff",
+      "archived": "reviews/hm-pr59-artifacts/048d899/visibility-fallback-payload.diff",
+      "bytes": 4952,
+      "sha256": "a5193e90059895433fedab033c62d540d522e0d3f91cbaeb9b72d70e3cc034f0"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-artifacts/3d249ef/repo-context-probe.log",
+      "archived": "reviews/hm-pr67-artifacts/3d249ef/repo-context-probe.log",
+      "bytes": 954,
+      "sha256": "808af9cf4c960d0d24281c8b0604001d6bb52c3847e2d9ee818ebbe4b374efec"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-artifacts/3d249ef/repo-context-probe.mjs",
+      "archived": "reviews/hm-pr67-artifacts/3d249ef/repo-context-probe.mjs",
+      "bytes": 2145,
+      "sha256": "c6ea360af333ed7c6cd786e977d625a0dfb37051a9a6dd31eb11f5a2f8c2570c"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-artifacts/3d249ef/run-tests.log",
+      "archived": "reviews/hm-pr67-artifacts/3d249ef/run-tests.log",
+      "bytes": 44660,
+      "sha256": "989dcab6fa80cab85b2f9409646467fad3dd0aea7dd1a0522b0f28ef7031ecf8"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-artifacts/3d249ef/run.json",
+      "archived": "reviews/hm-pr67-artifacts/3d249ef/run.json",
+      "bytes": 353,
+      "sha256": "947581bafa35b572ea434cb1273236429afb717a9856c799bff5aca987fe4148"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-artifacts/b63ede6/repo-context-probe.log",
+      "archived": "reviews/hm-pr67-artifacts/b63ede6/repo-context-probe.log",
+      "bytes": 877,
+      "sha256": "ddf97a02762c5bbdd6a151101d3f523d6cdd4325186388516f2a7a72613a9960"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-artifacts/b63ede6/repo-context-probe.mjs",
+      "archived": "reviews/hm-pr67-artifacts/b63ede6/repo-context-probe.mjs",
+      "bytes": 2145,
+      "sha256": "c6ea360af333ed7c6cd786e977d625a0dfb37051a9a6dd31eb11f5a2f8c2570c"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-artifacts/b63ede6/run-tests.log",
+      "archived": "reviews/hm-pr67-artifacts/b63ede6/run-tests.log",
+      "bytes": 44175,
+      "sha256": "2e065399f3a8856d08e275027793d04dfa46f4fe593df6d81f8baf2cea8593f5"
+    },
+    {
+      "source": "/home/wolf/herdr-android/reviews/hm-pr67-artifacts/b63ede6/run.json",
+      "archived": "reviews/hm-pr67-artifacts/b63ede6/run.json",
+      "bytes": 408,
+      "sha256": "787dc68ee4dfc01d6f6a972c7713afb66b8bff9e252dc9b211d0bf90421ab55f"
+    }
+  ],
+  "omitted_runtime_files": [
+    {
+      "path": "diffd-pr4-artifacts/21bb9bc/server.pid",
+      "reason": "stale runtime PID, not review evidence"
+    },
+    {
+      "path": "diffd-pr4-artifacts/server.pid",
+      "reason": "stale runtime PID, not review evidence"
+    }
+  ]
+}

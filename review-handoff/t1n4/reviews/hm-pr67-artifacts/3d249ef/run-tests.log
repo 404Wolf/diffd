@@ -1,0 +1,521 @@
+=== tsc -p tsconfig.json
+=== node ./test_check_mod_imports.mjs
+check-mod-imports: ok
+=== node ./test_diffd_control.mjs
+17 review ownership/presentation checks passed
+=== node ./test_diffd_native.mjs
+(node:1269015) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ key tokens are diffd's: shifted letters as typed, ctrl- chords, named keys; platform/alt chords are not ours (1.210816ms)
+✔ the key engine: counts, sequences, modes, and a timed-out sequence that is itself a binding (0.409029ms)
+✔ every diffd key the native view lists is one diffd binds (web/src/state/bindings.ts), with its meaning; the extras are named keys diffd leaves alone (0.331269ms)
+✔ moves: j k 5j gg G 5G, half pages, screen lines, scroll the cursor; the view follows the cursor (16.233138ms)
+✔ review jumps: ]c [c hunks, past the last into the next file; ]f [f files; ]t to the thread (6.519479ms)
+✔ item 43: side by side by default, s toggles to unified and is remembered; a narrow measured diff is unified (4.778515ms)
+✔ item 38: gc opens the box right under the cursor's line; rows below move down; context, quote, field, actions in that order (3.772248ms)
+✔ item 38: ctrl-enter sends (a plain Enter is a newline); esc cancels, twice with text; the c of gcc is not text (2.235923ms)
+✔ V selects lines, then c (or gc) comments on the range; r replies to the thread on the line (or the next) (5.402522ms)
+✔ item 39: the files tree is on the right of the diff, folders grouped; space e hides it (3.452069ms)
+✔ item 44: ctrl-l focuses the tree (its top rule lights), j/k gg/G move, l/enter open, h folds, / filters; ctrl-h back (5.923481ms)
+✔ item 42: no chat in the native view: no chat button or panel, no chat key, only line comments are sent (3.15766ms)
+✔ every control in the pane takes a click, shows a hover and a press (3.509259ms)
+✔ F1: a visual selection keeps its first line off the page (V20jc from line 1 is lines 1-21), in both layouts (3.887927ms)
+✔ F1: a selection across folded context covers the folded lines too, on either side (5.419013ms)
+✔ F3: a counted G is on the cursor's side, and a line in folded context is shown, not the next one (3.565539ms)
+✔ F4: clicking a line with one thread opens that thread, and a reply goes to it; New thread starts another (3.16731ms)
+✔ F5: the box follows its line through a layout change; on another file it waits at the top with its draft and a way back (3.17095ms)
+✔ F6: at zoom 2 the box's measured height moves the rows below it by its height in layout px (1.678884ms)
+✔ F2: a long thread scrolls inside the box, which stays within the pane; the field and actions stay reachable, also at the end of a short file (3.547959ms)
+✔ F7: moving in the tree puts the selection on screen (the list's scroll handle), filter and fold included (5.367783ms)
+✔ F8: a send finishes (sending clears, a second one works); a failed one keeps the draft and its id for the retry; text typed meanwhile is kept (2.98169ms)
+✔ F8: the helper fails a test that leaves a task hanging (only the command subscription may wait) (2003.252339ms)
+✔ R1: a counted jump into folded context stays there through polls, j and a scroll fetch (9.621259ms)
+✔ R2: a draft whose pane shrinks is moved so its field and actions stay inside it, draft kept (4.866585ms)
+✔ R3: a selection over one-sided rows keeps every line on its side (old 1-20 into an added-only run, and the reverse) (8.631043ms)
+✔ R4: a selection answered after a file change is dropped, never anchored to the new file (1.149047ms)
+✔ R4: of two selections in one file, the newer wins whatever order the answers come in (0.991697ms)
+✔ R4: Esc, a point comment or a reply cancels a selection still being worked out; a late answer or failure is dropped (4.503985ms)
+✔ R5: a failed selection keeps the selection and says so; c again retries; never a one-line comment instead (1.305825ms)
+✔ starting a new visual selection (V) supersedes an unresolved earlier selection (0.976757ms)
+✔ the rendered Cancel button invalidates a pending selection answer (1.571675ms)
+✔ New thread keeps its current source target after an older range answer (2.171293ms)
+✔ a thread-tab choice is not replaced by an older selection answer (1.528575ms)
+✔ a pane not focused, with no pair recorded, loads and draws its rows and tree at its measured height (2.097503ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2140.70362
+=== node ./test_diffd_show.mjs
+(node:1270215) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ requests and answers are read exactly (1.504195ms)
+✔ open beside a shown agent: split, focus straight back to the pane Wolf is in, answer open (4.014927ms)
+✔ while Wolf may be typing in that pane: only a badge, and it opens only on alt-r (2.108434ms)
+✔ in a tab Wolf is not on: opened there, his view and focus untouched (0.575678ms)
+✔ the window focused last, as the core records it, claims and opens; another window only badges, whatever its timing (1.373735ms)
+✔ two active windows with stale label snapshots open one pane for one request (0.627618ms)
+✔ a window never activated owns nothing: it badges; activated once, it opens even after losing focus (0.462118ms)
+✔ close: the pane a show opened closes, unless Wolf is in it or has a draft there (1.360936ms)
+✔ badge, front, none, stale requests, and a remote core (0.576558ms)
+✔ a diffd.review label alone opens nothing (an older diffd, or a write without its request); alt-r does (1.041607ms)
+✔ a request whose review is no longer the terminal's (moved on, cleared) is not acted on (0.294979ms)
+✔ a badge's click opens the review (diffd.open), as alt-r does (0.401039ms)
+✔ a quiet pane never takes the keyboard, and hands focus back to its agent the first time Wolf sees it (3.0285ms)
+✔ typing a comment protects its pane at once, before any pane poll (t1pc's probe, through the real draft) (7.909245ms)
+✔ an open into a zoomed tab is only a badge: the split would clear Wolf's zoom (1.518775ms)
+✔ Wolf choosing a quiet review in another tab keeps it focused on first sight (t1pc's probe, through the controller) (1.807975ms)
+✔ an explicit open finishes: its pair is registered, a failed one clears, and the next open works (2012.756858ms)
+✔ a claim answered after a newer close, none or review is dropped: no pane, and its old answer never overwrites the new one (1.340745ms)
+✔ each request has its own answer label: a newer answer is never touched, and the oldest go (0.797907ms)
+✔ a window's registration slower than its first claim: the open waits for it, then opens (0.510729ms)
+✔ an open's answer still being written, then a newer close's: the close's answer is the one left on the terminal (0.630358ms)
+✔ an older answer delayed past a newer one, across two windows, never replaces the newer answer (1.763314ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2052.951559
+=== node ./test_inflight_mod.mjs
+✔ controller: polls every 5 s with the panel shown, 30 s without, never inactive or while one runs (1.119706ms)
+✔ controller: the panel counts as shown only when the side panel shows its inflight child (0.17398ms)
+✔ controller: a good poll gives the map, the inbox, the new count and when (0.352199ms)
+✔ controller: a failed poll keeps the last good data and its time, with the reason (0.369879ms)
+✔ panel: header counts and freshness, including errors and no map yet (0.371129ms)
+✔ panel: a map read fine but not changed for hours says so; it is never "updated just now" (F5) (0.176389ms)
+✔ panel: an address already qualified with another machine is kept as it is, never prefixed twice (F6) (0.206339ms)
+✔ panel: inbox rows in the listed order, senders qualified to the map's machine, bodies and links (0.245149ms)
+✔ panel: the Projects tree folds PMs (roll-up while folded), qualifies addresses, keeps unplaced (0.432939ms)
+✔ panel: a row click goes to its agent (pane.focus only with a pane here); web links open, others stay text (0.483248ms)
+✔ the wolf layout has the panel child and the invisible 1px controller block; home-manager names the map's machine (2.182763ms)
+✔ panel writes: answer, done and seen are herdr-inbox on the map's machine; blank answers and seen-again do nothing (0.416009ms)
+✔ panel writes: errors are what herdr-inbox said; Go to focuses the filer (0.183709ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12.103082
+=== node ./test_inflight_view.mjs
+(node:1270688) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ controller: reads config.json for the machine, polls herdr-inflight there, shares the feed (2.748931ms)
+✔ controller: an inactive window never polls; a failure keeps the last feed with its reason (1.843555ms)
+✔ view: header, inbox and the Projects tree from inflight.data; freshness says the map's own age (1.349066ms)
+✔ view: the header's "New PM" starts a new project manager through the top bar (item 48; C-a C now makes a worktree, item 57) (0.349229ms)
+✔ view: a Projects row goes to its agent; the chevron folds the PM (remembered), without going there (0.599128ms)
+✔ view: an inbox item opens to its body (markdown) and links; a web link opens in the browser, others stay text (0.931947ms)
+✔ view: no data yet, and an error, are said as such (0.344399ms)
+✔ view: an answer goes through herdr-inbox answer -- <id> <text> on the map's machine; then the controller polls at once (2.507282ms)
+✔ view: one answer finishing never erases another item's draft, nor text typed since it was sent (F7) (3.494619ms)
+✔ view: "answer saved, but sending failed" stays visible after the item leaves the open inbox (F9) (2.444772ms)
+✔ view: the action row stays short at the panel's minimum width: "Go to", not the filer's whole title (F10) (0.774918ms)
+✔ controller: a refresh asked during a poll is kept: the poll after it runs at once, not 30 s later (4.364466ms)
+✔ settle fails a test whose spawned work never finishes; it lets go only of a nextCommand subscription (2001.91986ms)
+✔ ctrl-alt-f / Inbox: the controller toggles In flight, with the top bar hidden too (it is the shown copy) (3.37878ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2033.16569
+=== node ./test_mods_boot.mjs
+✔ every mod folder is found (0.631218ms)
+(node:1271326) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ mods/copy-mode boots at app start: init, its startup tasks and its renders throw nothing (33.194554ms)
+✔ mods/diffd boots at app start: init, its startup tasks and its renders throw nothing (9.942218ms)
+✔ mods/diffd-control boots at app start: init, its startup tasks and its renders throw nothing (4.953044ms)
+✔ mods/dirs boots at app start: init, its startup tasks and its renders throw nothing (1.696344ms)
+✔ mods/git-status boots at app start: init, its startup tasks and its renders throw nothing (2.296672ms)
+✔ mods/goals boots at app start: init, its startup tasks and its renders throw nothing (1.699935ms)
+✔ mods/inflight boots at app start: init, its startup tasks and its renders throw nothing (3.727178ms)
+✔ mods/inflight-control boots at app start: init, its startup tasks and its renders throw nothing (2.244893ms)
+✔ mods/jump-history boots at app start: init, its startup tasks and its renders throw nothing (1.386795ms)
+✔ mods/pane-wolf boots at app start: init, its startup tasks and its renders throw nothing (1.024736ms)
+✔ mods/picker-wolf boots at app start: init, its startup tasks and its renders throw nothing (2.581462ms)
+✔ mods/prefix boots at app start: init, its startup tasks and its renders throw nothing (1.976863ms)
+✔ mods/session-bar boots at app start: init, its startup tasks and its renders throw nothing (2.656382ms)
+✔ mods/spaces-wolf boots at app start: init, its startup tasks and its renders throw nothing (17.815413ms)
+✔ mods/tabs-wolf boots at app start: init, its startup tasks and its renders throw nothing (1.802874ms)
+✔ mods/usage boots at app start: init, its startup tasks and its renders throw nothing (1.470735ms)
+✔ mods/worktree-extras boots at app start: init, its startup tasks and its renders throw nothing (2.931551ms)
+✔ overrides/toast boots at app start: init, its startup tasks and its renders throw nothing (0.923048ms)
+✔ gate: a task that throws after two sleeps fails, also with the host stalled between them (452.162392ms)
+✔ gate: late failures inside the boot window fail (timer.every on its third tick, timer.after at 20 s) (123.049226ms)
+✔ gate: an unhandled rejection and a rejected task fail (2.322563ms)
+✔ gate: a startup that never settles fails; pollers and waits for commands are fine (31.514589ms)
+✔ gate: globals the real sandbox lacks fail as they would in the app (7.785725ms)
+✔ gate: the sandbox surface is SURFACE, member for member (t1p6's parity cases) (4.368436ms)
+✔ gate: a mod is strict module code: a top-level write to a frozen prototype fails at load (1.209846ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 723.329504
+=== node ./test_mods_perf.mjs
+(node:1271472) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a busy app (~100 agents, 20 spaces, 300 worktrees): every turn and render stays in its budget, nothing fails (185.101527ms)
+ℹ size 801: 94 agents, 133 terminals, 127 panes, 20 spaces, 300 worktrees
+spaces-wolf host reply           x158   max    17471 ops     5.0 ms cpu
+spaces-wolf sleep                x6     max    17064 ops    10.5 ms cpu
+spaces-wolf render               x6     max     3892 ops    10.2 ms cpu
+diffd-control host reply         x25    max     1459 ops    18.9 ms cpu
+spaces-wolf timer.every          x122   max     1204 ops     2.0 ms cpu
+diffd-control init               x1     max     1155 ops     2.6 ms cpu
+diffd-control timer.every        x20    max      772 ops     1.5 ms cpu
+tabs-wolf render                 x1     max      531 ops     1.8 ms cpu
+spaces-wolf init                 x1     max      145 ops     1.4 ms cpu
+tabs-wolf init                   x1     max        0 ops     0.1 ms cpu
+diffd-control render             x24    max        0 ops     1.0 ms cpu
+✔ twice the app at most about doubles the worst turn and render (nothing quadratic) (157.170626ms)
+ℹ turn: spaces-wolf host reply 17471 -> spaces-wolf host reply 33854 (x1.94; the app x2.00)
+ℹ render: spaces-wolf render 3892 -> spaces-wolf render 9458 (x2.43; the app x2.00)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 346.045932
+=== node ./test_new_worktree.mjs
+(node:1271541) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the name: the folder and wolf/<name>; a typed branch prefix is dropped; git-hostile names refused (1.120206ms)
+✔ failure: the step from the exit code, the reason from the last line said (0.128939ms)
+✔ the script: wolf/<name> at ~/.herdr/worktrees/<repo>/<name> from herdr-worktree-base; an existing branch as it is; failures by step (104.686605ms)
+✔ C-a C asks for a name over the top bar, for the focused space's repo on its machine; a space in no repo says so in the bar (1.217456ms)
+✔ the prompt: a bad name says why and stays; Enter hands the name to the always-shown copy and closes (0.774708ms)
+✔ create: the worktree on the space's machine, then a space on it, selected; nothing left in the bar (0.476628ms)
+✔ a failure stays in the bar with its step and reason; the retry starts again from that step (0.913837ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 143.43964
+=== node ./test_prefix.mjs
+(node:1271822) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ C-a c is Herdr's own tab.new in the wolf layout too: a plain tab in the focused space's folder (item 57) (5.578412ms)
+✔ C-a c in a layout without the bar stays tab.new; other keys are unchanged (0.347029ms)
+✔ C-a n / p / 1..9 walk the strip through the bar in the wolf layout (8.553462ms)
+✔ with no tabs-wolf shown (Herdr's main layout, a hidden bar) n / p / 1..9 stay Herdr's tab commands (F2) (0.748808ms)
+✔ C-a n goes to the bar only when a copy of it is shown: hidden, hidden ancestor, other stack child keep tab.next (a command to an unshown copy does nothing) (0.784987ms)
+✔ C-a C (shift+c) asks for a new worktree of the focused space's repo (worktree-extras), in any layout, and the prefix closes (item 57) (0.320569ms)
+✔ C-a , ^ $ rename through the shown bar (the focused strip tab); without it Herdr's tab.rename (0.096019ms)
+✔ throughBar / shownMod (0.14488ms)
+✔ wolf tab keys go to the always-shown router copy, which walks the strip through the bar when it is shown (1.976244ms)
+✔ with the tabs block hidden (layout.hide {id: "tabs"}) the same keys run Herdr's own tab commands, never nothing (0.625578ms)
+✔ the router copy is one 1px status-row block; the popup copy ignores commands and draws as before (0.491228ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24.524962
+=== node ./test_spaces_wolf.mjs
+✔ each computer has one Deacon and its own projects; same names never merge (5.486532ms)
+✔ canonical Deacon is the oldest labelled one, then address; extras stay under Other agents (1.788664ms)
+✔ unlabelled fallback Deacon per machine; explicit roles win; workers never promoted to PM (0.653558ms)
+✔ worktrees: linked checkouts join their repo project, unopened ones listed once, label reuse brings no foreign worktrees (0.783877ms)
+✔ several labelled projects on one repo: one unopened list, unlabelled main checkout joins the repo-named one (0.818098ms)
+✔ unlabelled server sessions: repeated spaces of one repo become one project; other repos stay apart (0.529429ms)
+✔ repeated spaces on one checkout are one worktree row with every agent (0.876847ms)
+✔ a worker tab in its own worktree inside the PM space nests under that worktree, which is not unopened (0.843047ms)
+✔ a sub-agent in another checkout than its parent sits under its own checkout, focused exactly, once (0.640138ms)
+✔ focus moving to a hidden agent unfolds its way once; a later fold stays until focus moves (3.543228ms)
+✔ agent parentage: labels.parent wins, parent=PM is top level, loops do not hide agents (0.479088ms)
+✔ malformed parents: self, unknown, other computer, label typo never drop or misplace agents (0.582688ms)
+✔ a parent cycle longer than any fixed limit keeps every agent (1.351676ms)
+✔ projects start folded; opening one persists and shows its children; the picker shows one computer at a time (1.131606ms)
+✔ compact rail shows only the shown computer: its Deacon and its spaces (1.158196ms)
+✔ clicks: project focuses its PM, space selects, agent focuses, worktree opens once on its machine (0.544649ms)
+✔ opening a worktree again finds the space just made there before its git is known (0.282759ms)
+✔ Start Deacon: explicit, once, through the app on that computer, labelled when claude runs (4.057527ms)
+✔ Start Deacon: a kept shell is not a deacon; retry reuses its space; plain errors (3.15055ms)
+✔ Start Deacon recovers a deacon that has not reported yet, or whose claude ended (0.753627ms)
+✔ Start Deacon: a label failure says so plainly and never launches twice (1.082557ms)
+✔ New project buttons: in each header, route to that deacon or start one; the Fleet + follows focus (10.972505ms)
+✔ New project asks that computer's Deacon in plain words, once at a time (0.566959ms)
+✔ more than 30 unopened worktrees expand instead of hiding (0.497839ms)
+✔ git worktree porcelain parsing skips bare and prunable (0.274179ms)
+✔ the sidebar renders one computer; the picker counts agents and who waits on you per computer (1.812305ms)
+✔ deacon shortcut stays on the focused computer (0.776447ms)
+✔ shared-space projects use explicit labels, parent inheritance, and only unambiguous space fallback (0.231699ms)
+✔ PMs sharing one physical space retain their own agents, Git, tally, focus and catalog (1.229046ms)
+✔ projects sharing the same space and checkout have independent row and fold keys (0.372209ms)
+✔ virtual shared and aggregate rows have no native space menu or drag action; exclusive rows keep it (1.651004ms)
+✔ space menu scope is rechecked if a raw shell joins after render, including remote space ids (0.311169ms)
+✔ physical drag rechecks both source and destination whole-space scope on release (0.486358ms)
+✔ single computer: focus on another computer shows it; a pick holds until focus moves again (0.737358ms)
+✔ no More: PMs under their repo, a stray checkout in its repo's list, unopened worktrees per repo, Outside git at the foot (1.531265ms)
+✔ Needs you lists only agents whose status is blocked on this computer, deacon first; click opens that chat (0.465769ms)
+✔ header + Project and shell buttons act on the shown computer, not the focused one (1.436625ms)
+✔ the same repo path on two computers folds independently (0.509178ms)
+✔ no tooltips anywhere in the Fleet, and the deacon card has no message box (1.104597ms)
+✔ first render shows PM rows only; opening a PM shows its workers; startup focus opens nothing, later focus does (1.025867ms)
+✔ a repo without a PM still gets its header; its project, where agents work, shows dimmed with no made-up PM (0.334289ms)
+✔ a PM and worker labelled with a project inside the deacon space belong to that project, not the deacon (0.316539ms)
+✔ PM row focuses the exact PM pane in a tab it shares with a worker; worker rows focus their agent (0.349149ms)
+✔ pane header roles: shared once per change as PM · t67, worker · task, Deacon · t1 (0.623988ms)
+✔ pane-wolf header shows the role badge for its terminal, and nothing without one (1.429355ms)
+✔ a labelled PM outside git (phone, ~/Config) is a top-level PM row; unlabelled non-git is in Outside git at the foot (0.616308ms)
+✔ space colours are never pruned: empty and partial spaces() snapshots keep every entry (1.659885ms)
+✔ picking a computer focuses its canonical deacon pane exactly; no deacon there focuses and starts nothing (1.256427ms)
+✔ the pick holds after its own deacon focus is seen, and a stale focus elsewhere does not undo it (0.472229ms)
+✔ picking an offline computer shows it but never focuses its cached deacon (0.480588ms)
+✔ strip: a PM or any of its workers gives the PM first, then workers by parent across spaces, live only (0.841387ms)
+✔ strip items say what the sidebar rows say: ↑ unmerged (once per checkout), sub-agents, since when blocked (0.969367ms)
+✔ the strip and the sidebar agree on ↑ for a nested agent in its own worktree (the reviewer's case) (0.629198ms)
+✔ strip: the deacon gives itself and its own tabs, never the PMs; remote stays remote (0.286419ms)
+✔ strip: no role context gives null (physical tabs): shells, unlabelled, a project with no labelled PM, unknown focus (0.384178ms)
+✔ strip is shared as fleet.strip for what is focused, written only when it changes (1.795164ms)
+✔ a mod pane focused in the same tab keeps that tab's strip, held for it; another tab or a terminal ends it (1.131476ms)
+✔ the host's real mod-pane snapshot (agent still set) keeps the held strip; the agent field never decides a mod pane's scope (0.993477ms)
+✔ heldFocus: only a mod pane, only in the last terminal's tab (0.130739ms)
+✔ moving between mod panes recomputes the strip (the timer keys mod panes by pane) (2.111754ms)
+✔ fleet.attention: every blocked agent, every computer, in the Fleet's order, whatever is focused; the bar filters (F3) (1.288856ms)
+✔ attentionList: blocked only, in order (unknown last), with panes (0.169499ms)
+✔ the narrow (compact) Fleet still keeps fleet.strip current; a strip left from before a start is cleared (0.889357ms)
+✔ with the sidebar hidden (no render), a focus change still brings the right strip, via the existing timer; no change, no recompute (2.042404ms)
+✔ the Fleet answers a bar request once, tagged with it; a new bar instance gets a fresh answer; steady state does not recompute (1.954754ms)
+✔ Start Deacon starts in $HOME/.herdr/deacon on that computer, made there first; reuse of a deacon space gets it too (3.01977ms)
+✔ Start Deacon: no folder, no start; odd answers are refused; double click and offline start nothing extra (2.911941ms)
+✔ Start Deacon with a deacon already running there focuses it: no folder look, no start, its folder untouched (0.388419ms)
+✔ Start Deacon rechecks after the folder lookup: a deacon that arrived meanwhile is focused, nothing new starts (0.596408ms)
+✔ Start Deacon rechecks after the folder lookup: offline, a not-yet-reporting deacon, a kept shell, another start (2.192953ms)
+✔ Start Deacon never overwrites a newer start's guard: late folder failure, offline, or late success (4.043467ms)
+✔ pane ownership: a moved PM and a moved plain shell count only in their actual new space, not their stale labels (0.367119ms)
+✔ pane ownership: a terminal with no pane still goes by its labels (sub-agents, parked) (0.312919ms)
+✔ pane ownership: ambiguous or cross-machine panes place nothing and give no whole-space actions (0.314459ms)
+✔ pane ownership: deaconTerminals goes by the live pane, labels only without one (0.161689ms)
+✔ pane ownership: a tab id two spaces share, or one terminal in two tabs of one space, is ambiguous; every touched space is unsure (0.306149ms)
+✔ pane ownership: an unresolved pane tab blocks whole-space actions on its whole computer, not elsewhere (0.766288ms)
+✔ pane ownership: a pane whose terminal is missing from the inventory makes its space unsure; finished terminals as before (0.378198ms)
+✔ pane ownership: a status terminal with ambiguous panes does not borrow its parent's space (0.343109ms)
+✔ core build skew marker stays muted and reserves its width for all states (0.210269ms)
+✔ fixed sizes: count columns, PM counts, the Deacon card and the idle row keep their size whatever the values (0.635308ms)
+✔ PM order is the sidebar order of labelled PMs on the shown computer only (0.540778ms)
+✔ ctrl-alt-j/k step through the drawn rows (deacon, PMs, workers, unlabelled leads), wrap at the ends, and focus the exact pane (8.425713ms)
+✔ a terminal not drawn starts from the ends; a folded project's rows are skipped; focus on a folded agent unfolds its way first (4.673395ms)
+✔ the shown computer decides: a picked computer cycles its own PMs, never another one's (1.439626ms)
+✔ focus left in a row folded after it (no focus move, so no unfold): steps go from its innermost drawn ancestor (2.003863ms)
+✔ one drawn row refocuses itself; labels decide nothing, the rows do (2.078243ms)
+✔ other spaces-wolf commands are unchanged and the keys bind only ctrl-alt-j/k (3.17411ms)
+✔ held keys: presses before focus moves chain from the last row sent to, for a second only (3.410569ms)
+✔ deacon scope: the deacon, then its scratch agents and shells; PM tabs in its space stay out (1.216786ms)
+✔ PM scope: the PM, then its scratch agent and shell, then its workers; background runs and others stay out (0.880718ms)
+✔ the shared strip carries the scope for the focused shell too (computeCrew passes the shells in) (1.930174ms)
+✔ sidebar: deacon scratch tabs sit under the deacon, the PM is a top-level row, never a deacon kid (0.774008ms)
+✔ ownership is one rule for agents and shells: roles, stale parents and conflicting labels (2.772801ms)
+✔ boxy and mono: square rows, 2px floating controls, the terminals' font (2.645902ms)
+✔ every row the sidebar draws takes a click through the one pointer path, and each does its one thing (11.552663ms)
+✔ no More: an idle no-PM project folds into its repo's "N idle"; the repo lists its unopened worktrees; a worktree opens as the worktree tool does (1.569725ms)
+✔ no More: a no-PM project where an agent works shows dimmed in its repo, a stray checkout sits in the repo's list; Other agents at the foot (1.066037ms)
+✔ per-PM counts: workers under the PM and commits ahead show on PM rows, folded or open, and total on a folded repo (1.166956ms)
+✔ a project with no PM and nothing open opens and folds on click (0.460928ms)
+✔ offline worktree: the computer menu, nothing launched; press look, and a release elsewhere runs nothing (1.428335ms)
+✔ the sidebar and its list are named, so rows built before them never rename them (1.285906ms)
+✔ repo headers: PMs under the repo of their checkout, else their worktree path, else "Other" (never their label); counts; PM order follows (0.841317ms)
+✔ a repo header folds on click (no focus), remembered; focus moving into it opens it again (1.416535ms)
+✔ repoGroup: what fleet() chose, else the git repo by name, else ~/.herdr/worktrees/<repo>/, else none (never the label) (0.219159ms)
+✔ remoteName: a remote URL names its repo, whatever the clone folder is called (0.284529ms)
+✔ a place's git look: its remote names the repo (a clone in another folder too); no remote: the repo's folder (0.439829ms)
+✔ a PM outside git: under the repo most of its agents work in (not its first worker's main checkout); its unopened list is that repo's (0.952986ms)
+✔ the vote is by repo name across clones: two home-manager-conf clones (2 + 2 agents) beat HeliBoard (3) (0.832717ms)
+✔ a repo= label alone (nothing else changed) repaints the list (1.009467ms)
+✔ a repo= label wins: on the PM, else on any of its agents; a URL label is named like a remote (2.037203ms)
+✔ "Other": PMs whose work is in no repo, one header after every repo's, folds and is remembered; a repo named Other stays its own (2.286773ms)
+✔ drag: press, move and release before the next paint still reorders (0.768007ms)
+✔ drag: with paints between, across computers, onto a shared row, released elsewhere, carried out (1.695104ms)
+✔ worker ahead/behind: a worker in the PM's own checkout and a nested sub-agent show their checkout's numbers (0.644018ms)
+✔ two git repos sharing a name share a header and keep both unopened-worktree lists, each once (0.521838ms)
+✔ name fallback: a no-PM project without git joins its repo whatever the order, also a repo known only from a stray checkout (0.906817ms)
+✔ parseTidy: a fresh sweep is read; stale, missing or garbled says nothing; archived stays (0.798047ms)
+✔ worktreeFold folds only on what was read, and read lately (#17 F1, F2) (0.245109ms)
+✔ herdr-tidy folds: merged or clean worktrees (open or not) and archived ones fold per repo; dirty and unknown stay (1.327006ms)
+✔ archive: a worker or an unopened worktree offers it while hovered or selected; a click runs herdr-tidy there and shows its answer; PMs never offer it (1.550506ms)
+✔ title cells: graphemes, wide and emoji count two, marks and joiners nothing; the same without Intl.Segmenter (0.708738ms)
+✔ sidebar title: the counts degrade with the width and the name's cells (ASCII, CJK, emoji); the short state is never dropped, the name ellipsizes first (47.237959ms)
+✔ sidebar title: the name shrinks and ellipsizes (no estimated width), the counts keep their picked width and clip; the budget is the drawn row's (2.726291ms)
+✔ sidebarFor: the rail under 600 px, 300 again from 680, nothing in between, never another size (0.15182ms)
+✔ fitSidebar: only this run's measured width decides; one layout.resize per size; a kept rail is undone by a wide first measurement (0.700028ms)
+✔ a fresh start with no model yet: no spawned task rejects; the tidy look still runs (20.537704ms)
+✔ strip tab names (item 50): the PM is "lead" in its project; others: Wolf's name, else the task, else its number (item 55); never a raw id (0.597378ms)
+✔ reviewer: an explicit user name retains its punctuation and symbol-only names (0.095139ms)
+✔ reviewer: an actual task word beginning with t stays a task (0.05259ms)
+✔ strip tab names: Wolf's name only trimmed and capped; task words that start with t stay tasks (0.112119ms)
+ℹ tests 131
+ℹ suites 0
+ℹ pass 131
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 256.798548
+=== node ./test_tabs_wolf.mjs
+✔ the shipped bar: the focused space's own tabs, whatever is focused; no scope chip, no strip (item 57) (3.37236ms)
+✔ key commands through the bar are Herdr's own tab commands (C-a c, C-a ,, next/prev, select-N) (1.677034ms)
+✔ a tiny PM badge on a tab holding a role=pm terminal (the Fleet's fleet.roles), and on no other (0.518688ms)
+✔ every control in the bar shows its press until the release, wherever it lands, or the pointer leaves (item 33) (5.751862ms)
+✔ a tab dragged sideways out of the bar and back still moves: leaving ends only a control's press (0.440819ms)
+✔ item 45: a review waiting on an agent (diffd.waiting) is a chip at the end of the tab holding its pane; a click opens it (0.447859ms)
+✔ the "! n need you" chip: blocked agents the bar doesn't show, from the Fleet; a click goes to the first (0.527279ms)
+✔ the chip counts what the bar doesn't show: agents outside the focused space's own tabs (F3) (0.348999ms)
+✔ repeated clicks go round every space with someone waiting, in the Fleet's order, never back and forth (F4) (0.599268ms)
+✔ In flight: an Inbox button beside Files/Changes when the layout has it, counting new items; it opens and closes the panel (0.648478ms)
+✔ In flight: ctrl-alt-f goes to the always-shown controller, never the bar (it may be hidden) (0.474748ms)
+✔ In flight: the panel choice is remembered per space like Files/Changes (0.168339ms)
+✔ no tooltips (0.184759ms)
+✔ boxy and mono: square tabs, 2px controls, the terminals' font (0.455239ms)
+✔ window width: exactly the bar (measured px / zoom) plus the root row's fixed siblings and dividers; nothing when that can't be exact (0.773107ms)
+✔ the bar shares the window width it measures, tagged with its own request (0.340159ms)
+✔ C-a C: a new space whose tab "pm" runs claude through aswap with its own session and the brief; labelled under the local deacon, kept, focused (1.084236ms)
+✔ C-a C keeps a PM the window did not keep (hc keep, read back) (0.554038ms)
+✔ C-a C with no deacon on this computer refuses clearly: nothing started, the bar says why (0.565898ms)
+✔ C-a C retry while the PM still is not in the window: "still starting" for the same session, never a second PM; then it is labelled (1.016757ms)
+✔ C-a C label failure: the step and the cause; a retry labels the same terminal (3.524228ms)
+✔ C-a C left by a restart past 60 s with a session: the loading bar continues that session, never a new one; a busy record holds every press (0.674398ms)
+✔ C-a C across a restart: a saved in-flight session is resumed at load (labelled, no second PM); one without a session is dropped; a failure stays (0.412578ms)
+✔ C-a C: only a definite failure (its terminal ended) offers Start over, which makes a new PM; × forgets a session (2.502532ms)
+✔ C-a C arrives as the bar's "new-pm" command (0.841528ms)
+✔ C-a C helpers: the local deacon, a v4 session id, the argv (0.21563ms)
+✔ reviewer: a retry with the first PM still absent must not create another space (0.348138ms)
+✔ reviewer: a slow in-flight label does not expire into a second PM (0.314709ms)
+✔ reviewer: initializing a second bar must preserve an in-flight PM operation (0.298409ms)
+✔ reviewer: replacing a deacon lookup in the same clock millisecond has one owner (0.259509ms)
+✔ reviewer: an old discovery continuation cannot focus after handoff and forget (0.588268ms)
+✔ the new-worktree flow reports in the bar: a spinner while busy, a failure that stays with its step and reason; click retries, × dismisses (0.470978ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37.184131
+=== node ./test_wolf_requirements.mjs
+(node:1272277) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 35-repo-grouping: PMs sit under a header per repo, the header counts its projects and folds (8.144654ms)
+✔ 35-repo-grouping: headers group by repo name (as on the phone); two repos with one name share a header, each keeps its own unopened list (1.304506ms)
+✔ 49a-repo-of-the-work: each project sits under the repo its work lives in, never under its PM's folder or its own name; no repo: "Other" (3.12102ms)
+✔ 49a-repo-of-the-work: a repo= label (the deacon sets it) wins over everything (1.034937ms)
+✔ 36-no-more-section: no "More" row in any normal fixture; projects without a PM sit under their repo (15.217362ms)
+✔ 36-per-pm-counts: a PM row shows its workers (≡, without the PM), its unmerged commits, and ! ~ ✓ over all its agents (the PM too) (0.914438ms)
+✔ 36-title-total-agents (deacon 2026-11-14): at the default 300 px sidebar the title row shows the machine's total agent count (1.010117ms)
+✔ 36b-ctrl-a-c-scope: C-a c opens a plain tab in the focused space (Herdr's tab.new), with a PM focused too: no scratch claude, no scope (4.168057ms)
+✔ 57-ctrl-a-shift-c-new-worktree: C-a C asks a name, makes wolf/<name> in ~/.herdr/worktrees/<repo>/<name> of the focused space's repo, and puts Wolf in a new space on it (1.445106ms)
+✔ 57-ctrl-a-shift-c-new-worktree: a failure stays in the bar with what went wrong until a retry works or it is dismissed, never a toast (1.876614ms)
+✔ 48-new-pm (Wolf changed the ask: item 57, the key went to worktrees): In flight's New PM starts a new Claude Code project manager in its own space, puts Wolf in it, and briefs it to introduce itself to this computer's deacon (3.786238ms)
+✔ 48-new-pm (Wolf changed the ask: item 57): with no deacon on this computer New PM refuses, says so in the bar, and starts nothing (0.844457ms)
+✔ sidebar-desktop-width-300 (deacon 2026-11-14, Wolf's Herdr UI default): 300 px and no gap from a 968 px window up, the rail at phone width (1.615715ms)
+✔ 33-every-row-clickable: every row the sidebar draws takes a click and does something (24.148413ms)
+✔ 33-every-row-clickable: every control in the top bar takes a click, shows a hover and a press, and does something (4.531105ms)
+✔ 3-top-bar-scopes: the bar shows the focused space's own tabs, whoever is focused; a PM's tab carries a tiny PM badge, and no other does (3.790507ms)
+✔ 50-lead-and-rename-tabs: no "lead"; renaming a tab is Herdr's own (C-a , and a double click), never a label on the terminal (1.881604ms)
+✔ 57-tab-bar: Herdr's own tab bar for the focused space, with the need-you chip, Inbox and a PM badge; + is the new-tab menu; tab keys are Herdr's (1.561605ms)
+✔ 38-comment-box-anchored: the comment box opens right under the commented line, square, context then field then actions; ctrl-enter sends, esc cancels (9.34384ms)
+✔ 39-file-tree-right: the review's files tree is on the right of the diff (2.429043ms)
+✔ 40-vim-navigation: diffd's own keys move the line cursor (j k 5j gg G ]c [c ]f ]t ctrl-d), and only keys diffd binds (6.663499ms)
+✔ 42-no-chat-in-native-diffd: the native pane has no chat, only line comments (3.706068ms)
+✔ 43-side-by-side-default: side by side unless switched (s, or the header control; remembered) or the diff is too narrow (measured) (2.225443ms)
+✔ 44-tree-vim-keys: ctrl-l to the files tree (shown), j/k gg/G move, l/enter open, h folds, / filters; ctrl-h back to the diff (6.094521ms)
+✔ 12-jump-nav: alt-o goes back and alt-i forward through the terminals Wolf focused, like Vim's jumplist (1.116707ms)
+✔ 37-drag-title-to-top-bar: the top bar is the drop target, and a popped-out pane stays under its PM as its own tab (1.908104ms)
+✔ 53-ctrl-j-walks-visible-rows: ctrl-alt-j / ctrl-alt-k step through exactly the rows the sidebar draws, in its order, wrapping only at the ends (19.210258ms)
+✔ 45-agent-shows-diffd: an agent opens the review beside its terminal without taking Wolf's focus; while he types there it is only a badge, opened by alt-r; close removes it; never a toast (8.384273ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 148.087596
+=== node ./test_worktree_extras.mjs
+(node:1272417) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ .remove runs herdr-tidy archive on the worktree, on its machine, and nothing else destructive (1.415626ms)
+✔ .remove shows a refusal or a kept worktree as herdr-tidy said it (0.440339ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6.574099
+=== python3 -I ./test_app_state.py
+test_bump_from_an_older_release (__main__.AppState.test_bump_from_an_older_release) ... ok
+test_extra_window_homes_follow_the_bump (__main__.AppState.test_extra_window_homes_follow_the_bump) ... ok
+test_fresh_home_is_welcomed_and_quiet (__main__.AppState.test_fresh_home_is_welcomed_and_quiet) ... ok
+test_idempotent (__main__.AppState.test_idempotent) ... ok
+test_missing_notes_on_a_welcomed_home (__main__.AppState.test_missing_notes_on_a_welcomed_home) ... ok
+test_no_windows_dir (__main__.AppState.test_no_windows_dir) ... ok
+test_non_object_files_are_moved_aside (__main__.AppState.test_non_object_files_are_moved_aside) ... ok
+test_one_bad_home_does_not_stop_the_rest (__main__.AppState.test_one_bad_home_does_not_stop_the_rest) ... ok
+test_the_version_must_be_the_binarys (__main__.AppState.test_the_version_must_be_the_binarys) ... ok
+test_unreadable_notes_are_replaced_with_readable_ones (__main__.AppState.test_unreadable_notes_are_replaced_with_readable_ones) ... ok
+test_unwritable_main_home_still_does_the_windows (__main__.AppState.test_unwritable_main_home_still_does_the_windows) ... ok
+test_windows_path_is_a_file (__main__.AppState.test_windows_path_is_a_file) ... ok
+test_feed_offers_nothing_newer (__main__.PinnedFeed.test_feed_offers_nothing_newer) ... skipped 'FEED_APP_LATEST unset'
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.409s
+
+OK (skipped=1)
+=== python3 -I ./test_check_installed_mods.py
+...prefix: module `./model.js` resolves outside the application directory `/tmp/tmp50i18a1i/home/mods/prefix` (real path /tmp/tmp50i18a1i/store/prefix/model.js)
+check-installed-mods: 1 import(s) herdr-app would refuse, in 1 mods
+....check-installed-mods: no mods (folders with main.js) in /tmp/tmpixkds00r/home/mods
+..
+----------------------------------------------------------------------
+Ran 9 tests in 0.020s
+
+OK
+check-installed-mods: 1 mods load their imports as installed
+check-installed-mods: 1 mods load their imports as installed
+check-installed-mods: 1 mods load their imports as installed
+check-installed-mods: 1 mods load their imports as installed
+=== python3 -I ./test_diffd_bridge.py
+./nix/store/ixjy24rplwjjaqw3h2xhvmiijq1s7p09-python3-3.14.8-env/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 404: 'not found'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+...........................
+----------------------------------------------------------------------
+Ran 28 tests in 0.982s
+
+OK
+=== python3 -I ./test_run_tests.py
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.575s
+
+OK
+=== python3 -I ./test_sync_window_homes.py
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.240s
+
+OK
+all app checks passed: tsc over 15 sources, 14 node and 5 python test files

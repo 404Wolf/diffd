@@ -1,0 +1,14 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+locator.innerText: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for getByLabel('Language servers')[22m
+
+    at /home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/warm-lsp.mjs:1:628 {
+  log: [ "  - waiting for getByLabel('Language servers')" ],
+  name: 'TimeoutError'
+}
+
+Node.js v24.21.0

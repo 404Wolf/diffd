@@ -1,0 +1,43 @@
+{
+  "head": "21bb9bc7fcf306bb709c3a11def0c98b6d740730",
+  "available_gb_at_start": 11,
+  "log": "/home/wolf/herdr-android/reviews/diffd-pr4-artifacts/21bb9bc/lane-e-t1n4-web-checks.log",
+  "checks": [
+    {
+      "name": "lint",
+      "command": [
+        "npm",
+        "--prefix",
+        "web",
+        "run",
+        "lint"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.77
+    },
+    {
+      "name": "typecheck",
+      "command": [
+        "npm",
+        "--prefix",
+        "web",
+        "run",
+        "typecheck"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.177
+    },
+    {
+      "name": "vitest",
+      "command": [
+        "npm",
+        "--prefix",
+        "web",
+        "test"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 11.554
+    }
+  ],
+  "elapsed_seconds": 17.639
+}

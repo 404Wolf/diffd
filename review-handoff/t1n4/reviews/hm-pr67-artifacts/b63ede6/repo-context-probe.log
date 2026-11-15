@@ -1,0 +1,26 @@
+{
+  "otherRepo": {
+    "spaceFolder": "/var/tmp/hm-pr67-context-vQivjq/repo-a",
+    "focusedCwd": "/var/tmp/hm-pr67-context-vQivjq/repo-a",
+    "firstPaneCwd": "/var/tmp/hm-pr67-context-vQivjq/repo-b",
+    "prompt": {
+      "space": "s",
+      "repo": "repo-a",
+      "cwd": "/var/tmp/hm-pr67-context-vQivjq/repo-a",
+      "on": null
+    }
+  },
+  "outsideRepo": {
+    "spaceFolder": "/var/tmp/hm-pr67-context-vQivjq/repo-a",
+    "focusedCwd": "/var/tmp/hm-pr67-context-vQivjq/repo-a",
+    "firstPaneCwd": "/var/tmp/hm-pr67-context-vQivjq/not-git",
+    "prompt": {
+      "space": "s",
+      "repo": "repo-a",
+      "cwd": "/var/tmp/hm-pr67-context-vQivjq/repo-a",
+      "on": null
+    }
+  }
+}
+(node:1486162) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

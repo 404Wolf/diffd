@@ -1,0 +1,12 @@
+--- old patch payload
++++ new patch payload
+@@ -14,8 +14,7 @@
+ +forwarded desktop groups. Set
+ -the setting applies on the next viewer activity or detach.
+ +the setting applies on the next viewer activity, visibility change or detach.
+--    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input"];
+-+    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input", "viewer_visibility"];
+++    "viewer_visibility",
+ +        visible: !p.visibility_updates || p.visible,
+ +        visibility_updates: p.visibility_updates,
+ +        visibility_updates: p.visibility_updates,

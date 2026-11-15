@@ -1,0 +1,129 @@
+[
+  {
+    "test": "native touch code scroll",
+    "before": 0,
+    "target": "<div class=\"code ld-add\" data-side=\"new\"><span class=\"s-variable ref\">value_5</span> <span class=\"s-operator\">=</span> <span class=\"s-number\">6</span></div>",
+    "after": 64,
+    "events": [
+      {
+        "type": "pointerdown",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 158.5
+      },
+      {
+        "type": "touchstart",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 158.5
+      },
+      {
+        "type": "pointermove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 153.5
+      },
+      {
+        "type": "pointermove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 148.5
+      },
+      {
+        "type": "pointermove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 143.5
+      },
+      {
+        "type": "pointermove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 138.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 138.5
+      },
+      {
+        "type": "pointercancel",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 0
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 133.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 128.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 123.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 118.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 113.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 108.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 103.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 98.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 93.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 88.5
+      },
+      {
+        "type": "touchmove",
+        "target": "code ld-add",
+        "defaultPrevented": false,
+        "y": 83.5
+      }
+    ],
+    "composers": 0
+  },
+  {
+    "test": "pen pointer drag",
+    "range": "long.py · new L3–6"
+  }
+]

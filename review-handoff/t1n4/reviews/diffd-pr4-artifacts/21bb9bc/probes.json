@@ -1,0 +1,605 @@
+[
+  {
+    "test": "draft extension/reload",
+    "original": "long.py · new L8",
+    "extended": "long.py · new L8–12",
+    "bodyAfterExtension": "Preserve this typed draft",
+    "storage": {
+      "diffd:session:pnn5fb5yqs": "{\"visibility\":{},\"collapsed\":{},\"panes\":[{\"file\":null,\"reading\":{\"path\":\"long.py\",\"row\":0,\"offset\":33,\"side\":\"new\"},\"cursor\":{\"path\":\"long.py\",\"row\":11,\"offset\":0,\"side\":\"new\"}}],\"focused\":0,\"range\":null,\"draft\":{\"composer\":{\"kind\":\"new\",\"anchor\":{\"path\":\"long.py\",\"side\":\"new\",\"start\":8,\"end\":12,\"text\":\"value_8 = 9\\nvalue_9 = 10\\nvalue_10 = 11\\nvalue_11 = 12\\nvalue_12 = 13\",\"range\":null},\"quote\":\"value_8 = 9\\nvalue_9 = 10\\nvalue_10 = 11\\nvalue_11 = 12\\nvalue_12 = 13\",\"from\":8},\"text\":\"Preserve this typed draft\"}}"
+    },
+    "rangeAfterReload": "long.py · new L8–12",
+    "bodyAfterReload": "Preserve this typed draft"
+  },
+  {
+    "test": "range endpoint correction",
+    "first": "long.py · new L10–20",
+    "crossedStart": "long.py · new L5–10",
+    "clearRangeButtons": 1
+  },
+  {
+    "test": "edge scroll",
+    "direction": "down",
+    "before": {
+      "scroll": 0,
+      "cursor": "NORMAL\nlong.py:1 new\nhunk 1/1\njumps 0/0\nrev 1\npyright",
+      "visual": []
+    },
+    "held": {
+      "scroll": 660,
+      "cursor": "VISUAL\nlong.py:87 new\nhunk 1/1\njumps 0/0\nrev 1\npyright",
+      "visual": [
+        {
+          "n": "20",
+          "y": -255
+        },
+        {
+          "n": "21",
+          "y": -238
+        },
+        {
+          "n": "22",
+          "y": -221
+        },
+        {
+          "n": "23",
+          "y": -204
+        },
+        {
+          "n": "24",
+          "y": -187
+        },
+        {
+          "n": "25",
+          "y": -170
+        },
+        {
+          "n": "26",
+          "y": -153
+        },
+        {
+          "n": "27",
+          "y": -136
+        },
+        {
+          "n": "28",
+          "y": -119
+        },
+        {
+          "n": "29",
+          "y": -102
+        },
+        {
+          "n": "30",
+          "y": -85
+        },
+        {
+          "n": "31",
+          "y": -68
+        },
+        {
+          "n": "32",
+          "y": -51
+        },
+        {
+          "n": "33",
+          "y": -34
+        },
+        {
+          "n": "34",
+          "y": -17
+        },
+        {
+          "n": "35",
+          "y": 0
+        },
+        {
+          "n": "36",
+          "y": 17
+        },
+        {
+          "n": "37",
+          "y": 34
+        },
+        {
+          "n": "38",
+          "y": 51
+        },
+        {
+          "n": "39",
+          "y": 68
+        },
+        {
+          "n": "40",
+          "y": 85
+        },
+        {
+          "n": "41",
+          "y": 102
+        },
+        {
+          "n": "42",
+          "y": 119
+        },
+        {
+          "n": "43",
+          "y": 136
+        },
+        {
+          "n": "44",
+          "y": 153
+        },
+        {
+          "n": "45",
+          "y": 170
+        },
+        {
+          "n": "46",
+          "y": 187
+        },
+        {
+          "n": "47",
+          "y": 204
+        },
+        {
+          "n": "48",
+          "y": 221
+        },
+        {
+          "n": "49",
+          "y": 238
+        },
+        {
+          "n": "50",
+          "y": 255
+        },
+        {
+          "n": "51",
+          "y": 272
+        },
+        {
+          "n": "52",
+          "y": 289
+        },
+        {
+          "n": "53",
+          "y": 306
+        },
+        {
+          "n": "54",
+          "y": 323
+        },
+        {
+          "n": "55",
+          "y": 340
+        },
+        {
+          "n": "56",
+          "y": 357
+        },
+        {
+          "n": "57",
+          "y": 374
+        },
+        {
+          "n": "58",
+          "y": 391
+        },
+        {
+          "n": "59",
+          "y": 408
+        },
+        {
+          "n": "60",
+          "y": 425
+        },
+        {
+          "n": "61",
+          "y": 442
+        },
+        {
+          "n": "62",
+          "y": 459
+        },
+        {
+          "n": "63",
+          "y": 476
+        },
+        {
+          "n": "64",
+          "y": 493
+        },
+        {
+          "n": "65",
+          "y": 510
+        },
+        {
+          "n": "66",
+          "y": 527
+        },
+        {
+          "n": "67",
+          "y": 544
+        },
+        {
+          "n": "68",
+          "y": 561
+        },
+        {
+          "n": "69",
+          "y": 578
+        },
+        {
+          "n": "70",
+          "y": 595
+        },
+        {
+          "n": "71",
+          "y": 612
+        },
+        {
+          "n": "72",
+          "y": 629
+        },
+        {
+          "n": "73",
+          "y": 646
+        },
+        {
+          "n": "74",
+          "y": 663
+        },
+        {
+          "n": "75",
+          "y": 680
+        },
+        {
+          "n": "76",
+          "y": 697
+        },
+        {
+          "n": "77",
+          "y": 714
+        },
+        {
+          "n": "78",
+          "y": 731
+        },
+        {
+          "n": "79",
+          "y": 748
+        },
+        {
+          "n": "80",
+          "y": 765
+        },
+        {
+          "n": "81",
+          "y": 782
+        },
+        {
+          "n": "82",
+          "y": 799
+        },
+        {
+          "n": "83",
+          "y": 816
+        },
+        {
+          "n": "84",
+          "y": 833
+        },
+        {
+          "n": "85",
+          "y": 850
+        },
+        {
+          "n": "86",
+          "y": 867
+        },
+        {
+          "n": "87",
+          "y": 884
+        }
+      ]
+    },
+    "hit": "<div class=\"num new add ld-add\" data-n=\"87\" data-side=\"new\"></div>",
+    "range": "long.py · new L20–87"
+  },
+  {
+    "test": "edge scroll",
+    "direction": "up",
+    "before": {
+      "scroll": 1304,
+      "cursor": "NORMAL\nlong.py:1 new\nhunk 1/1\njumps 0/0\nrev 1\npyright",
+      "visual": []
+    },
+    "held": {
+      "scroll": 644,
+      "cursor": "VISUAL\nlong.py:38 new\nhunk 1/1\njumps 0/0\nrev 1\npyright",
+      "visual": [
+        {
+          "n": "38",
+          "y": 67
+        },
+        {
+          "n": "39",
+          "y": 84
+        },
+        {
+          "n": "40",
+          "y": 101
+        },
+        {
+          "n": "41",
+          "y": 118
+        },
+        {
+          "n": "42",
+          "y": 135
+        },
+        {
+          "n": "43",
+          "y": 152
+        },
+        {
+          "n": "44",
+          "y": 169
+        },
+        {
+          "n": "45",
+          "y": 186
+        },
+        {
+          "n": "46",
+          "y": 203
+        },
+        {
+          "n": "47",
+          "y": 220
+        },
+        {
+          "n": "48",
+          "y": 237
+        },
+        {
+          "n": "49",
+          "y": 254
+        },
+        {
+          "n": "50",
+          "y": 271
+        },
+        {
+          "n": "51",
+          "y": 288
+        },
+        {
+          "n": "52",
+          "y": 305
+        },
+        {
+          "n": "53",
+          "y": 322
+        },
+        {
+          "n": "54",
+          "y": 339
+        },
+        {
+          "n": "55",
+          "y": 356
+        },
+        {
+          "n": "56",
+          "y": 373
+        },
+        {
+          "n": "57",
+          "y": 390
+        },
+        {
+          "n": "58",
+          "y": 407
+        },
+        {
+          "n": "59",
+          "y": 424
+        },
+        {
+          "n": "60",
+          "y": 441
+        },
+        {
+          "n": "61",
+          "y": 458
+        },
+        {
+          "n": "62",
+          "y": 475
+        },
+        {
+          "n": "63",
+          "y": 492
+        },
+        {
+          "n": "64",
+          "y": 509
+        },
+        {
+          "n": "65",
+          "y": 526
+        },
+        {
+          "n": "66",
+          "y": 543
+        },
+        {
+          "n": "67",
+          "y": 560
+        },
+        {
+          "n": "68",
+          "y": 577
+        },
+        {
+          "n": "69",
+          "y": 594
+        },
+        {
+          "n": "70",
+          "y": 611
+        },
+        {
+          "n": "71",
+          "y": 628
+        },
+        {
+          "n": "72",
+          "y": 645
+        },
+        {
+          "n": "73",
+          "y": 662
+        },
+        {
+          "n": "74",
+          "y": 679
+        },
+        {
+          "n": "75",
+          "y": 696
+        },
+        {
+          "n": "76",
+          "y": 713
+        },
+        {
+          "n": "77",
+          "y": 730
+        },
+        {
+          "n": "78",
+          "y": 747
+        },
+        {
+          "n": "79",
+          "y": 764
+        },
+        {
+          "n": "80",
+          "y": 781
+        },
+        {
+          "n": "81",
+          "y": 798
+        },
+        {
+          "n": "82",
+          "y": 815
+        },
+        {
+          "n": "83",
+          "y": 832
+        },
+        {
+          "n": "84",
+          "y": 849
+        },
+        {
+          "n": "85",
+          "y": 866
+        },
+        {
+          "n": "86",
+          "y": 883
+        },
+        {
+          "n": "87",
+          "y": 900
+        },
+        {
+          "n": "88",
+          "y": 917
+        },
+        {
+          "n": "89",
+          "y": 934
+        },
+        {
+          "n": "90",
+          "y": 951
+        },
+        {
+          "n": "91",
+          "y": 968
+        },
+        {
+          "n": "92",
+          "y": 985
+        },
+        {
+          "n": "93",
+          "y": 1002
+        },
+        {
+          "n": "94",
+          "y": 1019
+        },
+        {
+          "n": "95",
+          "y": 1036
+        },
+        {
+          "n": "96",
+          "y": 1053
+        },
+        {
+          "n": "97",
+          "y": 1070
+        },
+        {
+          "n": "98",
+          "y": 1087
+        },
+        {
+          "n": "99",
+          "y": 1104
+        },
+        {
+          "n": "100",
+          "y": 1121
+        }
+      ]
+    },
+    "hit": "<div data-file-head=\"\" class=\"flex h-[26px] items-center gap-2 border-line px-2 text-xs border-b bg-panel\"><button type=\"button\" class=\"size-[18px] cursor-pointer rounded text-[9px] text-subtle hover:bg-hover hover:text-fg\" aria-label=\"Collapse long.py\">▼</button><span class=\"w-3 text-center font-mono text-[10px] font-semibold text-warn\">M</span><span class=\"min-w-0 flex-1 truncate font-mono text-xs font-medium\" title=\"long.py\" data-path=\"long.py",
+    "range": "long.py · new L37–100"
+  },
+  {
+    "test": "scroll and cancellation",
+    "css": {
+      "gutter": "none",
+      "code": "auto",
+      "buffer": "auto"
+    },
+    "before": {
+      "scroll": 0,
+      "cursor": "NORMAL\nlong.py:1 new\nhunk 1/1\njumps 0/0\nrev 1\npyright",
+      "visual": []
+    },
+    "afterCodeScroll": {
+      "scroll": 0,
+      "cursor": "NORMAL\nlong.py:1 new\nhunk 1/1\njumps 0/0\nrev 1\npyright",
+      "visual": []
+    },
+    "composerAfterCodeScroll": 0,
+    "afterCancel": {
+      "composer": 0,
+      "visual": 0
+    }
+  },
+  {
+    "test": "desktop click behavior",
+    "plain": "long.py · new L12",
+    "shift": "long.py · new L5–15"
+  }
+]

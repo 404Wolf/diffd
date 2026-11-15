@@ -1,0 +1,35 @@
+warning: use of deprecated module `std::usize`: all constants in this module replaced by associated constants on the type
+  --> vendor/tungstenite/src/protocol/mod.rs:25:5
+   |
+25 |     usize,
+   |     ^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::usize::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/tungstenite/src/protocol/mod.rs:107:43
+    |
+107 |             max_write_buffer_size: usize::MAX,
+    |                                           ^^^
+
+warning: use of deprecated constant `std::usize::MAX`: replaced by the `MAX` associated constant on this type
+   --> vendor/tungstenite/src/protocol/mod.rs:742:81
+    |
+742 |                 let message_max = self.config.max_message_size.unwrap_or(usize::MAX);
+    |                                                                                 ^^^
+
+warning: use of deprecated associated function `core::num::<impl usize>::max_value`: replaced by the `MAX` associated constant on this type
+   --> vendor/tungstenite/src/protocol/frame/mod.rs:168:55
+    |
+168 |         let max_size = max_size.unwrap_or_else(usize::max_value);
+    |                                                       ^^^^^^^^^
+
+warning: use of deprecated associated function `core::num::<impl usize>::max_value`: replaced by the `MAX` associated constant on this type
+   --> vendor/tungstenite/src/protocol/message.rs:140:57
+    |
+140 |         let max_size = size_limit.unwrap_or_else(usize::max_value);
+    |                                                         ^^^^^^^^^
+
+warning: `tungstenite` (lib) generated 5 warnings
+   Compiling diffd v0.1.0 (/home/wolf/.herdr/worktrees/diffd/review-pr1/crates/diffd)
+    Finished `release` profile [optimized] target(s) in 8.84s

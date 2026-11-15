@@ -1,0 +1,63 @@
+
+> build
+> vite build
+
+vite v8.3.1 building client environment for production...
+transforming...
+Found 5 warnings while optimizing generated CSS:
+
+Issue #1:
+[2m│     background: var(--accent);[22m
+[2m│   }[22m
+[2m│[22m   ::highlight(diag-error) {
+[2m┆[22m               [33m[2m^--[22m 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?[39m
+[2m┆[22m
+[2m│     text-decoration: underline wavy var(--del);[22m
+[2m│     text-decoration-thickness: 1px;[22m
+
+Issue #2:
+[2m│     text-underline-offset: 2px;[22m
+[2m│   }[22m
+[2m│[22m   ::highlight(diag-warning) {
+[2m┆[22m               [33m[2m^--[22m 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?[39m
+[2m┆[22m
+[2m│     text-decoration: underline wavy var(--warn);[22m
+[2m│     text-decoration-thickness: 1px;[22m
+
+Issue #3:
+[2m│     text-underline-offset: 2px;[22m
+[2m│   }[22m
+[2m│[22m   ::highlight(diag-info) {
+[2m┆[22m               [33m[2m^--[22m 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?[39m
+[2m┆[22m
+[2m│     text-decoration: underline dotted var(--accent);[22m
+[2m│     text-underline-offset: 2px;[22m
+
+Issue #4:
+[2m│     text-underline-offset: 2px;[22m
+[2m│   }[22m
+[2m│[22m   ::highlight(search) {
+[2m┆[22m               [33m[2m^--[22m 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?[39m
+[2m┆[22m
+[2m│     background-color: var(--warn);[22m
+[2m│     @supports (color: color-mix(in lab, red, red)) {[22m
+
+Issue #5:
+[2m│     }[22m
+[2m│   }[22m
+[2m│[22m   ::highlight(search-current) {
+[2m┆[22m               [33m[2m^--[22m 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?[39m
+[2m┆[22m
+[2m│     background-color: var(--warn);[22m
+[2m│     @supports (color: color-mix(in lab, red, red)) {[22m
+
+✓ 152 modules transformed.
+rendering chunks...
+[plugin vite:singlefile] 
+
+[plugin vite:singlefile] Inlining: index-F4i4wLSv.js
+[plugin vite:singlefile] Inlining: style-DrgZ67CC.css
+computing gzip size...
+dist/index.html  463.62 kB │ gzip: 160.26 kB
+
+✓ built in 3.92s

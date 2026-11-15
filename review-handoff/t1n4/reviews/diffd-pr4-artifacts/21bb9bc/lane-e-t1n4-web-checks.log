@@ -1,0 +1,40 @@
+Head: 21bb9bc7fcf306bb709c3a11def0c98b6d740730
+               total        used        free      shared  buff/cache   available
+Mem:              91          80           2           0          10          11
+Swap:            114         104          10
+
+
+$ npm --prefix web run lint
+
+> lint
+> biome check .
+
+Checked 61 files in 136ms. No fixes applied.
+Exit: 0
+
+$ npm --prefix web run typecheck
+
+> typecheck
+> tsc --noEmit
+
+Exit: 0
+
+$ npm --prefix web test
+
+> test
+> vitest run
+
+
+ RUN  v5.0.2 /home/wolf/.herdr/worktrees/diffd/review-pr1/web
+
+
+ Test Files  3 passed (3)
+      Tests  58 passed (58)
+   Start at  03:08:26
+   Duration  4.62s (environment 43%, transform 29%, tests 27%, import 2%)
+
+  Transform  transforming modules took 2.50s · 29% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+Exit: 0

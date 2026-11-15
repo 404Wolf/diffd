@@ -1,0 +1,13 @@
+
+> test
+> vitest run
+
+
+ RUN  v5.0.2 /home/wolf/.herdr/worktrees/diffd/review-pr1/web
+
+
+ Test Files  3 passed (3)
+      Tests  58 passed (58)
+   Start at  21:49:56
+   Duration  5.46s (environment 61%, tests 24%, transform 11%, import 3%, worker 1%)
+

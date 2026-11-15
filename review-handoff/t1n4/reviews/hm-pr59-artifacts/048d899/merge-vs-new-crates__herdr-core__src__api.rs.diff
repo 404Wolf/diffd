@@ -1,0 +1,27 @@
+--- old-stack-merged/crates/herdr-core/src/api.rs
++++ new-stack/crates/herdr-core/src/api.rs
+@@ -13,13 +13,6 @@
+ use std::time::Duration;
+ 
+ pub const GENERATION: u32 = 1;
+-<<<<<<< /var/tmp/hm-pr59-t1n4-j03amije/old/crates/herdr-core/src/api.rs
+-pub const FEATURES: &[&str] =
+-    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input", "viewer_visibility", "viewer_focus"];
+-||||||| /var/tmp/hm-pr59-t1n4-j03amije/oldbase/crates/herdr-core/src/api.rs
+-pub const FEATURES: &[&str] =
+-    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input"];
+-=======
+ pub const FEATURES: &[&str] = &[
+     "framed",
+     "attach",
+@@ -30,8 +23,9 @@
+     "automatic_input",
+     "queue",
+     "queue-keyed",
++    "viewer_visibility",
++    "viewer_focus",
+ ];
+->>>>>>> /var/tmp/hm-pr59-t1n4-j03amije/newbase/crates/herdr-core/src/api.rs
+ pub const FINISHED_LINES: usize = 1000;
+ /// A terminal's identity: fixed at start from whoever starts it.
+ pub const IDENTITY_VARS: &[&str] = &["TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM"];

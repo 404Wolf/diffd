@@ -1,0 +1,119 @@
+[
+  {
+    "width": 412,
+    "height": 915,
+    "viewportMeta": "width=device-width, initial-scale=1, interactive-widget=resizes-content",
+    "range": "long.py · new L8–12",
+    "composer": {
+      "x": 0,
+      "y": 630,
+      "width": 412,
+      "height": 261
+    },
+    "send": {
+      "x": 295.40625,
+      "y": 839,
+      "width": 108.59375,
+      "height": 44
+    },
+    "cancel": {
+      "x": 209.96875,
+      "y": 839,
+      "width": 79.4375,
+      "height": 44
+    },
+    "keyboard": {
+      "top": 235,
+      "bottom": 496,
+      "height": 520,
+      "selectedBottom": 227
+    },
+    "reply": {
+      "x": 255,
+      "y": 760.65625,
+      "width": 62.78125,
+      "height": 44
+    },
+    "resolve": {
+      "x": 319.78125,
+      "y": 760.65625,
+      "width": 78.359375,
+      "height": 44
+    },
+    "commentReplyResolve": "pass"
+  },
+  {
+    "width": 884,
+    "height": 1050,
+    "viewportMeta": "width=device-width, initial-scale=1, interactive-widget=resizes-content",
+    "range": "long.py · new L8–12",
+    "composer": {
+      "x": 445,
+      "y": 334,
+      "width": 420,
+      "height": 262
+    },
+    "send": {
+      "x": 747.40625,
+      "y": 543,
+      "width": 108.59375,
+      "height": 44
+    },
+    "cancel": {
+      "x": 661.96875,
+      "y": 543,
+      "width": 79.4375,
+      "height": 44
+    },
+    "reply": {
+      "x": 609.5,
+      "y": 885.59375,
+      "width": 62.78125,
+      "height": 44
+    },
+    "resolve": {
+      "x": 674.28125,
+      "y": 885.59375,
+      "width": 78.359375,
+      "height": 44
+    },
+    "commentReplyResolve": "pass"
+  },
+  {
+    "width": 1050,
+    "height": 884,
+    "viewportMeta": "width=device-width, initial-scale=1, interactive-widget=resizes-content",
+    "range": "long.py · new L8–12",
+    "composer": {
+      "x": 611,
+      "y": 334,
+      "width": 420,
+      "height": 262
+    },
+    "send": {
+      "x": 913.40625,
+      "y": 543,
+      "width": 108.59375,
+      "height": 44
+    },
+    "cancel": {
+      "x": 827.96875,
+      "y": 543,
+      "width": 79.4375,
+      "height": 44
+    },
+    "reply": {
+      "x": 692.5,
+      "y": 507.03125,
+      "width": 62.78125,
+      "height": 44
+    },
+    "resolve": {
+      "x": 757.28125,
+      "y": 507.03125,
+      "width": 78.359375,
+      "height": 44
+    },
+    "commentReplyResolve": "pass"
+  }
+]

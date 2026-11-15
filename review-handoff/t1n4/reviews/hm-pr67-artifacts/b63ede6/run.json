@@ -1,0 +1,10 @@
+{
+  "head": "b63ede6cd12bf196858a4082ba4ab0253d67d881",
+  "base": "75ef821ff6d3dcc688f1e30ed01e415df48c6a42",
+  "snapshot": "/var/tmp/hm-pr67-t1n4-a3ipzxgb",
+  "app": "/var/tmp/hm-pr67-t1n4-a3ipzxgb/users/wolf/programs/herdr-core/app",
+  "load_at_start": "52.57 55.63 58.56 12/39276 1470547",
+  "tsc": "/nix/store/mfrbqj78li0mmzi32xlbisgc6lr8qhnr-typescript-7.0.2/bin/tsc",
+  "exit": 0,
+  "seconds": 10.47
+}

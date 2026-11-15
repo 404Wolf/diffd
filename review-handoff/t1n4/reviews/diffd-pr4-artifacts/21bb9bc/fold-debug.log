@@ -1,0 +1,5 @@
+before comment send Review 884x1050 1794625757056 { x: 445, y: 334, width: 420, height: 262 } { x: 747.40625, y: 543, width: 108.59375, height: 44 }
+after comment send 0 closed
+before reply send Reply 884x1050
+after reply send 0 closed
+PASS 884x1050: touch drag L8–12, composer/meta/targets, comment/reply/resolve by tap

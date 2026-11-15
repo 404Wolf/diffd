@@ -1,0 +1,1090 @@
+--- old-patched/crates/herdr-core/src/SKILL.md
++++ new-patched/crates/herdr-core/src/SKILL.md
+@@ -119,6 +119,20 @@
+ acknowledge. hc itself notifies you when a child cannot report (blocked,
+ error, exited); inspect its screen.
+ 
++`send` and these notes wait until nobody has typed for ~3 s, and never join a
++draft a person left unsent: they wait for it to be sent or cleared, and after
++2 minutes `send` fails with `drafting` (nothing typed). A program that reads
++its own messages out of band runs `hc inbox --follow` in its terminal: while it
++does, sends and notes to it are queued there, in order, as JSON lines `{id,
++from, text, kind, ts}` (`kind` send or note), instead of typed; `hc inbox ack
++<id>` drops that one and all before it. Unacknowledged messages come again to
++the next follower. `send` reports `via: inbox` or `via: typed`; `send
++--inbox-only` (API `terminal.queue`) never types: with nobody following it
++fails with `not_following`. Give it `--key <k>` to make a retry safe: a key
++queued on that terminal in the last hour (`server status`'s
++`queue_keys_kept_ms`) isn't queued again (`repeated: true`); `--core <id>`
++makes sure it's that core.
++
+ ## Run programs
+ 
+ API clients that already know a terminal's pane size can pass `size: {cols, rows}`
+@@ -127,6 +141,9 @@
+ still resize the terminal normally. `display: {fg, bg, cursor, cell}` (as in
+ `terminal.attach`) likewise answers the program's color and cell-size queries
+ from its start, before any viewer attaches.
++
++Attach replays primary-screen history with soft wraps joined, so the viewer
++can wrap it and reflow it on resize. Explicit newlines stay hard line breaks.
+ 
+ On Linux, local Herdr app windows share the smallest reported columns and
+ rows while the desktop is active. A visible, measured desktop pane owns sizing
+--- old-patched/crates/herdr-core/src/api.rs
++++ new-patched/crates/herdr-core/src/api.rs
+@@ -13,16 +13,29 @@
+ use std::time::Duration;
+ 
+ pub const GENERATION: u32 = 1;
+-pub const FEATURES: &[&str] =
+-    &["framed", "attach", "events", "status", "shell", "resize_notifications", "automatic_input", "viewer_visibility", "viewer_focus"];
++pub const FEATURES: &[&str] = &[
++    "framed",
++    "attach",
++    "events",
++    "status",
++    "shell",
++    "resize_notifications",
++    "automatic_input",
++    "queue",
++    "queue-keyed",
++    "viewer_visibility",
++    "viewer_focus",
++];
+ pub const FINISHED_LINES: usize = 1000;
+ /// A terminal's identity: fixed at start from whoever starts it.
+ pub const IDENTITY_VARS: &[&str] = &["TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM"];
+ 
+ mod doc;
++mod inbox;
+ mod run;
+ mod types;
+ use doc::*;
++use inbox::*;
+ mod waiting;
+ use run::*;
+ pub(crate) use run::{child_env, not_stopping, tail, terminal_env};
+@@ -99,8 +112,17 @@
+         "Open a raw stream to a live terminal on this framed connection (see `hello` with `framed`). Loss ends the stream even when kept; reattach after the restarted event.",
+         errors ["not_found", "machine_unknown", "finished", "unavailable", "needs_framed"];
+     "terminal.send" => terminal_send, SendParams => SendResult,
+-        "Paste text and press Enter, once nobody has typed for ~3 s; keys a person presses meanwhile are held, then delivered. Refuses a blocked program unless `force`.",
+-        errors ["not_found", "machine_unknown", "finished", "unavailable", "blocked", "status_mismatch", "invalid_params", "config"];
++        "Paste text and press Enter, once nobody has typed for ~3 s and no draft a person typed is left unsent (it waits up to 2 min for them to send or clear it); keys a person presses meanwhile are held, then delivered. Refuses a blocked program unless `force`. A program that follows its inbox (terminal.inbox) gets the text queued there instead: nothing is typed.",
++        errors ["not_found", "machine_unknown", "finished", "unavailable", "blocked", "status_mismatch", "drafting", "invalid_params", "config"];
++    "terminal.queue" => terminal_queue, QueueParams => SendResult,
++        "Queue text in a terminal's inbox when its program follows it (terminal.inbox), as terminal.send would; otherwise fail with `not_following`. Never types, so a core that predates it refuses it as an unknown method. With a `key` already queued on that terminal within `queue_keys_kept_ms` (a retry after a lost answer), it isn't queued again and the answer says `repeated`; keys are kept with the terminal, across restarts. With `key_since` (when the key was first sent) before the terminal's keys go back, it may have been queued and forgotten: refused with `key_forgotten`, never queued again. With `core`, only that core queues it (`other_core` otherwise). This machine's terminals only.",
++        errors ["not_found", "machine_unknown", "not_following", "other_core", "key_forgotten", "invalid_params"];
++    "terminal.inbox" => terminal_inbox, InboxParams => InboxResult,
++        "The messages waiting in a terminal's inbox. With `follow` (only the terminal itself, as caller): new ones then arrive as `message` events on this connection, and while it stays open, sends and notes to the terminal are queued here instead of typed. Messages stay until acknowledged.",
++        errors ["not_found", "invalid_params", "needs_target"];
++    "terminal.ack" => terminal_ack, AckParams => AckResult,
++        "Acknowledge inbox messages up to and including `id` (only the terminal itself, as caller): they leave its inbox.",
++        errors ["not_found", "invalid_params", "needs_target"];
+     "terminal.wait" => terminal_wait, WaitParams => crate::wait::WaitResult,
+         "Wait until the program is not working (any word but working, or it exited/was lost); already not working returns at once. A program that never reported status is working until it exits. After a send from the same caller, waits for the turn that send started. A message to the caller also ends it: ended false, reason message, from = sender. A timeout is a check-in: ended false, current status.",
+         errors ["not_found", "machine_unknown", "invalid_params", "needs_target", "config"];
+@@ -216,6 +238,8 @@
+         live,
+         finished: st.reg.terminals.len() - live,
+         installed_by: crate::client::installed_by().map(String::from),
++        features: FEATURES.iter().map(|f| f.to_string()).collect(),
++        queue_keys_kept_ms: crate::inbox::KEYS_KEPT_MS,
+     })
+ }
+ 
+@@ -462,11 +486,43 @@
+     })
+ }
+ 
++async fn terminal_queue(core: Ctx<'_>, p: QueueParams) -> Result<SendResult, RpcError> {
++    if p.key.as_ref().is_some_and(|k| k.is_empty() || k.len() > crate::inbox::MAX_KEY) {
++        return Err(RpcError::invalid_params(format!("a key is 1 to {} bytes", crate::inbox::MAX_KEY)));
++    }
++    // A key means something only to the core that queued it.
++    if let Some(expected) = p.core.as_deref().filter(|c| *c != core.info.id) {
++        return Err(RpcError::new(
++            "other_core",
++            format!("this is core {}, not {expected}", core.info.id),
++            "nothing was queued; the terminal you meant is on a core that's gone",
++        ));
++    }
++    let send = SendParams {
++        terminal: p.terminal,
++        text: p.text,
++        force: false,
++        only_if: None,
++        wait: false,
++        timeout: None,
++        inbox_only: true,
++        key: p.key,
++        key_since: p.key_since,
++        core: None,
++        caller: p.caller,
++    };
++    terminal_send(core, send).await
++}
++
+ async fn terminal_send(core: Ctx<'_>, p: SendParams) -> Result<SendResult, RpcError> {
+     let timeout = wait_timeout(core, p.timeout)?; // checked before anything is typed
+     let id = resolve(core, &p.terminal)?;
+     let text = core.tagged(p.caller.as_deref(), id, &p.text, false);
+-    let sent = core.send(id, &text, p.force, p.only_if.map(|w| word(&w)).as_deref()).await?;
++    let from = p.caller.clone().filter(|c| crate::terminals::parse_id(c).is_some() || c.contains('/'));
++    let only_if = p.only_if.map(|w| word(&w));
++    let since = p.key_since.unwrap_or_else(crate::runtime::now_ms);
++    let key = p.key.as_deref().map(|key| crate::inbox::QueueKey { key, since });
++    let sent = core.send_or_queue(id, from, &text, p.force, only_if.as_deref(), p.inbox_only, key).await?;
+     if let Some(child) = p.caller.as_deref().and_then(crate::terminals::parse_id) {
+         let mut st = core.lock();
+         if let Some(c) = st
+@@ -478,7 +534,7 @@
+             c.told_parent = true;
+         }
+     }
+-    if sent.status.as_deref() == Some("working") {
++    if sent.status.as_deref() == Some("working") && !sent.repeated {
+         let mut st = core.lock();
+         let from = p
+             .caller
+@@ -504,7 +560,15 @@
+         None
+     };
+     core.flush_saved().await?;
+-    Ok(SendResult { status: sent.status, turn: sent.turn, started: sent.started, wait })
++    Ok(SendResult {
++        status: sent.status,
++        turn: sent.turn,
++        started: sent.started,
++        wait,
++        via: sent.via.into(),
++        waiting: sent.waiting,
++        repeated: sent.repeated,
++    })
+ }
+ 
+ async fn machine_exec(core: Ctx<'_>, p: ExecParams) -> Result<ExecResult, RpcError> {
+@@ -580,7 +644,7 @@
+ }
+ 
+ async fn events_subscribe(core: Ctx<'_>, p: SubscribeParams) -> Result<SubscribeResult, RpcError> {
+-    use crate::events::{Filter, Sink};
++    use crate::events::Filter;
+     // A terminal on a machine is named as it is here; one here, by its id.
+     let address = |t: &str| match t.split_once('/').filter(|(m, _)| core.lock().machines.iter().any(|x| x.name == *m)) {
+         Some(_) => Ok(t.to_string()),
+@@ -588,8 +652,25 @@
+     };
+     let terminal = p.terminal.as_deref().map(address).transpose()?;
+     let children_of = p.children_of.as_deref().map(address).transpose()?;
+-    let filter = Filter { terminal, children_of, labels: labels(&p.labels), here_only: from_afar(core) };
+-    let (sink, channel) = match (core.conn, core.plain) {
++    let filter = Filter { terminal, children_of, labels: labels(&p.labels), here_only: from_afar(core), inbox: false };
++    let (sink, channel) = event_sink(core, &filter)?;
++    let (seq, terminals) = {
++        let mut st = core.lock();
++        let terminals = core.matching(&st, &filter);
++        core.subscribe(&mut st, filter, sink);
++        (st.events.seq, terminals)
++    };
++    if let Some(channel) = channel {
++        crate::server::heartbeat(core.core.clone(), core.conn.expect("framed").clone(), channel);
++    }
++    Ok(SubscribeResult { seq, terminals, channel })
++}
++
++/// Where this connection receives notifications: a new framed channel, or the
++/// plain connection itself once the reply is out.
++fn event_sink(core: Ctx<'_>, filter: &crate::events::Filter) -> Result<(crate::events::Sink, Option<u32>), RpcError> {
++    use crate::events::Sink;
++    Ok(match (core.conn, core.plain) {
+         (Some(conn), _) => {
+             let channel = conn.new_channel();
+             conn.with(|out| out.open(channel));
+@@ -603,17 +684,7 @@
+             (Sink::Plain { tx, behind }, None)
+         }
+         (None, None) => return Err(RpcError::internal("no connection to deliver events on")),
+-    };
+-    let (seq, terminals) = {
+-        let mut st = core.lock();
+-        let terminals = core.matching(&st, &filter);
+-        core.subscribe(&mut st, filter, sink);
+-        (st.events.seq, terminals)
+-    };
+-    if let Some(channel) = channel {
+-        crate::server::heartbeat(core.core.clone(), core.conn.expect("framed").clone(), channel);
+-    }
+-    Ok(SubscribeResult { seq, terminals, channel })
++    })
+ }
+ 
+ /// A machine name that is free: valid, not another machine's, not this core's own.
+--- old-patched/crates/herdr-core/src/api/types.rs
++++ new-patched/crates/herdr-core/src/api/types.rs
+@@ -151,6 +151,13 @@
+     /// system package manager): it updates hc, `hc update` won't.
+     /// Null for a replaceable plain install.
+     pub installed_by: Option<String>,
++    /// What this core can do, as `hello` says (e.g. `queue`: it takes
++    /// `terminal.queue`; `queue-keyed`: with keys), so a client can choose
++    /// before it relies on one.
++    pub features: Vec<String>,
++    /// How long a terminal remembers a `terminal.queue` key: a sender may
++    /// retry a send whose answer it lost for up to this long.
++    pub queue_keys_kept_ms: u64,
+ }
+ 
+ #[derive(Deserialize, JsonSchema)]
+@@ -514,9 +521,53 @@
+     /// With wait: seconds before it checks in (default: config, else 180).
+     #[arg(long, value_parser = cli_seconds)]
+     pub timeout: Option<f64>,
++    /// Only queue it in the terminal's inbox: if its program doesn't follow
++    /// its inbox, fail with `not_following` instead of typing. This machine's
++    /// terminals only.
++    // Sent as its own method, `terminal.queue`, never as a `terminal.send`
++    // field: a core that predates it would ignore the field and type.
++    #[arg(long, conflicts_with_all = ["force", "only_if", "wait", "timeout"])]
++    #[serde(skip)]
++    pub inbox_only: bool,
++    /// With --inbox-only: this message's key. Sent again with the same key
++    /// (after a lost answer), it isn't queued twice.
++    #[arg(long, requires = "inbox_only")]
++    #[serde(skip)]
++    pub key: Option<String>,
++    /// With --key: when it was first sent (ms since the epoch). A key the
++    /// terminal may have forgotten since is refused, not queued again.
++    #[arg(long, requires = "key", value_name = "MS")]
++    #[serde(skip)]
++    pub key_since: Option<u64>,
++    /// With --inbox-only: only if this core (its id, from `server status`)
++    /// is the one running; another refuses (`other_core`).
++    #[arg(long, requires = "inbox_only")]
++    #[serde(skip)]
++    pub core: Option<String>,
+     /// Who is sending (`HC_TERMINAL_ID`, else the calling process's parent), so a
+     /// bare wait from the same caller waits for this send's turn.
+     #[arg(skip)]
++    pub caller: Option<String>,
++}
++
++/// `terminal.queue`: a send that only ever goes into the inbox.
++#[derive(Deserialize, JsonSchema)]
++pub struct QueueParams {
++    /// The terminal: `t7` or a name, on this machine.
++    pub terminal: String,
++    /// The message, tagged as a send's text is.
++    pub text: String,
++    /// Names this message (1 to 128 bytes): with a key already queued on
++    /// that terminal, it isn't queued again.
++    pub key: Option<String>,
++    /// With `key`: when the sender first sent it (ms since the epoch; default
++    /// now). A key the terminal may have forgotten since is refused
++    /// (`key_forgotten`) rather than queued again.
++    pub key_since: Option<u64>,
++    /// The core id the sender means (`server status`): another core refuses
++    /// (`other_core`), since the terminal and its keys are that core's.
++    pub core: Option<String>,
++    /// Who is sending (`HC_TERMINAL_ID`, else the calling process's parent).
+     pub caller: Option<String>,
+ }
+ 
+@@ -532,6 +583,18 @@
+     /// With `wait`: how that turn ended.
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub wait: Option<crate::wait::WaitResult>,
++    /// `typed` into its input, or queued in its `inbox` (its program follows it).
++    pub via: String,
++    /// Queued: how many messages now wait in its inbox, this one included.
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub waiting: Option<usize>,
++    /// `terminal.queue`: its key was queued before, so it wasn't queued again.
++    #[serde(default, skip_serializing_if = "is_false")]
++    pub repeated: bool,
++}
++
++fn is_false(b: &bool) -> bool {
++    !*b
+ }
+ 
+ #[derive(clap::Args, Serialize, Deserialize, JsonSchema)]
+@@ -561,6 +624,53 @@
+     /// See `terminal.send`.
+     #[arg(skip)]
+     pub caller: Option<String>,
++}
++
++#[derive(clap::Args, Serialize, Deserialize, JsonSchema)]
++pub struct InboxParams {
++    /// Whose inbox (default: your own terminal).
++    #[arg(long)]
++    pub terminal: Option<String>,
++    /// Only messages after this id.
++    #[arg(long, default_value_t = 0)]
++    #[serde(default)]
++    pub after: u64,
++    /// Keep the connection open and print each new message as it is queued.
++    /// While a program follows its own inbox, sends and notes to it are queued
++    /// there instead of typed.
++    #[arg(long)]
++    #[serde(default)]
++    pub follow: bool,
++    /// Who is asking (`HC_TERMINAL_ID`): only a terminal itself may follow its inbox.
++    #[arg(skip)]
++    pub caller: Option<String>,
++}
++
++#[derive(Serialize, JsonSchema)]
++pub struct InboxResult {
++    /// Messages waiting, oldest first. With follow, new ones then arrive as
++    /// `event` notifications of type `message` (data: one message).
++    pub messages: Vec<crate::inbox::Message>,
++    /// Framed mode: the channel they arrive on. Plain mode: none; this
++    /// connection now carries only notifications.
++    pub channel: Option<u32>,
++}
++
++#[derive(clap::Args, Serialize, Deserialize, JsonSchema)]
++pub struct AckParams {
++    /// The last message handled: it and every earlier one leave the inbox.
++    pub id: u64,
++    /// Whose inbox (default: your own terminal).
++    #[arg(long)]
++    pub terminal: Option<String>,
++    #[arg(skip)]
++    pub caller: Option<String>,
++}
++
++#[derive(Serialize, JsonSchema)]
++pub struct AckResult {
++    /// Messages still waiting.
++    pub waiting: usize,
+ }
+ 
+ #[derive(clap::Args, Serialize, Deserialize, JsonSchema)]
+--- old-patched/crates/herdr-core/src/cli.rs
++++ new-patched/crates/herdr-core/src/cli.rs
+@@ -13,10 +13,12 @@
+ use std::io::{IsTerminal, Read};
+ 
+ mod file;
++mod inbox;
+ mod machine;
+ mod output;
+ mod update;
+ use file::*;
++use inbox::*;
+ use machine::*;
+ use output::*;
+ use update::*;
+@@ -82,6 +84,14 @@
+     },
+     /// Follow fact changes as they happen (one JSON line each when piped).
+     Events(SubscribeParams),
++    /// Messages for your terminal (--follow: as they come, and take them out of band instead of typed).
++    #[command(args_conflicts_with_subcommands = true)]
++    Inbox {
++        #[command(subcommand)]
++        action: Option<InboxCmd>,
++        #[command(flatten)]
++        params: crate::api::InboxParams,
++    },
+     /// Templates you can run by name (~/.config/herdr-core/templates).
+     Templates,
+     /// Swap this hc for another build and restart (terminals keep running).
+@@ -366,7 +376,16 @@
+         }
+         Cmd::Send(mut p) => {
+             p.caller = Some(caller());
+-            let r = call("terminal.send", to(&p))?;
++            let r = if p.inbox_only {
++                // Its own method: a core that predates it refuses it as unknown, instead of typing.
++                let params = json!({
++                    "terminal": p.terminal, "text": p.text, "key": p.key, "key_since": p.key_since,
++                    "core": p.core, "caller": p.caller,
++                });
++                call("terminal.queue", params)?
++            } else {
++                call("terminal.send", to(&p))?
++            };
+             let started = match r["started"].as_bool() {
+                 Some(true) => "it started working",
+                 Some(false) => "it did not start working",
+@@ -532,6 +551,7 @@
+             follow_events(&paths, to(&p), json)?;
+             return Ok(None);
+         }
++        Cmd::Inbox { action, params } => return inbox(&paths, action, params, json),
+         Cmd::Templates => {
+             let r = call("templates.list", json!({}))?;
+             let rows: Vec<String> = r["templates"]
+@@ -877,6 +897,8 @@
+     ("file write", "file.write"),
+     ("file edit", "file.edit"),
+     ("events", "events.subscribe"),
++    ("inbox", "terminal.inbox"),
++    ("inbox ack", "terminal.ack"),
+     ("templates", "templates.list"),
+     ("schema", "rpc.discover"),
+     ("server start", "server.status"),
+@@ -889,8 +911,9 @@
+     ("machine rename", "machine.rename"),
+     ("machine rm", "machine.rm"),
+ ];
+-/// Client-only methods: handshake and opaque document storage.
+-pub const API_ONLY: &[&str] = &["hello", "doc.get", "doc.set"];
++/// Client-only methods: handshake and opaque document storage, and
++/// `terminal.queue`, which `send --inbox-only` calls.
++pub const API_ONLY: &[&str] = &["hello", "doc.get", "doc.set", "terminal.queue"];
+ 
+ #[cfg(test)]
+ mod tests {
+--- old-patched/crates/herdr-core/src/help.txt
++++ new-patched/crates/herdr-core/src/help.txt
+@@ -23,6 +23,8 @@
+   wait <t>                    wait until it stops working (--output X: until it prints X,
+                               --children: your helpers). Use it instead of sleep.
+   put <t> <file>              send a file beside it, print where it landed
++  inbox [--follow]            messages for your terminal; following it, sends and notes
++                              are queued for you instead of typed (inbox ack <id>)
+ 
+ No terminal
+   exec [--on m] <cmd>         run it, print exactly what it wrote, exit with its code
+--- old-patched/crates/herdr-core/src/remote/tests.rs
++++ new-patched/crates/herdr-core/src/remote/tests.rs
+@@ -375,6 +375,41 @@
+ }
+ 
+ #[test]
++fn peer_build_hello_is_optional_and_preserves_precise_identity() {
++    for (hello, expected) in [
++        (json!({}), None),
++        (json!({"build": ""}), None),
++        (json!({"build": "0.1.18-c645d00-grid/abc123"}), Some("0.1.18-c645d00-grid/abc123")),
++    ] {
++        let (frames, _rx) = mpsc::unbounded_channel();
++        assert_eq!(Line::new(frames, &hello).build.as_deref(), expected);
++    }
++}
++
++#[test]
++fn peer_build_view_flags_live_differences_and_legacy_peers_and_clears_on_disconnect() {
++    let machine = Machine {
++        name: "peer".into(), target: "peer".into(), via: false, temporary: false,
++        session: None, id: "peer-id".into(), host: "peer".into(), version: "0.1.18".into(),
++    };
++    let mut st = State::default();
++    for (build, skew) in [(None, true), (Some(crate::client::peer_build()), false),
++        (Some("0.1.18-same-version/different-patches".into()), true)] {
++        let (frames, _rx) = mpsc::unbounded_channel();
++        st.lines.insert(machine.id.clone(), LineState::Connected(Line::new(frames, &json!({"build": build}))));
++        let current = view(&st, &machine);
++        assert_eq!(current.build, build);
++        assert_eq!(current.build_skew, skew);
++        let wire = serde_json::to_value(current).unwrap();
++        assert_eq!(wire["build_skew"], skew);
++    }
++    st.lines.insert(machine.id.clone(), LineState::Connecting);
++    let current = view(&st, &machine);
++    assert_eq!(current.build, None);
++    assert!(!current.build_skew);
++}
++
++#[test]
+ fn viewer_focus_requires_confirmation_from_every_hop_and_is_stripped_before_old_hops() {
+     for features in [json!([]), json!(["viewer_focus"])] {
+         let (frames, _rx) = mpsc::unbounded_channel();
+@@ -481,38 +516,3 @@
+     assert_eq!(err.message, FOCUS_LOST);
+     assert_eq!(rx.recv().await.unwrap(), wire::encode(9, wire::CLOSE, b""), "the downgraded stream there is closed");
+ }
+-
+-#[test]
+-fn peer_build_hello_is_optional_and_preserves_precise_identity() {
+-    for (hello, expected) in [
+-        (json!({}), None),
+-        (json!({"build": ""}), None),
+-        (json!({"build": "0.1.18-c645d00-grid/abc123"}), Some("0.1.18-c645d00-grid/abc123")),
+-    ] {
+-        let (frames, _rx) = mpsc::unbounded_channel();
+-        assert_eq!(Line::new(frames, &hello).build.as_deref(), expected);
+-    }
+-}
+-
+-#[test]
+-fn peer_build_view_flags_live_differences_and_legacy_peers_and_clears_on_disconnect() {
+-    let machine = Machine {
+-        name: "peer".into(), target: "peer".into(), via: false, temporary: false,
+-        session: None, id: "peer-id".into(), host: "peer".into(), version: "0.1.18".into(),
+-    };
+-    let mut st = State::default();
+-    for (build, skew) in [(None, true), (Some(crate::client::peer_build()), false),
+-        (Some("0.1.18-same-version/different-patches".into()), true)] {
+-        let (frames, _rx) = mpsc::unbounded_channel();
+-        st.lines.insert(machine.id.clone(), LineState::Connected(Line::new(frames, &json!({"build": build}))));
+-        let current = view(&st, &machine);
+-        assert_eq!(current.build, build);
+-        assert_eq!(current.build_skew, skew);
+-        let wire = serde_json::to_value(current).unwrap();
+-        assert_eq!(wire["build_skew"], skew);
+-    }
+-    st.lines.insert(machine.id.clone(), LineState::Connecting);
+-    let current = view(&st, &machine);
+-    assert_eq!(current.build, None);
+-    assert!(!current.build_skew);
+-}
+--- old-patched/docs/commands.md
++++ new-patched/docs/commands.md
+@@ -33,6 +33,8 @@
+   wait <t>                    wait until it stops working (--output X: until it prints X,
+                               --children: your helpers). Use it instead of sleep.
+   put <t> <file>              send a file beside it, print where it landed
++  inbox [--follow]            messages for your terminal; following it, sends and notes
++                              are queued for you instead of typed (inbox ack <id>)
+ 
+ No terminal
+   exec [--on m] <cmd>         run it, print exactly what it wrote, exit with its code
+@@ -221,6 +223,42 @@
+ Options:
+       --json  JSON output even in a terminal
+   -h, --help  Print help
++```
++
++## hc inbox
++
++```text
++Messages for your terminal (--follow: as they come, and take them out of band instead of typed)
++
++Usage: hc inbox [OPTIONS]
++       herdr-core inbox <COMMAND>
++
++Commands:
++  ack   Acknowledge messages up to and including an id: they leave the inbox
++  help  Print this message or the help of the given subcommand(s)
++
++Options:
++      --json                 JSON output even in a terminal
++      --terminal <TERMINAL>  Whose inbox (default: your own terminal)
++      --after <AFTER>        Only messages after this id [default: 0]
++      --follow               Keep the connection open and print each new message as it is queued. While a program follows its own inbox, sends and notes to it are queued there instead of typed
++  -h, --help                 Print help
++```
++
++## hc inbox ack
++
++```text
++Acknowledge messages up to and including an id: they leave the inbox
++
++Usage: hc inbox ack [OPTIONS] <ID>
++
++Arguments:
++  <ID>  The last message handled: it and every earlier one leave the inbox
++
++Options:
++      --json                 JSON output even in a terminal
++      --terminal <TERMINAL>  Whose inbox (default: your own terminal)
++  -h, --help                 Print help
+ ```
+ 
+ ## hc interrupt
+@@ -533,6 +571,10 @@
+       --if <STATUS>        Only type if the status is exactly this [possible values: idle, working]
+       --wait               Then wait for the turn this send started
+       --timeout <TIMEOUT>  With wait: seconds before it checks in (default: config, else 180)
++      --inbox-only         Only queue it in the terminal's inbox: if its program doesn't follow its inbox, fail with `not_following` instead of typing. This machine's terminals only
++      --key <KEY>          With --inbox-only: this message's key. Sent again with the same key (after a lost answer), it isn't queued twice
++      --key-since <MS>     With --key: when it was first sent (ms since the epoch). A key the terminal may have forgotten since is refused, not queued again
++      --core <CORE>        With --inbox-only: only if this core (its id, from `server status`) is the one running; another refuses (`other_core`)
+   -h, --help               Print help
+ ```
+ 
+--- old-patched/schema/hc.openrpc.json
++++ new-patched/schema/hc.openrpc.json
+@@ -1,6 +1,20 @@
+ {
+   "components": {
+     "schemas": {
++      "AckResult": {
++        "properties": {
++          "waiting": {
++            "description": "Messages still waiting.",
++            "format": "uint",
++            "minimum": 0,
++            "type": "integer"
++          }
++        },
++        "required": [
++          "waiting"
++        ],
++        "type": "object"
++      },
+       "AttachResult": {
+         "properties": {
+           "automatic_input": {
+@@ -413,6 +427,30 @@
+         ],
+         "type": "string"
+       },
++      "InboxResult": {
++        "properties": {
++          "channel": {
++            "description": "Framed mode: the channel they arrive on. Plain mode: none; this\nconnection now carries only notifications.",
++            "format": "uint32",
++            "minimum": 0,
++            "type": [
++              "integer",
++              "null"
++            ]
++          },
++          "messages": {
++            "description": "Messages waiting, oldest first. With follow, new ones then arrive as\n`event` notifications of type `message` (data: one message).",
++            "items": {
++              "$ref": "#/components/schemas/Message"
++            },
++            "type": "array"
++          }
++        },
++        "required": [
++          "messages"
++        ],
++        "type": "object"
++      },
+       "InitialSize": {
+         "properties": {
+           "cols": {
+@@ -646,6 +684,45 @@
+         ],
+         "type": "object"
+       },
++      "Message": {
++        "description": "One queued message, as followers receive it.",
++        "properties": {
++          "from": {
++            "description": "The sending terminal (`t3`, `machine/t3`); null for a person, a script or a note.",
++            "type": [
++              "string",
++              "null"
++            ]
++          },
++          "id": {
++            "description": "Counts up from 1 per terminal and is never reused, across restarts too.",
++            "format": "uint64",
++            "minimum": 0,
++            "type": "integer"
++          },
++          "kind": {
++            "description": "`send` (hc send) or `note` (news about a child).",
++            "type": "string"
++          },
++          "text": {
++            "description": "The text as it would have been typed (with its `<hc>` tag).",
++            "type": "string"
++          },
++          "ts": {
++            "description": "When it was queued, ms since the epoch.",
++            "format": "uint64",
++            "minimum": 0,
++            "type": "integer"
++          }
++        },
++        "required": [
++          "id",
++          "text",
++          "kind",
++          "ts"
++        ],
++        "type": "object"
++      },
+       "PutResult": {
+         "properties": {
+           "bytes": {
+@@ -954,6 +1031,10 @@
+       },
+       "SendResult": {
+         "properties": {
++          "repeated": {
++            "description": "`terminal.queue`: its key was queued before, so it wasn't queued again.",
++            "type": "boolean"
++          },
+           "started": {
+             "description": "Whether it went `working` within a few seconds; null when it doesn't\nreport status, so nobody can tell.",
+             "type": [
+@@ -973,6 +1054,10 @@
+             "format": "uint64",
+             "minimum": 0,
+             "type": "integer"
++          },
++          "via": {
++            "description": "`typed` into its input, or queued in its `inbox` (its program follows it).",
++            "type": "string"
+           },
+           "wait": {
+             "anyOf": [
+@@ -984,10 +1069,20 @@
+               }
+             ],
+             "description": "With `wait`: how that turn ended."
++          },
++          "waiting": {
++            "description": "Queued: how many messages now wait in its inbox, this one included.",
++            "format": "uint",
++            "minimum": 0,
++            "type": [
++              "integer",
++              "null"
++            ]
+           }
+         },
+         "required": [
+-          "turn"
++          "turn",
++          "via"
+         ],
+         "type": "object"
+       },
+@@ -1034,6 +1129,13 @@
+         "properties": {
+           "core": {
+             "$ref": "#/components/schemas/CoreInfo"
++          },
++          "features": {
++            "description": "What this core can do, as `hello` says (e.g. `queue`: it takes\n`terminal.queue`; `queue-keyed`: with keys), so a client can choose\nbefore it relies on one.",
++            "items": {
++              "type": "string"
++            },
++            "type": "array"
+           },
+           "finished": {
+             "format": "uint",
+@@ -1075,6 +1177,12 @@
+             "minimum": 0,
+             "type": "integer"
+           },
++          "queue_keys_kept_ms": {
++            "description": "How long a terminal remembers a `terminal.queue` key: a sender may\nretry a send whose answer it lost for up to this long.",
++            "format": "uint64",
++            "minimum": 0,
++            "type": "integer"
++          },
+           "uptime_ms": {
+             "format": "uint64",
+             "minimum": 0,
+@@ -1091,7 +1199,9 @@
+           "uptime_ms",
+           "holders",
+           "live",
+-          "finished"
++          "finished",
++          "features",
++          "queue_keys_kept_ms"
+         ],
+         "type": "object"
+       },
+@@ -2733,7 +2843,7 @@
+       }
+     },
+     {
+-      "description": "Paste text and press Enter, once nobody has typed for ~3 s; keys a person presses meanwhile are held, then delivered. Refuses a blocked program unless `force`.",
++      "description": "Paste text and press Enter, once nobody has typed for ~3 s and no draft a person typed is left unsent (it waits up to 2 min for them to send or clear it); keys a person presses meanwhile are held, then delivered. Refuses a blocked program unless `force`. A program that follows its inbox (terminal.inbox) gets the text queued there instead: nothing is typed.",
+       "errors": [
+         {
+           "code": -32000,
+@@ -2776,6 +2886,13 @@
+             "kind": "status_mismatch"
+           },
+           "message": "status_mismatch"
++        },
++        {
++          "code": -32000,
++          "data": {
++            "kind": "drafting"
++          },
++          "message": "drafting"
+         },
+         {
+           "code": -32602,
+@@ -2879,6 +2996,282 @@
+         "name": "result",
+         "schema": {
+           "$ref": "#/components/schemas/SendResult"
++        }
++      }
++    },
++    {
++      "description": "Queue text in a terminal's inbox when its program follows it (terminal.inbox), as terminal.send would; otherwise fail with `not_following`. Never types, so a core that predates it refuses it as an unknown method. With a `key` already queued on that terminal within `queue_keys_kept_ms` (a retry after a lost answer), it isn't queued again and the answer says `repeated`; keys are kept with the terminal, across restarts. With `key_since` (when the key was first sent) before the terminal's keys go back, it may have been queued and forgotten: refused with `key_forgotten`, never queued again. With `core`, only that core queues it (`other_core` otherwise). This machine's terminals only.",
++      "errors": [
++        {
++          "code": -32000,
++          "data": {
++            "kind": "not_found"
++          },
++          "message": "not_found"
++        },
++        {
++          "code": -32000,
++          "data": {
++            "kind": "machine_unknown"
++          },
++          "message": "machine_unknown"
++        },
++        {
++          "code": -32000,
++          "data": {
++            "kind": "not_following"
++          },
++          "message": "not_following"
++        },
++        {
++          "code": -32000,
++          "data": {
++            "kind": "other_core"
++          },
++          "message": "other_core"
++        },
++        {
++          "code": -32000,
++          "data": {
++            "kind": "key_forgotten"
++          },
++          "message": "key_forgotten"
++        },
++        {
++          "code": -32602,
++          "data": {
++            "kind": "invalid_params"
++          },
++          "message": "invalid_params"
++        }
++      ],
++      "name": "terminal.queue",
++      "paramStructure": "by-name",
++      "params": [
++        {
++          "description": "Who is sending (`HC_TERMINAL_ID`, else the calling process's parent).",
++          "name": "caller",
++          "required": false,
++          "schema": {
++            "description": "Who is sending (`HC_TERMINAL_ID`, else the calling process's parent).",
++            "type": [
++              "string",
++              "null"
++            ]
++          }
++        },
++        {
++          "description": "The core id the sender means (`server status`): another core refuses\n(`other_core`), since the terminal and its keys are that core's.",
++          "name": "core",
++          "required": false,
++          "schema": {
++            "description": "The core id the sender means (`server status`): another core refuses\n(`other_core`), since the terminal and its keys are that core's.",
++            "type": [
++              "string",
++              "null"
++            ]
++          }
++        },
++        {
++          "description": "Names this message (1 to 128 bytes): with a key already queued on\nthat terminal, it isn't queued again.",
++          "name": "key",
++          "required": false,
++          "schema": {
++            "description": "Names this message (1 to 128 bytes): with a key already queued on\nthat terminal, it isn't queued again.",
++            "type": [
++              "string",
++              "null"
++            ]
++          }
++        },
++        {
++          "description": "With `key`: when the sender first sent it (ms since the epoch; default\nnow). A key the terminal may have forgotten since is refused\n(`key_forgotten`) rather than queued again.",
++          "name": "key_since",
++          "required": false,
++          "schema": {
++            "description": "With `key`: when the sender first sent it (ms since the epoch; default\nnow). A key the terminal may have forgotten since is refused\n(`key_forgotten`) rather than queued again.",
++            "format": "uint64",
++            "minimum": 0,
++            "type": [
++              "integer",
++              "null"
++            ]
++          }
++        },
++        {
++          "description": "The terminal: `t7` or a name, on this machine.",
++          "name": "terminal",
++          "required": true,
++          "schema": {
++            "description": "The terminal: `t7` or a name, on this machine.",
++            "type": "string"
++          }
++        },
++        {
++          "description": "The message, tagged as a send's text is.",
++          "name": "text",
++          "required": true,
++          "schema": {
++            "description": "The message, tagged as a send's text is.",
++            "type": "string"
++          }
++        }
++      ],
++      "result": {
++        "name": "result",
++        "schema": {
++          "$ref": "#/components/schemas/SendResult"
++        }
++      }
++    },
++    {
++      "description": "The messages waiting in a terminal's inbox. With `follow` (only the terminal itself, as caller): new ones then arrive as `message` events on this connection, and while it stays open, sends and notes to the terminal are queued here instead of typed. Messages stay until acknowledged.",
++      "errors": [
++        {
++          "code": -32000,
++          "data": {
++            "kind": "not_found"
++          },
++          "message": "not_found"
++        },
++        {
++          "code": -32602,
++          "data": {
++            "kind": "invalid_params"
++          },
++          "message": "invalid_params"
++        },
++        {
++          "code": -32000,
++          "data": {
++            "kind": "needs_target"
++          },
++          "message": "needs_target"
++        }
++      ],
++      "name": "terminal.inbox",
++      "paramStructure": "by-name",
++      "params": [
++        {
++          "description": "Only messages after this id.",
++          "name": "after",
++          "required": false,
++          "schema": {
++            "default": 0,
++            "description": "Only messages after this id.",
++            "format": "uint64",
++            "minimum": 0,
++            "type": "integer"
++          }
++        },
++        {
++          "description": "Who is asking (`HC_TERMINAL_ID`): only a terminal itself may follow its inbox.",
++          "name": "caller",
++          "required": false,
++          "schema": {
++            "description": "Who is asking (`HC_TERMINAL_ID`): only a terminal itself may follow its inbox.",
++            "type": [
++              "string",
++              "null"
++            ]
++          }
++        },
++        {
++          "description": "Keep the connection open and print each new message as it is queued.\nWhile a program follows its own inbox, sends and notes to it are queued\nthere instead of typed.",
++          "name": "follow",
++          "required": false,
++          "schema": {
++            "default": false,
++            "description": "Keep the connection open and print each new message as it is queued.\nWhile a program follows its own inbox, sends and notes to it are queued\nthere instead of typed.",
++            "type": "boolean"
++          }
++        },
++        {
++          "description": "Whose inbox (default: your own terminal).",
++          "name": "terminal",
++          "required": false,
++          "schema": {
++            "description": "Whose inbox (default: your own terminal).",
++            "type": [
++              "string",
++              "null"
++            ]
++          }
++        }
++      ],
++      "result": {
++        "name": "result",
++        "schema": {
++          "$ref": "#/components/schemas/InboxResult"
++        }
++      }
++    },
++    {
++      "description": "Acknowledge inbox messages up to and including `id` (only the terminal itself, as caller): they leave its inbox.",
++      "errors": [
++        {
++          "code": -32000,
++          "data": {
++            "kind": "not_found"
++          },
++          "message": "not_found"
++        },
++        {
++          "code": -32602,
++          "data": {
++            "kind": "invalid_params"
++          },
++          "message": "invalid_params"
++        },
++        {
++          "code": -32000,
++          "data": {
++            "kind": "needs_target"
++          },
++          "message": "needs_target"
++        }
++      ],
++      "name": "terminal.ack",
++      "paramStructure": "by-name",
++      "params": [
++        {
++          "name": "caller",
++          "required": false,
++          "schema": {
++            "type": [
++              "string",
++              "null"
++            ]
++          }
++        },
++        {
++          "description": "The last message handled: it and every earlier one leave the inbox.",
++          "name": "id",
++          "required": true,
++          "schema": {
++            "description": "The last message handled: it and every earlier one leave the inbox.",
++            "format": "uint64",
++            "minimum": 0,
++            "type": "integer"
++          }
++        },
++        {
++          "description": "Whose inbox (default: your own terminal).",
++          "name": "terminal",
++          "required": false,
++          "schema": {
++            "description": "Whose inbox (default: your own terminal).",
++            "type": [
++              "string",
++              "null"
++            ]
++          }
++        }
++      ],
++      "result": {
++        "name": "result",
++        "schema": {
++          "$ref": "#/components/schemas/AckResult"
+         }
+       }
+     },

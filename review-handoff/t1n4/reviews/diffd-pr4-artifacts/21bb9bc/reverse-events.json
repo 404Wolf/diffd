@@ -1,0 +1,62 @@
+{
+  "boxes": {
+    "a": {
+      "x": 206,
+      "y": 269,
+      "width": 44,
+      "height": 17
+    },
+    "z": {
+      "x": 206,
+      "y": 201,
+      "width": 44,
+      "height": 17
+    }
+  },
+  "rangeBefore": "long.py · new L8–12",
+  "draft": {
+    "diffd:session:pnn5fb5yqs": "{\"visibility\":{},\"collapsed\":{},\"panes\":[{\"file\":null,\"reading\":{\"path\":\"long.py\",\"row\":0,\"offset\":34,\"side\":\"new\"},\"cursor\":{\"path\":\"long.py\",\"row\":0,\"offset\":0,\"side\":\"new\"}}],\"focused\":0,\"range\":null,\"draft\":null}"
+  },
+  "rangeAfter": "long.py · new L8–12",
+  "steps": [
+    {
+      "type": "pointerdown",
+      "num": "12",
+      "target": "num new add ld-add"
+    },
+    {
+      "type": "touchstart",
+      "num": "12",
+      "target": "num new add ld-add"
+    },
+    {
+      "type": "pointerup",
+      "target": "buffer min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-inset pb-6 outline-none [overflow-anchor:none] focused"
+    },
+    {
+      "type": "touchend",
+      "num": "12",
+      "target": "num new add ld-add"
+    },
+    {
+      "type": "pointerdown",
+      "target": "cursor-pointer rounded px-1 text-[11px] text-accent hover:bg-hover touch:min-h-11 touch:px-3 touch:text-sm"
+    },
+    {
+      "type": "touchstart",
+      "target": "cursor-pointer rounded px-1 text-[11px] text-accent hover:bg-hover touch:min-h-11 touch:px-3 touch:text-sm"
+    },
+    {
+      "type": "pointerup",
+      "target": "cursor-pointer rounded px-1 text-[11px] text-accent hover:bg-hover touch:min-h-11 touch:px-3 touch:text-sm"
+    },
+    {
+      "type": "touchend",
+      "target": "cursor-pointer rounded px-1 text-[11px] text-accent hover:bg-hover touch:min-h-11 touch:px-3 touch:text-sm"
+    }
+  ],
+  "draftAfter": {
+    "diffd:session:pnn5fb5yqs": "{\"visibility\":{},\"collapsed\":{},\"panes\":[{\"file\":null,\"reading\":{\"path\":\"long.py\",\"row\":0,\"offset\":33,\"side\":\"new\"},\"cursor\":{\"path\":\"long.py\",\"row\":7,\"offset\":0,\"side\":\"new\"}}],\"focused\":0,\"range\":null,\"draft\":{\"composer\":{\"kind\":\"new\",\"anchor\":{\"path\":\"long.py\",\"side\":\"new\",\"start\":8,\"end\":12,\"text\":\"value_8 = 9\\nvalue_9 = 10\\nvalue_10 = 11\\nvalue_11 = 12\\nvalue_12 = 13\",\"range\":null},\"quote\":\"value_8 = 9\\nvalue_9 = 10\\nvalue_10 = 11\\nvalue_11 = 12\\nvalue_12 = 13\",\"from\":12},\"text\":\"Reverse draft\"}}"
+  },
+  "afterDomClick": "long.py · new L12"
+}

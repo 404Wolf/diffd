@@ -1,0 +1,83 @@
+--- old effect
++++ new effect
+@@ -160,6 +160,41 @@
+ +            focus_updates: false,
+ +
+ +#[test]
+++fn peer_build_hello_is_optional_and_preserves_precise_identity() {
+++    for (hello, expected) in [
+++        (json!({}), None),
+++        (json!({"build": ""}), None),
+++        (json!({"build": "0.1.18-c645d00-grid/abc123"}), Some("0.1.18-c645d00-grid/abc123")),
+++    ] {
+++        let (frames, _rx) = mpsc::unbounded_channel();
+++        assert_eq!(Line::new(frames, &hello).build.as_deref(), expected);
+++    }
+++}
+++
+++#[test]
+++fn peer_build_view_flags_live_differences_and_legacy_peers_and_clears_on_disconnect() {
+++    let machine = Machine {
+++        name: "peer".into(), target: "peer".into(), via: false, temporary: false,
+++        session: None, id: "peer-id".into(), host: "peer".into(), version: "0.1.18".into(),
+++    };
+++    let mut st = State::default();
+++    for (build, skew) in [(None, true), (Some(crate::client::peer_build()), false),
+++        (Some("0.1.18-same-version/different-patches".into()), true)] {
+++        let (frames, _rx) = mpsc::unbounded_channel();
+++        st.lines.insert(machine.id.clone(), LineState::Connected(Line::new(frames, &json!({"build": build}))));
+++        let current = view(&st, &machine);
+++        assert_eq!(current.build, build);
+++        assert_eq!(current.build_skew, skew);
+++        let wire = serde_json::to_value(current).unwrap();
+++        assert_eq!(wire["build_skew"], skew);
+++    }
+++    st.lines.insert(machine.id.clone(), LineState::Connecting);
+++    let current = view(&st, &machine);
+++    assert_eq!(current.build, None);
+++    assert!(!current.build_skew);
+++}
+++
+++#[test]
+ +fn viewer_focus_requires_confirmation_from_every_hop_and_is_stripped_before_old_hops() {
+ +    for features in [json!([]), json!(["viewer_focus"])] {
+ +        let (frames, _rx) = mpsc::unbounded_channel();
+@@ -266,38 +301,3 @@
+ +    assert_eq!(err.message, FOCUS_LOST);
+ +    assert_eq!(rx.recv().await.unwrap(), wire::encode(9, wire::CLOSE, b""), "the downgraded stream there is closed");
+ +}
+-+
+-+#[test]
+-+fn peer_build_hello_is_optional_and_preserves_precise_identity() {
+-+    for (hello, expected) in [
+-+        (json!({}), None),
+-+        (json!({"build": ""}), None),
+-+        (json!({"build": "0.1.18-c645d00-grid/abc123"}), Some("0.1.18-c645d00-grid/abc123")),
+-+    ] {
+-+        let (frames, _rx) = mpsc::unbounded_channel();
+-+        assert_eq!(Line::new(frames, &hello).build.as_deref(), expected);
+-+    }
+-+}
+-+
+-+#[test]
+-+fn peer_build_view_flags_live_differences_and_legacy_peers_and_clears_on_disconnect() {
+-+    let machine = Machine {
+-+        name: "peer".into(), target: "peer".into(), via: false, temporary: false,
+-+        session: None, id: "peer-id".into(), host: "peer".into(), version: "0.1.18".into(),
+-+    };
+-+    let mut st = State::default();
+-+    for (build, skew) in [(None, true), (Some(crate::client::peer_build()), false),
+-+        (Some("0.1.18-same-version/different-patches".into()), true)] {
+-+        let (frames, _rx) = mpsc::unbounded_channel();
+-+        st.lines.insert(machine.id.clone(), LineState::Connected(Line::new(frames, &json!({"build": build}))));
+-+        let current = view(&st, &machine);
+-+        assert_eq!(current.build, build);
+-+        assert_eq!(current.build_skew, skew);
+-+        let wire = serde_json::to_value(current).unwrap();
+-+        assert_eq!(wire["build_skew"], skew);
+-+    }
+-+    st.lines.insert(machine.id.clone(), LineState::Connecting);
+-+    let current = view(&st, &machine);
+-+    assert_eq!(current.build, None);
+-+    assert!(!current.build_skew);
+-+}

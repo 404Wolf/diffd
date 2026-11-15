@@ -1,0 +1,38 @@
+2026-11-14T02:53:28.257470Z  INFO diffd: diffd is running at http://localhost:43461  ·  MCP: http://localhost:43461/mcp db=/tmp/diffd-pr4-7ae5208.db addr=127.0.0.1:43461 allowed_hosts=[]
+2026-11-14T02:55:00.046664Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-manual
+2026-11-14T02:55:30.732390Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-manual
+2026-11-14T02:56:59.881006Z  INFO diffd_server::adapters::lsp: language server started server="gopls" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:56:59.963000Z  INFO diffd_server::adapters::lsp: language server started server="rust-analyzer" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:57:00.578016Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:57:01.055284Z  INFO diffd_server::adapters::lsp: language server started server="typescript" root=/tmp/diffd-pr4-e2e/web
+2026-11-14T02:57:01.088422Z  INFO diffd_server::adapters::lsp: language server started server="nil" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:57:43.276754Z  INFO diffd_server::adapters::watch: review updated review=sheputadp2 rev=2
+2026-11-14T02:57:45.395644Z  INFO diffd_server::adapters::watch: review updated review=sheputadp2 rev=3
+2026-11-14T02:57:46.633368Z  INFO diffd_server::adapters::watch: review updated review=sheputadp2 rev=4
+2026-11-14T02:58:23.420080Z  INFO diffd: diffd is running at http://localhost:43461  ·  MCP: http://localhost:43461/mcp db=/tmp/diffd-pr4-7ae5208.db addr=127.0.0.1:43461 allowed_hosts=[]
+2026-11-14T02:58:24.144440Z  INFO diffd_server::adapters::lsp: language server started server="gopls" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:58:24.189140Z  INFO diffd_server::adapters::lsp: language server started server="rust-analyzer" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:58:24.743671Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:58:24.915005Z  INFO diffd_server::adapters::lsp: language server started server="typescript" root=/tmp/diffd-pr4-e2e/web
+2026-11-14T02:58:25.030700Z  INFO diffd_server::adapters::lsp: language server started server="nil" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:58:32.827367Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-manual
+2026-11-14T02:58:35.456331Z  INFO diffd: diffd is running at http://localhost:43461  ·  MCP: http://localhost:43461/mcp db=/tmp/diffd-pr4-7ae5208.db addr=127.0.0.1:43461 allowed_hosts=[]
+2026-11-14T02:58:36.973707Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-manual
+2026-11-14T02:58:37.120539Z  INFO diffd_server::adapters::lsp: language server started server="gopls" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:58:37.158451Z  INFO diffd_server::adapters::lsp: language server started server="rust-analyzer" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:58:37.354286Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:58:37.933004Z  INFO diffd_server::adapters::lsp: language server started server="typescript" root=/tmp/diffd-pr4-e2e/web
+2026-11-14T02:58:37.961405Z  INFO diffd_server::adapters::lsp: language server started server="nil" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:58:44.528655Z  INFO diffd_server::adapters::watch: review updated review=sheputadp2 rev=5
+2026-11-14T02:58:45.306870Z  INFO diffd_server::adapters::lsp: language server started server="yaml" root=/tmp/diffd-pr4-e2e
+2026-11-14T02:59:07.109082Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-manual
+2026-11-14T02:59:15.262188Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-manual
+2026-11-14T02:59:45.664735Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-e2e
+2026-11-14T02:59:45.816640Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-e2e
+2026-11-14T02:59:45.957821Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-e2e
+2026-11-14T02:59:45.996658Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-e2e
+2026-11-14T02:59:46.050635Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-e2e
+2026-11-14T02:59:46.256192Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-e2e
+2026-11-14T02:59:46.425182Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-manual
+2026-11-14T03:01:14.162282Z  INFO diffd_server::adapters::lsp: language server started server="pyright" root=/tmp/diffd-pr4-manual
+2026-11-14T03:01:45.278509Z  INFO diffd_server::adapters::lsp: stopping a language server: nobody is viewing its review root=/tmp/diffd-pr4-manual
