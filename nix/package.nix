@@ -6,6 +6,10 @@
   importNpmLock,
   nodejs_22,
   makeWrapper,
+  pkg-config,
+  sqlite,
+  zlib,
+  zstd,
   git,
   difftastic,
 }:
@@ -41,7 +45,18 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../Cargo.lock;
   cargoBuildFlags = [ "-p" "diffd" ];
 
-  nativeBuildInputs = [ makeWrapper ];
+  # nixpkgs' cargoSetupHook forces the -sys crates onto system libraries
+  # (NixOS/nixpkgs 44cddf92c4), overriding their bundled builds: SQLite for
+  # libsqlite3-sys, zlib for libz-sys and zstd for zstd-sys.
+  nativeBuildInputs = [
+    makeWrapper
+    pkg-config
+  ];
+  buildInputs = [
+    sqlite
+    zlib
+    zstd
+  ];
 
   env = {
     # Queries are checked against the committed .sqlx data instead of a live database.
