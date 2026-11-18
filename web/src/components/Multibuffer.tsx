@@ -34,6 +34,7 @@ const OMITTED: Record<Omitted, string> = {
   binary: "Binary file, not shown.",
   tooLarge: "Too large to show (over 3 MB).",
   submodule: "A submodule: its commits aren't shown here.",
+  reviewTooLarge: "Not shown: this review is too large to show every file.",
 };
 
 /** The file card's edge: green for a new file, red for a deleted one. */

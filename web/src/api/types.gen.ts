@@ -373,7 +373,7 @@ export type NoteKind = 'explain' | 'why' | 'risk' | 'question';
 /**
  * Why a file's contents aren't shown.
  */
-export type Omitted = 'binary' | 'tooLarge' | 'submodule';
+export type Omitted = 'binary' | 'tooLarge' | 'submodule' | 'reviewTooLarge';
 
 /**
  * What the agent is doing, as far as the page can tell.

@@ -51,6 +51,27 @@ in
     // {
       enable = lib.mkEnableOption "diffd, live code review of your agent's changes";
 
+      memoryHigh = mkOption {
+        type = types.nullOr types.str;
+        default = "8G";
+        example = "4G";
+        description = ''
+          systemd's MemoryHigh for the service: past it, diffd is slowed and
+          reclaimed from rather than taking the machine's memory. `null` for none.
+        '';
+      };
+
+      memoryMax = mkOption {
+        type = types.nullOr types.str;
+        default = "12G";
+        example = "6G";
+        description = ''
+          systemd's MemoryMax for the service: the kernel kills diffd (and
+          systemd restarts it) rather than let it grow past this. Keep it
+          well above `memoryHigh`. `null` for none.
+        '';
+      };
+
       useProfilePath = mkOption {
         type = types.bool;
         default = true;
@@ -141,7 +162,18 @@ in
             ];
             Restart = "on-failure";
             RestartSec = 2;
-          };
+            # A backstop for runaway diffing (diffd's own [limits] are the
+            # first line): with the user's apps, capped, swapping little, and
+            # killed before the agents it serves when memory runs out.
+            Slice = "app.slice";
+            MemorySwapMax = "2G";
+            ManagedOOMPreference = "none";
+            OOMScoreAdjust = 500;
+            # diffd stops in well under a second; don't wait 90 s on a stuck one.
+            TimeoutStopSec = 15;
+          }
+          // lib.optionalAttrs (cfg.memoryHigh != null) { MemoryHigh = cfg.memoryHigh; }
+          // lib.optionalAttrs (cfg.memoryMax != null) { MemoryMax = cfg.memoryMax; };
           Install.WantedBy = [ "default.target" ];
         };
       }

@@ -241,8 +241,9 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         (None, p) => PathBuf::from(p),
     };
     let store = Store::open(&format!("sqlite://{}", db.display())).await.with_context(|| format!("opening {}", db.display()))?;
+    let limits = config.limits.clone();
     let engine: Arc<dyn DiffEngine> = match Difftastic::detect() {
-        Some(d) => Arc::new(d),
+        Some(d) => Arc::new(d.with_limits(limits.difft_jobs, Duration::from_secs(limits.difft_timeout_secs))),
         None => {
             tracing::warn!("difftastic (`difft`) not found; falling back to line diffs");
             Arc::new(NoEngine)
@@ -259,7 +260,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         u if u.trim().is_empty() => local_url.clone(),
         u => u.trim().trim_end_matches('/').to_string(),
     };
-    let app = App::new(store, Arc::new(GitCli), engine, Arc::new(SystemClock), base_url.clone());
+    let app = App::with_limits(store, Arc::new(GitCli), engine, Arc::new(SystemClock), base_url.clone(), limits);
     if config.lsp.enabled {
         app.set_code_intel(LspPool::new(config.clone()));
     }
@@ -284,8 +285,16 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         .with_context(|| format!("can't listen on {addr}; is diffd already running? (--port to pick another)"))?;
     tracing::info!(db = %db.display(), %addr, ?allowed_hosts, "diffd is running at {base_url}  ·  MCP: {local_url}/mcp");
     let shutdown = CancellationToken::new();
+    {
+        // Builds and difftastic stop as soon as a stop is asked for, not after the connections close.
+        let (app, shutdown) = (app.clone(), shutdown.clone());
+        tokio::spawn(async move {
+            shutdown.cancelled().await;
+            app.stop();
+        });
+    }
     let access = http::Access { allowed_hosts };
-    let serve = axum::serve(listener, http::router_with_access(app, PAGE, shutdown.clone(), access)).with_graceful_shutdown({
+    let serve = axum::serve(listener, http::router_with_access(app.clone(), PAGE, shutdown.clone(), access)).with_graceful_shutdown({
         let shutdown = shutdown.clone();
         async move {
             stop_signal().await;
@@ -299,7 +308,16 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
             tracing::warn!("stopping with connections still open");
         }
     }
+    app.stop();
     drop(watcher);
+    // The runtime waits for blocking work as it shuts down. Builds give up
+    // between files once stopped, but reading a huge review out of git
+    // can't be interrupted: past a grace period, just exit.
+    std::thread::spawn(|| {
+        std::thread::sleep(SHUTDOWN_GRACE);
+        tracing::warn!("stopping with work still running");
+        std::process::exit(0);
+    });
     Ok(())
 }
 

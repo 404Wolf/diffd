@@ -30,8 +30,13 @@ pub trait RepoSource: Send + Sync {
     /// Resolve `from`/`to` to commits. With `merge_base`, `base` is the merge
     /// base of `from` and `to` (or `HEAD` when `to` is the working tree).
     fn resolve(&self, repo: &Repo, from: &str, to: Option<&str>, merge_base: Option<bool>) -> anyhow::Result<Resolved>;
-    /// Every changed file between the two sides, with full contents.
-    fn changes(&self, repo: &Repo, resolved: &Resolved, paths: &[String]) -> anyhow::Result<Vec<FileInput>>;
+    /// Every changed file between the two sides, with full contents while
+    /// `budget` lasts; the files after it are listed as [`Omitted::ReviewTooLarge`]
+    /// without being read. Files the repository marks `linguist-generated`
+    /// come collapsed.
+    ///
+    /// [`Omitted::ReviewTooLarge`]: diffd_core::model::Omitted::ReviewTooLarge
+    fn changes(&self, repo: &Repo, resolved: &Resolved, paths: &[String], budget: ReadBudget) -> anyhow::Result<Vec<FileInput>>;
     /// The commits after `base` up to `to` (or `HEAD`), oldest first along
     /// first parents; at most `limit` of the newest. Also says whether more were left out.
     fn commits(&self, repo: &Repo, resolved: &Resolved, limit: usize) -> anyhow::Result<(Vec<Commit>, bool)>;
@@ -40,6 +45,23 @@ pub trait RepoSource: Send + Sync {
     /// One file on the `to` side, or `None` when there's no such file (or the path leads out of the
     /// repository). Paths are repository-relative.
     fn read(&self, repo: &Repo, resolved: &Resolved, path: &str) -> anyhow::Result<Option<Contents>>;
+}
+
+/// How much of a review [`RepoSource::changes`] reads: files are read, in
+/// tree order, until this many have been or their contents reach `max_bytes`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadBudget {
+    pub max_files: usize,
+    pub max_bytes: u64,
+}
+
+impl ReadBudget {
+    pub const UNLIMITED: Self = Self { max_files: usize::MAX, max_bytes: u64::MAX };
+
+    /// Whether a review that has read `files` files of `bytes` bytes has used it up.
+    pub fn used_up(&self, files: usize, bytes: u64) -> bool {
+        files >= self.max_files || bytes >= self.max_bytes
+    }
 }
 
 /// Files larger than this are listed but never read.
@@ -56,6 +78,8 @@ pub enum Contents {
 /// and the caller falls back to a line diff.
 pub trait DiffEngine: Send + Sync {
     fn diff(&self, path: &str, old: &str, new: &str) -> Option<EngineDiff>;
+    /// diffd is stopping: end any diff in progress and refuse new ones.
+    fn stop(&self) {}
 }
 
 pub trait Clock: Send + Sync {

@@ -136,6 +136,21 @@ impl From<MessageRow> for Message {
     }
 }
 
+/// A snapshot as stored: JSON, zstd-compressed, written without ever holding the uncompressed JSON.
+fn encode_snapshot(snapshot: &Snapshot) -> anyhow::Result<Vec<u8>> {
+    let mut encoder = zstd::Encoder::new(Vec::new(), 3)?;
+    let mut out = std::io::BufWriter::with_capacity(1 << 16, &mut encoder);
+    serde_json::to_writer(&mut out, snapshot)?;
+    std::io::Write::flush(&mut out)?;
+    drop(out);
+    Ok(encoder.finish()?)
+}
+
+/// The reverse of [`encode_snapshot`], again streamed.
+fn decode_snapshot(blob: &[u8]) -> anyhow::Result<Snapshot> {
+    Ok(serde_json::from_reader(std::io::BufReader::with_capacity(1 << 16, zstd::Decoder::new(blob)?))?)
+}
+
 fn author_str(a: Author) -> &'static str {
     match a {
         Author::User => "user",
@@ -260,9 +275,12 @@ impl Store {
 
     /// Save a revision's snapshot, dropping all but the last few: only the
     /// latest is ever read, and a live review makes one per save.
-    pub async fn insert_revision(&self, id: &ReviewId, snapshot: &Snapshot, at: Millis) -> anyhow::Result<()> {
-        let blob = zstd::encode_all(serde_json::to_vec(snapshot)?.as_slice(), 3)?;
+    /// Save a revision's snapshot. Compressing it (a big review's is hundreds
+    /// of megabytes of JSON) happens off the async threads, streamed, and
+    /// before a connection is taken.
+    pub async fn insert_revision(&self, id: &ReviewId, snapshot: std::sync::Arc<Snapshot>, at: Millis) -> anyhow::Result<()> {
         let (rev, at) = (snapshot.revision as i64, at as i64);
+        let blob = tokio::task::spawn_blocking(move || encode_snapshot(&snapshot)).await??;
         let oldest_kept = rev - KEPT_REVISIONS + 1;
         let mut tx = self.pool.begin().await?;
         sqlx::query!("INSERT INTO revisions (review_id, number, snapshot, created_at) VALUES (?, ?, ?, ?)", id.0, rev, blob, at)
@@ -277,7 +295,8 @@ impl Store {
         let row = sqlx::query!("SELECT snapshot FROM revisions WHERE review_id = ? ORDER BY number DESC LIMIT 1", id.0)
             .fetch_optional(&self.pool)
             .await?;
-        row.map(|r| Ok(serde_json::from_slice(&zstd::decode_all(r.snapshot.as_slice())?)?)).transpose()
+        let Some(row) = row else { return Ok(None) };
+        Ok(Some(tokio::task::spawn_blocking(move || decode_snapshot(&row.snapshot)).await??))
     }
 
     /// Save a new thread with its messages, all or nothing. `Ok(false)`: a

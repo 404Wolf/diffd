@@ -132,6 +132,30 @@ pub fn generated(path: &str, text: Option<&str>) -> Option<&'static str> {
     marked.then_some("generated")
 }
 
+/// JSON files bigger than this are data, not code: a line diff reads as well
+/// as a structural one, and difftastic takes ages over them.
+pub const BIG_JSON_BYTES: usize = 64 * 1024;
+
+/// Why a modified file goes straight to a line diff instead of difftastic,
+/// whatever its size: generated files (see [`generated`]), API specs, and big
+/// JSON data.
+pub fn line_diff_only(path: &str, old: &str, new: &str) -> Option<&'static str> {
+    if let Some(why) = generated(path, Some(new)) {
+        return Some(why);
+    }
+    let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+    let stem = name.split('.').next().unwrap_or(&name);
+    let data = [".json", ".yaml", ".yml"].iter().any(|ext| name.ends_with(ext));
+    if data && (stem == "openapi" || stem == "swagger" || stem.ends_with("-openapi") || stem.ends_with("_openapi")) {
+        return Some("an API spec");
+    }
+    let json = [".json", ".jsonc", ".json5", ".geojson", ".ndjson"].iter().any(|ext| name.ends_with(ext));
+    if json && old.len().max(new.len()) > BIG_JSON_BYTES {
+        return Some("big JSON");
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +210,18 @@ mod tests {
         assert_eq!(generated("src/lib.rs", Some("fn main() {}\n")), None);
         // A marker far down the file is somebody's string, not a header.
         assert_eq!(generated("src/lib.rs", Some(&format!("{}// @generated", "\n".repeat(20)))), None);
+    }
+
+    #[test]
+    fn generated_files_specs_and_big_json_skip_difftastic() {
+        let big = format!("{{\"a\": \"{}\"}}", "x".repeat(BIG_JSON_BYTES));
+        assert!(line_diff_only("Cargo.lock", "", "").is_some());
+        assert!(line_diff_only("dist/app.min.js", "", "").is_some());
+        assert!(line_diff_only("apps/web/src/lib/service-clients/service-storage/openapi.json", "{}", "{}").is_some());
+        assert!(line_diff_only("api/swagger.yaml", "", "").is_some());
+        assert!(line_diff_only("packages/sdk/specs/storage.json", "{}", &big).is_some());
+        assert!(line_diff_only("src/gen.rs", "", "// @generated\nfn a() {}").is_some());
+        assert_eq!(line_diff_only("package.json", "{}", "{\"a\": 1}"), None, "small JSON is fine");
+        assert_eq!(line_diff_only("src/lib.rs", "fn a() {}", "fn b() {}"), None);
     }
 }

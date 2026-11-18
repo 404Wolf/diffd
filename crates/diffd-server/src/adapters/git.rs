@@ -10,7 +10,7 @@ use diffd_core::build::FileInput;
 use diffd_core::model::{Commit, FileStatus, Millis, Omitted};
 use diffd_core::text::{invisible_changes, looks_binary};
 
-use crate::ports::{Contents, MAX_FILE_BYTES, Repo, RepoSource, Resolved};
+use crate::ports::{Contents, MAX_FILE_BYTES, ReadBudget, Repo, RepoSource, Resolved};
 
 pub struct GitCli;
 
@@ -64,7 +64,7 @@ impl RepoSource for GitCli {
         Ok(Resolved { base, to: to_commit })
     }
 
-    fn changes(&self, repo: &Repo, resolved: &Resolved, paths: &[String]) -> anyhow::Result<Vec<FileInput>> {
+    fn changes(&self, repo: &Repo, resolved: &Resolved, paths: &[String], budget: ReadBudget) -> anyhow::Result<Vec<FileInput>> {
         // --raw gives each side's blob id, so contents are read by id: paths
         // (which can hold spaces or even newlines) never go through cat-file.
         let mut args = vec!["diff", "--raw", "--no-abbrev", "-z", "-M", "--no-ext-diff", resolved.base.as_str()];
@@ -84,9 +84,16 @@ impl RepoSource for GitCli {
         }
         entries.sort_by(|a, b| tree_order(&a.path, &b.path));
 
+        let generated = linguist_generated(&repo.root, resolved.to.as_deref(), &entries);
         let mut cat = CatFile::spawn(&repo.root)?;
         let mut inputs = Vec::with_capacity(entries.len());
+        let (mut read, mut bytes) = (0usize, 0u64);
         for e in entries {
+            let collapsed = generated.contains(&e.path).then(|| GITATTRIBUTES_GENERATED.to_owned());
+            if budget.used_up(read, bytes) {
+                inputs.push(FileInput { collapsed, ..unread(e) });
+                continue;
+            }
             let old = match &e.old_blob {
                 Some(id) => cat.read_blob(id)?,
                 None => None,
@@ -99,7 +106,13 @@ impl RepoSource for GitCli {
                 (None, _) if e.status == FileStatus::Deleted || e.submodule => None,
                 (None, _) => read_worktree(&repo.root.join(&e.path))?,
             };
-            inputs.push(to_input(e, old, new));
+            let input = to_input(e, old, new);
+            read += 1;
+            bytes += [&input.old, &input.new].iter().filter_map(|c| c.as_ref()).map(|c| c.len() as u64).sum::<u64>();
+            inputs.push(FileInput { collapsed, ..input });
+        }
+        if read < inputs.len() {
+            tracing::info!(repo = %repo.root.display(), files = inputs.len(), read, bytes, "a review too large to read in full; listing the rest");
         }
         Ok(inputs)
     }
@@ -325,6 +338,64 @@ fn read_worktree(path: &Path) -> anyhow::Result<Option<Contents>> {
         Ok(bytes) => Ok(Some(Contents::Bytes(bytes))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(anyhow::Error::new(e).context(format!("reading {}", path.display()))),
+    }
+}
+
+/// Why a file `.gitattributes` marks `linguist-generated` is collapsed.
+const GITATTRIBUTES_GENERATED: &str = "generated (.gitattributes)";
+
+/// The paths among `entries` the repository's `.gitattributes` marks
+/// `linguist-generated`, as of `to` (or the working tree). Best effort: an
+/// older git or a broken attributes file just means none.
+fn linguist_generated(root: &Path, to: Option<&str>, entries: &[Entry]) -> std::collections::HashSet<String> {
+    let mut found = std::collections::HashSet::new();
+    if entries.is_empty() {
+        return found;
+    }
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(root).arg("check-attr");
+    if let Some(to) = to {
+        cmd.arg(format!("--source={to}"));
+    }
+    cmd.args(["-z", "--stdin", "linguist-generated"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    let Ok(mut child) = cmd.spawn() else { return found };
+    let mut input = Vec::new();
+    for e in entries {
+        input.extend_from_slice(e.path.as_bytes());
+        input.push(0);
+    }
+    let Some(mut stdin) = child.stdin.take() else { return found };
+    // Written from another thread: git answers as it reads, and a full pipe would block both.
+    let writer = std::thread::spawn(move || stdin.write_all(&input));
+    let mut out = Vec::new();
+    let read = child.stdout.take().map(|mut s| s.read_to_end(&mut out));
+    let _ = writer.join();
+    if !child.wait().is_ok_and(|s| s.success()) || !matches!(read, Some(Ok(_))) {
+        return found;
+    }
+    // `<path> NUL <attribute> NUL <value> NUL`, per path.
+    let out = String::from_utf8_lossy(&out);
+    let fields: Vec<&str> = out.split('\0').collect();
+    for rec in fields.chunks_exact(3) {
+        if matches!(rec[2], "set" | "true") {
+            found.insert(rec[0].to_owned());
+        }
+    }
+    found
+}
+
+/// A file past the review's [`ReadBudget`]: listed, with the sides it has, but not read.
+fn unread(e: Entry) -> FileInput {
+    let old_path = if e.status == FileStatus::Renamed { e.old_path } else { None };
+    FileInput {
+        old: (e.status != FileStatus::Added).then(String::new),
+        new: (e.status != FileStatus::Deleted).then(String::new),
+        path: e.path,
+        old_path,
+        status: e.status,
+        omitted: Some(Omitted::ReviewTooLarge),
+        details: e.details,
+        collapsed: None,
     }
 }
 

@@ -1,6 +1,7 @@
 //! Opening a review.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use diffd_core::build::snapshot;
 use diffd_core::model::{ActivityKind, Group, Label, Layout, ReviewId, ReviewMeta, ReviewStatus};
@@ -140,7 +141,7 @@ impl App {
         };
         let Built { repo, resolved, inputs, files, fingerprint: fp } = self.build(&repo_path, &req.from, req.to.as_deref(), &spec).await?;
 
-        let snap = snapshot(1, &inputs, files);
+        let snap = tokio::task::spawn_blocking(move || snapshot(1, &inputs, files)).await.map_err(anyhow::Error::from)?;
         let mut spec = spec;
         spec.base = Some(resolved.base);
         // Check everything the agent sent before saving anything: a failed share leaves no review behind.
@@ -166,7 +167,8 @@ impl App {
             updated_at: now,
         };
         self.store.insert_review(&meta, &spec).await?;
-        self.store.insert_revision(&id, &snap, now).await?;
+        let snap = Arc::new(snap);
+        self.store.insert_revision(&id, snap.clone(), now).await?;
 
         let result = ShareResult {
             review_id: id.0.clone(),

@@ -15,7 +15,30 @@ pub const DEFAULT_CONFIG: &str = include_str!("../config.default.toml");
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub server: ServerSection,
+    pub limits: Limits,
     pub lsp: LspConfig,
+}
+
+/// How much of the machine diffing may take (`[limits]`; documented in `config.default.toml`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Limits {
+    pub difft_jobs: usize,
+    pub difft_timeout_secs: u64,
+    pub difft_max_file_bytes: u64,
+    pub difft_max_file_lines: usize,
+    pub difft_files_per_build: usize,
+    pub difft_bytes_per_build: u64,
+    pub builds: usize,
+    pub build_threads: usize,
+    pub review_max_files: usize,
+    pub review_max_bytes: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Config::default().limits
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -145,6 +168,8 @@ mod tests {
             assert_eq!((name, id), (server, lang), "{file}");
         }
         assert!(c.server_for("README.md").is_none());
+        assert_eq!(c.limits.difft_jobs, 3);
+        assert!(c.limits.review_max_files > 0 && c.limits.builds > 0);
     }
 
     #[test]

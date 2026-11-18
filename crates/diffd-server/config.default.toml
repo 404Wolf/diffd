@@ -22,6 +22,35 @@ allowed_hosts = []
 # "https://mybox.tailnet.ts.net:3433". Empty means http://localhost:<port>.
 public_url = ""
 
+[limits]
+# How much of the machine diffing may take. A review of thousands of files
+# (a branch far from its base, say) gets listed in full, but only so much of
+# it is read and shown, and only so much of that goes through difftastic; the
+# rest gets a plain line diff, which is fast.
+#
+# difftastic processes running at once, across every review.
+difft_jobs = 3
+# Give up on one file's difftastic after this many seconds (and use a line diff).
+difft_timeout_secs = 10
+# Files bigger than this (either side), or longer than this many lines, go
+# straight to a line diff, as do generated files: lockfiles, minified code,
+# OpenAPI specs and other big JSON, files .gitattributes marks
+# linguist-generated, and files a review collapses.
+difft_max_file_bytes = 262144
+difft_max_file_lines = 5000
+# difftastic's work for one build of one review: after this many files, or
+# this many bytes of them, the rest get line diffs.
+difft_files_per_build = 300
+difft_bytes_per_build = 8388608
+# Reviews building at once (each one reads and diffs its files), and the
+# threads one build uses.
+builds = 2
+build_threads = 4
+# What one review shows: after this many files, or this many bytes of their
+# contents, the remaining files are listed but not read.
+review_max_files = 1500
+review_max_bytes = 25165824
+
 [lsp]
 # Language servers power go to definition (gd), go to type definition (gt),
 # hover (K, or the mouse) and error/warning squiggles. They're started in the

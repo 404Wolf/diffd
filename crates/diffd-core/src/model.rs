@@ -115,6 +115,8 @@ pub enum Omitted {
     TooLarge,
     /// A submodule: a commit, not a file.
     Submodule,
+    /// Past what one review shows (`[limits]` in the config): listed, never read.
+    ReviewTooLarge,
 }
 
 impl std::fmt::Display for Omitted {
@@ -123,6 +125,7 @@ impl std::fmt::Display for Omitted {
             Self::Binary => "a binary file",
             Self::TooLarge => "too large to show",
             Self::Submodule => "a submodule",
+            Self::ReviewTooLarge => "not shown: the review is too large",
         })
     }
 }

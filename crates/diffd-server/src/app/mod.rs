@@ -27,6 +27,7 @@ pub use share::{ShareRequest, ShareResult};
 pub use wake::{WakeNotice, WakeReview};
 
 use crate::adapters::store::Store;
+use crate::config::Limits;
 use crate::ports::{AgentInbox, Clock, CodeIntel, DiffEngine, RepoSource, TreeWatch};
 
 /// Agents that haven't called a tool for this long are shown as away.
@@ -72,6 +73,14 @@ pub struct App {
     /// Held while diffing commits ahead of time (see `history`), so background
     /// work never takes more than one diff's worth of the machine.
     prefetching: tokio::sync::Mutex<()>,
+    /// How much of the machine building diffs may take (see `rebuild`).
+    limits: Limits,
+    /// One permit per build allowed at once, across reviews.
+    builds: Arc<tokio::sync::Semaphore>,
+    /// The threads builds diff their files on.
+    build_pool: Arc<rayon::ThreadPool>,
+    /// Set by [`App::stop`]: builds give up instead of finishing.
+    stopping: Arc<AtomicBool>,
     me: Weak<App>,
 }
 
@@ -125,7 +134,27 @@ struct LiveInner {
 
 impl App {
     pub fn new(store: Store, repo: Arc<dyn RepoSource>, engine: Arc<dyn DiffEngine>, clock: Arc<dyn Clock>, base_url: String) -> Arc<Self> {
+        Self::with_limits(store, repo, engine, clock, base_url, Limits::default())
+    }
+
+    pub fn with_limits(
+        store: Store,
+        repo: Arc<dyn RepoSource>,
+        engine: Arc<dyn DiffEngine>,
+        clock: Arc<dyn Clock>,
+        base_url: String,
+        limits: Limits,
+    ) -> Arc<Self> {
+        let build_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(limits.build_threads.max(1))
+            .thread_name(|i| format!("diffd-build-{i}"))
+            .build()
+            .expect("starting the build threads");
         Arc::new_cyclic(|me| Self {
+            builds: Arc::new(tokio::sync::Semaphore::new(limits.builds.max(1))),
+            build_pool: Arc::new(build_pool),
+            stopping: Arc::new(AtomicBool::new(false)),
+            limits,
             store,
             repo,
             engine,
@@ -141,6 +170,13 @@ impl App {
             prefetching: tokio::sync::Mutex::new(()),
             me: me.clone(),
         })
+    }
+
+    /// diffd is stopping: builds in progress give up, and difftastic processes are killed.
+    pub fn stop(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
+        self.engine.stop();
+        self.builds.close();
     }
 
     /// Register how reviews of the working tree follow edits (see `adapters::watch`).
@@ -199,14 +235,14 @@ impl App {
         {
             self.start_watch(meta);
         }
-        let live = self.insert_live(id, snapshot, 0);
+        let live = self.insert_live(id, Arc::new(snapshot), 0);
         if let Ok((_, spec)) = &found {
             live.inner.lock().expect("live lock").route = push::route_of(spec);
         }
         Ok(live)
     }
 
-    fn insert_live(&self, id: &ReviewId, snapshot: Snapshot, fingerprint: u64) -> Arc<Live> {
+    fn insert_live(&self, id: &ReviewId, snapshot: Arc<Snapshot>, fingerprint: u64) -> Arc<Live> {
         let mut map = self.live.lock().expect("live lock");
         map.entry(id.clone())
             .or_insert_with(|| {
@@ -226,7 +262,7 @@ impl App {
                         delivery_epoch: 0,
                         last_agent: None,
                         presence: Presence::Away,
-                        snapshot: Arc::new(snapshot),
+                        snapshot,
                         fingerprint,
                         history: None,
                         ranges: history::RangeCache::default(),

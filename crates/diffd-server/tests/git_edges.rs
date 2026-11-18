@@ -171,3 +171,46 @@ async fn an_edited_file_after_a_rename_reads_from_disk() {
     let file = snap.files.iter().find(|f| f.path == "logreport.py").expect("in the diff");
     assert_eq!(file.new.as_ref().expect("a new side").lines, ["something else entirely"]);
 }
+
+#[tokio::test]
+async fn a_huge_review_is_listed_in_full_but_read_only_so_far() {
+    let repo = common::Repo::new();
+    for i in 0..6 {
+        repo.write(&format!("f{i}.txt"), "old\n");
+    }
+    repo.write(".gitattributes", "gen/** linguist-generated\n");
+    repo.write("gen/api.ts", "export const a = 1;\n");
+    repo.commit("init");
+    for i in 0..6 {
+        repo.write(&format!("f{i}.txt"), "new\n");
+    }
+    repo.write("gen/api.ts", "export const a = 2;\n");
+    repo.write("added.txt", "brand new\n");
+    std::fs::remove_file(repo.dir.path().join("f5.txt")).unwrap();
+
+    let store = diffd_server::adapters::store::Store::open("sqlite::memory:").await.unwrap();
+    let limits = diffd_server::config::Limits { review_max_files: 3, ..Default::default() };
+    let app = diffd_server::App::with_limits(
+        store,
+        std::sync::Arc::new(diffd_server::adapters::git::GitCli),
+        common::engine(),
+        std::sync::Arc::new(diffd_server::ports::SystemClock),
+        "http://localhost:3433".into(),
+        limits,
+    );
+    let id = ReviewId(app.share(share(&repo, "HEAD")).await.unwrap().review_id);
+    let snap = app.state(&id).await.unwrap().snapshot;
+    let paths: Vec<_> = snap.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["gen/api.ts", "added.txt", "f0.txt", "f1.txt", "f2.txt", "f3.txt", "f4.txt", "f5.txt"], "every file listed");
+
+    let generated = &snap.files[0];
+    assert_eq!(generated.collapsed.as_deref(), Some("generated (.gitattributes)"));
+    assert!(generated.omitted.is_none() && generated.added == 1, "read: it's within the budget");
+    let read: Vec<_> = snap.files.iter().filter(|f| f.omitted.is_none()).map(|f| f.path.as_str()).collect();
+    assert_eq!(read, ["gen/api.ts", "added.txt", "f0.txt"], "the first three, in tree order");
+    for f in &snap.files[3..] {
+        assert_eq!(f.omitted, Some(Omitted::ReviewTooLarge), "{}", f.path);
+    }
+    let deleted = snap.files.iter().find(|f| f.path == "f5.txt").unwrap();
+    assert_eq!(deleted.status, FileStatus::Deleted, "listed with its status, unread");
+}
