@@ -113,7 +113,10 @@ interface FileState {
 
 export function createLayout(review: Review, view: View) {
   const hasSummary = () =>
-    Boolean(review.meta().summary) || review.notes().length > 0 || review.groups().length > 0;
+    Boolean(review.meta().summary) ||
+    review.explain() !== null ||
+    review.notes().length > 0 ||
+    review.groups().length > 0;
   const summaryItem: Item = { kind: "summary" };
 
   /**

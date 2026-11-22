@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use diffd_core::build::snapshot;
-use diffd_core::model::{ActivityKind, Group, Label, Layout, ReviewId, ReviewMeta, ReviewStatus};
+use diffd_core::model::{ActivityKind, Explanation, Group, Label, Layout, ReviewId, ReviewMeta, ReviewStatus};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -36,9 +36,15 @@ pub struct ShareRequest {
     pub paths: Vec<String>,
     /// A short title, like a PR title.
     pub title: String,
-    /// Markdown: what changed and why, shown above the diff.
+    /// Markdown: what changed and why, shown above the diff. For anything beyond a small change,
+    /// prefer `explain`, or use both: this as a one-line lede, `explain` for the details.
     #[serde(default)]
     pub summary: Option<String>,
+    /// A guided explanation, shown at the top of the review: `whatChanged`, `before`, `after`, `why`
+    /// and `verification`, each optional Markdown, short bullets with `path:line` links to the spots
+    /// that show it. `verification` lists only what you actually ran and its result, or says "Not run".
+    #[serde(default)]
+    pub explain: Option<Explanation>,
     /// Plain-language notes on the parts a reviewer would trip over, in reading order.
     #[serde(default)]
     pub annotations: Vec<NoteInput>,
@@ -147,7 +153,7 @@ impl App {
         // Check everything the agent sent before saving anything: a failed share leaves no review behind.
         spec.regions = regions_from(&snap, req.regions)?;
         let labels = check_layout(&snap, &req.groups, req.labels)?;
-        spec.layout = Layout { agent: req.agent, groups: req.groups, labels };
+        spec.layout = Layout { agent: req.agent, groups: req.groups, labels, explain: req.explain.and_then(Explanation::cleaned) };
         let notes = self.prepare_notes(&snap, req.annotations, 0)?;
         let id = ReviewId(new_id(""));
         let now = self.now();

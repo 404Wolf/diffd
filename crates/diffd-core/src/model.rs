@@ -324,6 +324,48 @@ pub struct Layout {
     pub groups: Vec<Group>,
     #[serde(default)]
     pub labels: Vec<Label>,
+    /// The agent's explanation of the change, shown at the top of the review. Reviews shared
+    /// before it existed have none and render as before.
+    #[serde(default)]
+    pub explain: Option<Explanation>,
+}
+
+/// A guided explanation of the change, read before its code. Every part is optional Markdown;
+/// `path:line` references to the spots that show it become links to that file and hunk.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Explanation {
+    /// What the change does, in a few bullets, each pointing at its spot as `path:line`.
+    #[serde(default, alias = "what_changed")]
+    pub what_changed: Option<String>,
+    /// How it behaved before, in user- or caller-visible terms.
+    #[serde(default)]
+    pub before: Option<String>,
+    /// How it behaves now.
+    #[serde(default)]
+    pub after: Option<String>,
+    /// Why: the problem, the request, or the reason for this approach over the obvious one.
+    #[serde(default)]
+    pub why: Option<String>,
+    /// What you actually ran to check it, and the result (commands, tests, manual checks), or
+    /// "Not run". Never claim a check you didn't run.
+    #[serde(default)]
+    pub verification: Option<String>,
+}
+
+impl Explanation {
+    /// Blank parts dropped and the rest trimmed; `None` when nothing is left.
+    pub fn cleaned(self) -> Option<Self> {
+        let clean = |s: Option<String>| s.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+        let e = Self {
+            what_changed: clean(self.what_changed),
+            before: clean(self.before),
+            after: clean(self.after),
+            why: clean(self.why),
+            verification: clean(self.verification),
+        };
+        (e != Self::default()).then_some(e)
+    }
 }
 
 /// A chapter of the agent's guided tour: files that change together for one

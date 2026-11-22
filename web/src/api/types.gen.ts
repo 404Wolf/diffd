@@ -176,6 +176,34 @@ export type Diagnostic = {
 };
 
 /**
+ * A guided explanation of the change, read before its code. Every part is optional Markdown;
+ * `path:line` references to the spots that show it become links to that file and hunk.
+ */
+export type Explanation = {
+    /**
+     * What the change does, in a few bullets, each pointing at its spot as `path:line`.
+     */
+    whatChanged: string | null;
+    /**
+     * How it behaved before, in user- or caller-visible terms.
+     */
+    before: string | null;
+    /**
+     * How it behaves now.
+     */
+    after: string | null;
+    /**
+     * Why: the problem, the request, or the reason for this approach over the obvious one.
+     */
+    why: string | null;
+    /**
+     * What you actually ran to check it, and the result (commands, tests, manual checks), or
+     * "Not run". Never claim a check you didn't run.
+     */
+    verification: string | null;
+};
+
+/**
  * One file's diff: both sides in full, aligned line by line.
  */
 export type FileDiff = {
@@ -326,6 +354,7 @@ export type Layout = {
     agent: string | null;
     groups: Array<Group>;
     labels: Array<Label>;
+    explain: Explanation | null;
 };
 
 /**
