@@ -16,6 +16,13 @@ m = Mcp(f"http://localhost:{port}/mcp")
 r = m.call("share_diff", {
   "repo_path": repo, "from": "main", "title": "Add burst capacity to the limiter",
   "summary": "Limiters now allow a short **burst** on top of capacity, and `acquire` says how long to wait instead of returning false. The web badge and the log report show the new fields.",
+  "explain": {
+    "whatChanged": "- Limiters take a `burst` on top of capacity `src/lib.rs:12`\n- `acquire` returns how long to wait instead of `false` `src/lib.rs:45`\n- The badge warns when the burst runs low `web/src/badge.css:7`",
+    "before": "A full limiter refused at once, and callers spun on `acquire` until it said yes.",
+    "after": "Short spikes pass up to the burst; callers sleep for the returned wait.",
+    "why": "Clients retrying in a loop were hammering the limiter after every refill.",
+    "verification": "Demo data: nothing was run for this review."
+  },
   "annotations": [
     {"file": "src/lib.rs", "lines": [45, 54], "kind": "why", "body": "`acquire` takes `now` so tests can control time, and returns how long to wait so callers can back off instead of spinning."},
     {"file": "src/lib.rs", "lines": [60, 62], "kind": "risk", "body": "Refill now clamps to capacity + burst. A limiter that was idle refills straight to the burst ceiling."},

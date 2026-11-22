@@ -3,8 +3,8 @@
 use diffd_core::anchor::{Reanchor, reanchor};
 use diffd_core::kinds;
 use diffd_core::model::{
-    ActivityKind, Anchor, Author, Group, Label, Message, MessageId, NoteKind, Region, RegionKind, ReviewId, ShowRequest, Side, Snapshot,
-    Thread, ThreadId, ThreadKind,
+    ActivityKind, Anchor, Author, Explanation, Group, Label, Message, MessageId, NoteKind, Region, RegionKind, ReviewId, ShowRequest, Side,
+    Snapshot, Thread, ThreadId, ThreadKind,
 };
 use diffd_core::protocol::ServerMsg;
 use schemars::JsonSchema;
@@ -35,6 +35,8 @@ pub struct LayoutInput {
     pub groups: Vec<Group>,
     /// Add labels, replacing any of the same name.
     pub labels: Vec<Label>,
+    /// Replace the explanation (when given and not blank).
+    pub explain: Option<Explanation>,
 }
 
 /// A region the agent labels, as passed to `share_diff` or `annotate`.
@@ -425,7 +427,8 @@ impl App {
         let notes = self.prepare_notes(&snap, notes, next_order)?;
         let regions = regions_from(&snap, regions)?;
         let labels = check_layout(&snap, &layout.groups, layout.labels)?;
-        let relayout = !layout.groups.is_empty() || !labels.is_empty();
+        let explain = layout.explain.and_then(Explanation::cleaned);
+        let relayout = !layout.groups.is_empty() || !labels.is_empty() || explain.is_some();
         let (n, r) = (self.save_notes(id, &live, notes, true).await?, regions.len());
         if r > 0 || relayout {
             let (_, mut spec) = self.meta(id).await?;
@@ -433,6 +436,9 @@ impl App {
             // New groups replace the old arrangement; a label replaces the one of its name.
             if !layout.groups.is_empty() {
                 spec.layout.groups = layout.groups;
+            }
+            if explain.is_some() {
+                spec.layout.explain = explain;
             }
             for label in labels {
                 spec.layout.labels.retain(|l| l.name != label.name);

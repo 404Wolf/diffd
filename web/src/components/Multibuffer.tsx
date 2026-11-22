@@ -9,6 +9,7 @@ import { createRenderEffect, createSignal, For, type JSX, Show } from "solid-js"
 import { match } from "ts-pattern";
 import type { FileDiff, Omitted, Thread } from "../api";
 import { gapContext, regionRows } from "../lib/diffModel";
+import { explainRows } from "../lib/explain";
 import { rowHtml, soloSide } from "../lib/render";
 import { STATUS } from "../lib/status";
 import { ROW_PX, wrappedLines } from "../lib/windower";
@@ -533,6 +534,37 @@ function Threads(props: {
   );
 }
 
+/**
+ * The agent's explanation: What changed / Before / After / Why / Verification,
+ * the parts it filled, side by side where there's room. Nothing for reviews
+ * shared without one.
+ */
+function Explain(props: { review: Review }) {
+  const rows = () => explainRows(props.review.explain());
+  return (
+    <Show when={rows().length > 0}>
+      <section
+        aria-label="Explanation"
+        class="mt-1 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-x-5 gap-y-1 border-line border-b pb-1.5"
+      >
+        <For each={rows()}>
+          {(row) => (
+            <div class="min-w-0">
+              <h3 class="mt-1 mb-0.5 font-semibold text-[11.5px] text-muted">{row.label}</h3>
+              <Show
+                when={row.text}
+                fallback={<p class="text-muted italic">Not stated: the agent didn't say what it ran.</p>}
+              >
+                {(text) => <Markdown text={text()} paths={props.review.paths()} />}
+              </Show>
+            </div>
+          )}
+        </For>
+      </section>
+    </Show>
+  );
+}
+
 function Summary(props: { review: Review; cmd: Commands }) {
   return (
     <div class="rounded-md border border-accent-line bg-bg px-2.5 py-1.5 font-sans text-[12.5px] whitespace-normal">
@@ -544,6 +576,7 @@ function Summary(props: { review: Review; cmd: Commands }) {
           </div>
         )}
       </Show>
+      <Explain review={props.review} />
       <Show when={props.review.groups().length > 0}>
         <Contents review={props.review} cmd={props.cmd} />
       </Show>

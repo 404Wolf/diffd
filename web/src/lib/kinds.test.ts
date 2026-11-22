@@ -31,6 +31,7 @@ describe("agent patterns", () => {
   it("group files in the agent's order, the rest last", () => {
     const layout = {
       agent: null,
+      explain: null,
       labels: [],
       groups: [
         { title: "API", summary: "The routes.", files: ["src/api/**", "src/lib.rs"] },
@@ -42,12 +43,12 @@ describe("agent patterns", () => {
     expect(groups.map((g) => g.title)).toEqual(["API", OTHER_GROUP]);
     expect(groups[0]?.paths).toEqual(["src/api/a.rs", "src/api/b.rs", "src/lib.rs"]);
     expect(groups[1]?.paths).toEqual(["README.md"]);
-    expect(resolveGroups({ agent: null, labels: [], groups: [] }, ["a"])).toEqual([]);
+    expect(resolveGroups({ agent: null, explain: null, labels: [], groups: [] }, ["a"])).toEqual([]);
   });
 
   it("label files from all three sources", () => {
     const file = { path: "web/src/a.test.ts", labels: ["test"] } as unknown as FileDiff;
-    const layout = { agent: null, groups: [], labels: [{ name: "frontend", files: ["web"] }] };
+    const layout = { agent: null, explain: null, groups: [], labels: [{ name: "frontend", files: ["web"] }] };
     expect(labelsOf(file, layout, []).sort()).toEqual(["frontend", "test"]);
     const plain = { path: "src/x.rs", labels: [] } as unknown as FileDiff;
     const region = {

@@ -581,6 +581,8 @@ export function createReview(initial: ReviewState, events: ReviewEvents = {}) {
     showSpan,
     regions,
     groups,
+    /** The agent's explanation of the change (What changed / Before / After / Why / Verification). */
+    explain: () => layout().explain ?? null,
     /** The group that starts at this path, when reading by group. */
     groupAt: (path: string): FileGroup | undefined => groupStarts().get(path),
     /** Which of the agent's groups (tour chapters) a path is in, or -1. */

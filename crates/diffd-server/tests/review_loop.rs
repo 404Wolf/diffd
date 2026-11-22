@@ -314,6 +314,7 @@ async fn groups_labels_and_generated_files() {
             Group { title: "Tests".into(), summary: None, files: vec!["tests".into()] },
         ],
         labels: vec![Label { name: "frontend".into(), files: vec!["*.ts".into()] }],
+        explain: None,
     };
     app.annotate(&id, vec![], vec![], layout).await.unwrap();
     let state = app.state(&id).await.unwrap();
@@ -322,4 +323,56 @@ async fn groups_labels_and_generated_files() {
     assert_eq!(state.layout.labels[0].files, ["*.ts"]);
     let msg = pages.recv().await.unwrap();
     assert!(matches!(msg, diffd_core::protocol::ServerMsg::Layout { .. }), "{msg:?}");
+}
+
+#[tokio::test]
+async fn the_explanation_is_kept_cleaned_and_replaced() {
+    use diffd_core::model::Explanation;
+    use diffd_server::app::LayoutInput;
+    let repo = common::Repo::new();
+    repo.write("src/lib.rs", BEFORE);
+    repo.commit("init");
+    repo.write("src/lib.rs", AFTER);
+    let app = common::app().await;
+
+    // A review without one renders as before: no explanation at all.
+    let plain = diffd_core::model::ReviewId(app.share(share_request(&repo)).await.unwrap().review_id);
+    assert_eq!(app.state(&plain).await.unwrap().layout.explain, None);
+    let json = serde_json::to_value(app.state(&plain).await.unwrap().layout).unwrap();
+    assert!(json["explain"].is_null(), "{json}");
+
+    // Blank parts are dropped, the rest trimmed; an all-blank one is none.
+    let mut req = share_request(&repo);
+    req.explain = Some(Explanation {
+        what_changed: Some("  - The timeout is clamped `src/lib.rs:2`\n".into()),
+        before: Some("   ".into()),
+        why: Some("Callers passed 0.".into()),
+        ..Default::default()
+    });
+    let id = diffd_core::model::ReviewId(app.share(req).await.unwrap().review_id);
+    let explain = app.state(&id).await.unwrap().layout.explain.unwrap();
+    assert_eq!(explain.what_changed.as_deref(), Some("- The timeout is clamped `src/lib.rs:2`"));
+    assert_eq!(explain.before, None);
+    assert_eq!(explain.verification, None);
+    let mut req = share_request(&repo);
+    req.explain = Some(Explanation { after: Some(" ".into()), ..Default::default() });
+    let blank = diffd_core::model::ReviewId(app.share(req).await.unwrap().review_id);
+    assert_eq!(app.state(&blank).await.unwrap().layout.explain, None);
+
+    // annotate replaces it as a whole (adding what was verified), and tells the page.
+    let mut pages = app.subscribe(&id).await.unwrap();
+    let verified = Explanation { verification: Some("`cargo test`: 12 passed.".into()), ..Default::default() };
+    let layout = LayoutInput { explain: Some(verified.clone()), ..Default::default() };
+    app.annotate(&id, vec![], vec![], layout).await.unwrap();
+    assert_eq!(app.state(&id).await.unwrap().layout.explain, Some(verified));
+    let msg = pages.recv().await.unwrap();
+    assert!(matches!(msg, diffd_core::protocol::ServerMsg::Layout { .. }), "{msg:?}");
+
+    // Leaving it out of annotate keeps it.
+    app.annotate(&id, vec![], vec![], LayoutInput::default()).await.unwrap();
+    assert!(app.state(&id).await.unwrap().layout.explain.is_some());
+
+    // Agents may write the field in snake case too.
+    let e: Explanation = serde_json::from_str(r#"{"what_changed":"x","verification":"Not run"}"#).unwrap();
+    assert_eq!(e.what_changed.as_deref(), Some("x"));
 }

@@ -1050,6 +1050,55 @@
           }
         }
       },
+      "Explanation": {
+        "type": "object",
+        "description": "A guided explanation of the change, read before its code. Every part is optional Markdown;\n`path:line` references to the spots that show it become links to that file and hunk.",
+        "required": [
+          "whatChanged",
+          "before",
+          "after",
+          "why",
+          "verification"
+        ],
+        "properties": {
+          "whatChanged": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the change does, in a few bullets, each pointing at its spot as `path:line`."
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How it behaved before, in user- or caller-visible terms."
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How it behaves now."
+          },
+          "why": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why: the problem, the request, or the reason for this approach over the obvious one."
+          },
+          "verification": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What you actually ran to check it, and the result (commands, tests, manual checks), or\n\"Not run\". Never claim a check you didn't run."
+          }
+        },
+        "additionalProperties": false
+      },
       "FileDiff": {
         "type": "object",
         "description": "One file's diff: both sides in full, aligned line by line.",
@@ -1407,7 +1456,8 @@
         "required": [
           "agent",
           "groups",
-          "labels"
+          "labels",
+          "explain"
         ],
         "properties": {
           "agent": {
@@ -1428,6 +1478,17 @@
             "items": {
               "$ref": "#/components/schemas/Label"
             }
+          },
+          "explain": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Explanation",
+                "description": "The agent's explanation of the change, shown at the top of the review. Reviews shared\nbefore it existed have none and render as before."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },

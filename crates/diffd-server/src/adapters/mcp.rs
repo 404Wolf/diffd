@@ -6,7 +6,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use diffd_core::model::{Author, Group, Label, ReviewId, ShowRequest, Side, ThreadId, ThreadKind};
+use diffd_core::model::{Author, Explanation, Group, Label, ReviewId, ShowRequest, Side, ThreadId, ThreadKind};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::service::RequestContext;
@@ -21,9 +21,15 @@ const INSTRUCTIONS: &str = "\
 diffd shows your code changes to the user as a live review in their browser, and lets you talk about them there.
 
 When you've made a meaningful change, or the user asks to review something, call share_diff and give the user the url.
+Explain the change with `explain`, shown at the top of the review: what changed, how it behaved before, how it behaves
+after, and why, as short bullets that point at the spots as `path:line` (they become links). Under `verification` say only
+what you actually ran and what it showed (commands, tests, manual checks), or \"Not run\". Never claim a check you didn't
+run; if you run more later, update it with annotate.
 In Herdr, set share_diff.present_in to choose the reviewing pane (e.g. a manager's t2r instead of a worker's).
 It defaults to your calling terminal. Use present_review to move an existing review to another pane on this core.
 For another machine, use that machine's diffd.
+In the code itself, write comments a future reader needs and can't get from the code: the reason for a non-obvious
+choice, an invariant, a pitfall, a link to the bug it works around. Don't narrate what the code plainly does.
 Annotate the parts a reviewer would trip over, in plain language. Mark generated files, lockfiles and vendored code to collapse.
 For more than a few files, give a guided tour with `groups`: chapters of related changes in the order that explains the change
 best (types and data first, then logic, callers, UI, tests last), each with a short summary that points at the spots that
@@ -221,6 +227,9 @@ pub struct AnnotateParams {
     /// Label files, as in share_diff: replaces an earlier label of the same name.
     #[serde(default)]
     pub labels: Vec<Label>,
+    /// The explanation, as in share_diff: replaces the one given before, as a whole.
+    #[serde(default)]
+    pub explain: Option<Explanation>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -279,6 +288,9 @@ struct ReviewOverview {
     /// Your labels, as you gave them.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     labels: Vec<Label>,
+    /// Your explanation, as you gave it (`annotate` with `explain` replaces it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    explain: Option<Explanation>,
     threads: Vec<ThreadOverview>,
     pending_feedback: usize,
 }
@@ -309,6 +321,9 @@ struct ThreadOverview {
 #[tool_router]
 impl DiffdMcp {
     #[tool(description = "Open a live review of your changes in the user's browser and get a link to give them. \
+Give it an `explain`: `whatChanged`, `before`, `after`, `why` and `verification`, each a few short Markdown bullets \
+pointing at the spots as `path:line`; leave out what doesn't apply. `verification` is only what you actually ran and \
+its result, or \"Not run\": never invent it. \
 Compare any two revisions: `from` is a branch, tag or commit; leave out `to` to compare against the working tree \
 (uncommitted and untracked files included), and the review then updates by itself as files change. For a branch, \
 `from: \"main\"` shows everything since the branch point, like a pull request. \
@@ -427,10 +442,11 @@ Keep it short; if you changed code because of the comment, say what you changed.
 
     #[tool(description = "Add notes to the review, anchored to lines: explanations of tricky code, the reason for a \
 decision, risks, or questions for the user. Same rules as share_diff's annotations. Can also add test and fold `regions`, \
-regroup the files (`groups`) and label them (`labels`).")]
+regroup the files (`groups`), label them (`labels`) and replace the `explain`, e.g. to add what you verified \
+since sharing.")]
     async fn annotate(&self, Parameters(p): Parameters<AnnotateParams>) -> Result<CallToolResult, ErrorData> {
         let id = try_review!(self, p.review_id);
-        let layout = LayoutInput { groups: p.groups, labels: p.labels };
+        let layout = LayoutInput { groups: p.groups, labels: p.labels, explain: p.explain };
         let (n, r) = try_app!(self.app.annotate(&id, p.annotations, p.regions, layout).await);
         ok(&serde_json::json!({ "notes_added": n, "regions_added": r }))
     }
@@ -490,6 +506,7 @@ is waiting. Use it to catch up after losing context.")]
                 .collect(),
             tour: state.layout.groups,
             labels: state.layout.labels,
+            explain: state.layout.explain,
             threads: state
                 .threads
                 .iter()
