@@ -23,7 +23,7 @@ pub use code::{VIEW_GRACE, Viewing};
 pub use conversation::{LayoutInput, NoteInput, RegionInput};
 pub use feedback::{FeedbackBatch, FeedbackItem, ThreadMessage};
 pub use history::RangeEnd;
-pub use share::{ShareRequest, ShareResult};
+pub use share::{HerdrView, ShareRequest, ShareResult};
 pub use wake::{WakeNotice, WakeReview};
 
 use crate::adapters::store::Store;

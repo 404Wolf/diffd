@@ -59,7 +59,9 @@ async fn agent_and_page_talk_through_the_server() {
     let info = client.peer_info().unwrap();
     assert!(info.instructions.as_deref().unwrap_or("").contains("wait_for_feedback"));
     let tools: Vec<String> = client.list_all_tools().await.unwrap().into_iter().map(|t| t.name.into_owned()).collect();
-    for t in ["share_diff", "present_review", "wait_for_feedback", "reply", "annotate", "say", "show", "refresh", "get_review"] {
+    for t in
+        ["share_diff", "present_review", "wait_for_feedback", "reply", "annotate", "say", "show", "refresh", "get_review", "show_in_herdr"]
+    {
         assert!(tools.contains(&t.to_owned()), "missing tool {t}: {tools:?}");
     }
 
@@ -280,8 +282,14 @@ async fn sharing_terminal_is_transport_scoped_persisted_and_filterable() {
     assert_eq!(before["review"]["terminal"], "tmanagercontract");
     let filtered: Vec<Value> = reqwest::get(format!("{base}/api/reviews?terminal=tcontract")).await.unwrap().json().await.unwrap();
     assert_eq!(filtered.len(), 1, "explicit target must not record the caller");
+    // What Herdr did is reported with the share: a terminal no window shows is never "open".
+    assert!(explicit["herdr"].is_object(), "{explicit}");
+    assert_ne!(explicit["herdr"]["shown"], "open");
+    let schema = &share_tool.input_schema["properties"]["view"];
+    assert!(schema.to_string().contains("badge"), "{schema}");
     let moved = call(&plain, "present_review", json!({ "review_id": explicit_id, "present_in": "tothercontract" })).await;
     assert_eq!(moved["present_in"], "tothercontract");
+    assert!(moved["herdr"].is_object(), "{moved}");
     assert_eq!(moved["labelled"], false, "a nonexistent terminal doesn't prevent persisting the target");
     let after: Value = reqwest::get(format!("{base}/api/reviews/{explicit_id}")).await.unwrap().json().await.unwrap();
     assert_eq!(after["review"]["terminal"], "tothercontract");
@@ -316,6 +324,36 @@ async fn sharing_terminal_is_transport_scoped_persisted_and_filterable() {
         .await
         .unwrap();
     assert_eq!(missing.is_error, Some(true));
+
+    // show_in_herdr: the agent decides what the window does with a review.
+    let show_tool = tools.iter().find(|t| t.name == "show_in_herdr").unwrap();
+    assert!(show_tool.description.as_deref().unwrap().contains("focus"));
+    assert!(show_tool.input_schema["required"].to_string().contains("view"));
+    let shown = call(&plain, "show_in_herdr", json!({ "review_id": explicit_id, "view": "badge" })).await;
+    assert_eq!(shown["present_in"], "tothercontract", "where it is presented now");
+    assert!(shown["herdr"].is_object(), "{shown}");
+    assert_ne!(shown["herdr"]["shown"], "badge", "no window shows this terminal");
+    let moved = call(&plain, "show_in_herdr", json!({ "review_id": explicit_id, "view": "close", "present_in": "tthirdcontract" })).await;
+    assert_eq!(moved["present_in"], "tthirdcontract");
+    let after: Value = reqwest::get(format!("{base}/api/reviews/{explicit_id}")).await.unwrap().json().await.unwrap();
+    assert_eq!(after["review"]["terminal"], "tthirdcontract", "present_in moves it first");
+    let unlinked = shared["review_id"].as_str().unwrap();
+    for (args, why) in [
+        (json!({ "review_id": "missing", "view": "open" }), "no such review"),
+        (json!({ "review_id": unlinked, "view": "open" }), "presented nowhere, no present_in"),
+        (json!({ "review_id": explicit_id, "view": "open", "present_in": "other-machine/t1" }), "another machine"),
+    ] {
+        let result =
+            client.call_tool(CallToolRequestParams::new("show_in_herdr").with_arguments(args.as_object().unwrap().clone())).await.unwrap();
+        assert_eq!(result.is_error, Some(true), "{why}");
+    }
+    let sideways = client
+        .call_tool(
+            CallToolRequestParams::new("show_in_herdr")
+                .with_arguments(json!({ "review_id": explicit_id, "view": "sideways" }).as_object().unwrap().clone()),
+        )
+        .await;
+    assert!(!sideways.is_ok_and(|r| r.is_error != Some(true)), "an unknown view is refused");
     client.cancel().await.unwrap();
     plain.cancel().await.unwrap();
 }

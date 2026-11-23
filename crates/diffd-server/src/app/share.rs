@@ -69,6 +69,11 @@ pub struct ShareRequest {
     /// For another machine, call that machine's diffd instead.
     #[serde(default)]
     pub present_in: Option<String>,
+    /// In Herdr, what the presenting pane's window does with the review (default `open`): `open` it
+    /// beside that terminal, bring it to the `front` if it is open already, only `badge` it, `close` it,
+    /// or `none` (keep it off screen). Herdr never takes the user's keyboard focus for it.
+    #[serde(default)]
+    pub view: HerdrView,
     /// The agent's name, from its MCP client (not a tool argument).
     #[serde(skip)]
     #[schemars(skip)]
@@ -88,6 +93,37 @@ pub struct ShareRequest {
     #[serde(skip)]
     #[schemars(skip)]
     pub agent_core_id: Option<String>,
+}
+
+/// What the Herdr app does with a review's pane, asked for with the `diffd.show`
+/// label on the presenting terminal. The app never moves the user's focus: an
+/// `open` while the user is typing in that pane only badges it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum HerdrView {
+    /// Open it beside the terminal (or bring it to the front if it is open).
+    #[default]
+    Open,
+    /// Show this review in its pane if one is open, else badge it.
+    Front,
+    /// Only mark it as waiting: the user opens it with alt-r or a click.
+    Badge,
+    /// Close the pane a show opened, unless the user is in it or has a draft there.
+    Close,
+    /// Keep it off screen.
+    None,
+}
+
+impl HerdrView {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Front => "front",
+            Self::Badge => "badge",
+            Self::Close => "close",
+            Self::None => "none",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]

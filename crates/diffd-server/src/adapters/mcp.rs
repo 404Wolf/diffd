@@ -14,8 +14,8 @@ use rmcp::{ErrorData, RoleServer, ServerHandler, tool, tool_handler, tool_router
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::adapters::herdr::{Herdr, target, valid_terminal};
-use crate::app::{App, AppError, LayoutInput, NoteInput, RegionInput, ShareRequest};
+use crate::adapters::herdr::{Core, Herdr, NO_CORE, Shown, target, valid_terminal};
+use crate::app::{App, AppError, HerdrView, LayoutInput, NoteInput, RegionInput, ShareRequest};
 
 const INSTRUCTIONS: &str = "\
 diffd shows your code changes to the user as a live review in their browser, and lets you talk about them there.
@@ -24,6 +24,8 @@ When you've made a meaningful change, or the user asks to review something, call
 In Herdr, set share_diff.present_in to choose the reviewing pane (e.g. a manager's t2r instead of a worker's).
 It defaults to your calling terminal. Use present_review to move an existing review to another pane on this core.
 For another machine, use that machine's diffd.
+You decide whether the review is on screen in Herdr: `view` on share_diff and present_review (default open), and
+show_in_herdr later (front, badge, close it when the review is done). Herdr never takes the user's keyboard focus for it.
 Annotate the parts a reviewer would trip over, in plain language. Mark generated files, lockfiles and vendored code to collapse.
 For more than a few files, give a guided tour with `groups`: chapters of related changes in the order that explains the change
 best (types and data first, then logic, callers, UI, tests last), each with a short summary that points at the spots that
@@ -102,11 +104,18 @@ pub struct DiffdMcp {
     app: Arc<App>,
     /// The review this session shared last; the default for other tools.
     last: Arc<Mutex<Option<ReviewId>>>,
+    /// This machine's Herdr core, for presenting reviews.
+    herdr: Arc<Herdr>,
 }
 
 impl DiffdMcp {
     pub fn new(app: Arc<App>) -> Self {
-        Self { app, last: Arc::new(Mutex::new(None)) }
+        Self { app, last: Arc::new(Mutex::new(None)), herdr: Arc::new(Herdr::default()) }
+    }
+
+    #[cfg(test)]
+    fn with_herdr(app: Arc<App>, herdr: Herdr) -> Self {
+        Self { app, last: Arc::new(Mutex::new(None)), herdr: Arc::new(herdr) }
     }
 
     fn review(&self, id: Option<String>) -> Result<ReviewId, String> {
@@ -264,6 +273,22 @@ pub struct PresentParams {
     /// this diffd's core is allowed, including this core's name/t2r. For a
     /// different machine, call that machine's diffd instead.
     pub present_in: String,
+    /// What the Herdr window does with it (default `open`), as in share_diff.
+    #[serde(default)]
+    pub view: HerdrView,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShowInHerdrParams {
+    /// The review; it need not be one you shared.
+    pub review_id: String,
+    /// `open` it beside its terminal (or bring it to the front), `front` (only if open already, else
+    /// badge), `badge` (mark it waiting; the user opens it), `close` (the review is done), `none`.
+    pub view: HerdrView,
+    /// Move it to this terminal first, as present_review does (default: where it is presented now).
+    #[serde(default)]
+    pub present_in: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -306,6 +331,45 @@ struct ThreadOverview {
     messages: Vec<String>,
 }
 
+impl DiffdMcp {
+    /// Present an existing review beside `present_in` (moving its label) and show it there as `view`.
+    async fn present_to(&self, id: ReviewId, present_in: &str, view: HerdrView) -> Result<CallToolResult, ErrorData> {
+        let core = self.herdr.core().await;
+        let terminal = match target(present_in, core.as_ref()) {
+            Ok(terminal) => terminal,
+            Err(error) => return fail(error),
+        };
+        let core_id = core.as_ref().map(|c| c.id.clone());
+        // The target is kept even without Herdr; terminals are touched only on a running core.
+        let old = try_app!(self.app.present(&id, terminal.clone(), core_id.clone()).await);
+        // Never touch a terminal from an earlier core whose short address got reused.
+        let old_terminal = old.terminal.as_deref().filter(|_| old.core_id.is_some() && old.core_id == core_id);
+        let replacement = match old_terminal.filter(|old| *old != terminal) {
+            Some(old) => try_app!(self.app.store().for_terminal(old, 200).await.map_err(AppError::from))
+                .into_iter()
+                .find(|(meta, _)| meta.core_id == core_id),
+            None => None,
+        };
+        let moved_from = old_terminal.map(|old| (old, replacement.as_ref().map(|(meta, _)| meta.id.0.as_str())));
+        let herdr = match &core {
+            Some(core) => self.herdr.present(&core.id, &terminal, &id.0, view, moved_from).await,
+            None => Shown::absent(NO_CORE),
+        };
+        self.remember(&id);
+        ok(
+            &serde_json::json!({ "review_id": id.0, "present_in": terminal, "core_id": core_id, "labelled": herdr.labelled, "herdr": herdr }),
+        )
+    }
+
+    /// A newly shared review, presented beside `terminal` on `core` (checked before the share).
+    async fn present_shared(&self, core: Option<&Core>, terminal: &str, review: &str, view: HerdrView) -> Shown {
+        match core {
+            Some(core) => self.herdr.present(&core.id, terminal, review, view, None).await,
+            None => Shown::absent(NO_CORE),
+        }
+    }
+}
+
 #[tool_router]
 impl DiffdMcp {
     #[tool(description = "Open a live review of your changes in the user's browser and get a link to give them. \
@@ -326,7 +390,11 @@ Tests, lockfiles and generated code (`.sqlx`, `@generated`, minified) are recogn
 with `collapse` or the `generated` label. \
 In Herdr, `present_in` chooses which terminal pane shows the review, e.g. a deacon/manager's `t2r` instead of a \
 worker's pane. It defaults to the caller's X-Herdr-Terminal. The target must be on this diffd's core; use another \
-machine's diffd for that machine. Use present_review to move an already shared review.")]
+machine's diffd for that machine. Use present_review to move an already shared review. \
+`view` decides what the user's Herdr window does with it (default `open`: beside that terminal, never taking their \
+keyboard focus; while they type in that pane it is only badged). `badge` only marks it waiting, `none` keeps it off \
+screen. The result's `herdr` says what happened: `herdr: false` when Herdr isn't running here (nothing to do), \
+`shown: pending` when no Herdr window answered yet (one opened later still shows it).")]
     async fn share_diff(
         &self,
         Parameters(mut req): Parameters<ShareRequest>,
@@ -334,8 +402,8 @@ machine's diffd for that machine. Use present_review to move an already shared r
     ) -> Result<CallToolResult, ErrorData> {
         req.agent = which_agent(&context);
         let header = herdr_terminal(&context);
-        let hc = Herdr::default();
-        let core = if req.present_in.is_some() || header.is_some() { hc.core().await } else { None };
+        let core = if req.present_in.is_some() || header.is_some() { self.herdr.core().await } else { None };
+        let view = req.view;
         req.terminal = match req.present_in.as_deref() {
             Some(value) => match target(value, core.as_ref()) {
                 Ok(terminal) => Some(terminal),
@@ -343,7 +411,7 @@ machine's diffd for that machine. Use present_review to move an already shared r
             },
             None => header.clone(),
         };
-        req.core_id = req.terminal.as_ref().and_then(|_| core.map(|c| c.id));
+        req.core_id = req.terminal.as_ref().and_then(|_| core.as_ref().map(|c| c.id.clone()));
         // Feedback is pushed to the caller's own terminal, whichever pane presents the review.
         if let Some(agent_terminal) = header
             && let Some(inbox_core) = self.app.inbox_core().await
@@ -354,10 +422,12 @@ machine's diffd for that machine. Use present_review to move an already shared r
         let terminal = req.terminal.clone();
         let result = try_app!(self.app.share(req).await);
         self.remember(&ReviewId(result.review_id.clone()));
+        let mut answer = serde_json::to_value(&result).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         if let Some(terminal) = terminal {
-            hc.label(&terminal, &result.review_id).await;
+            let herdr = self.present_shared(core.as_ref(), &terminal, &result.review_id, view).await;
+            answer["herdr"] = serde_json::to_value(herdr).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         }
-        ok(&result)
+        ok(&answer)
     }
 
     #[tool(description = "Show an existing review beside a chosen Herdr terminal pane. Use this when a manager/deacon \
@@ -365,28 +435,40 @@ wants to present a worker's review in their own pane, or to move a review after 
 present_in (e.g. t2r, or this core's name/t2r). Any terminal on this diffd's core is allowed. Another machine needs \
 that machine's diffd; this tool does not transfer reviews between servers. Moves the diffd.review label to the \
 target and preserves unrelated labels on the old pane, restoring its newest remaining review when needed. \
-Labeling is best effort; labelled=false means hc was unavailable or the terminal was stale, so retry when ready.")]
+Labeling is best effort; labelled=false means Herdr isn't running here, its core was replaced, or the terminal was stale. \
+`view` (default `open`) is what the user's Herdr window does with it, as in share_diff; `herdr` reports it.")]
     async fn present_review(&self, Parameters(p): Parameters<PresentParams>) -> Result<CallToolResult, ErrorData> {
-        let hc = Herdr::default();
-        let core = hc.core().await;
-        let terminal = match target(&p.present_in, core.as_ref()) {
-            Ok(terminal) => terminal,
-            Err(error) => return fail(error),
-        };
+        self.present_to(ReviewId(p.review_id), &p.present_in, p.view).await
+    }
+
+    #[tool(description = "Decide whether the user sees a review in their Herdr window, beside the terminal presenting \
+it: `open` it (or bring it to the front), `front` (only if it is open already, else badge), `badge` (mark it waiting; \
+they open it with alt-r or a click), `close` when the review is done (a pane they are in or drafting in stays). \
+Herdr never takes their keyboard focus: while they type in that pane, `open` only badges. `present_in` moves it to \
+another terminal first, as present_review. Returns `herdr: false` when Herdr isn't running on this machine (nothing \
+happens, don't retry), else what the window did: `shown` is open, front, badge, closed, or pending when no Herdr \
+window answered within 3 s (one that opens later still acts on it).")]
+    async fn show_in_herdr(&self, Parameters(p): Parameters<ShowInHerdrParams>) -> Result<CallToolResult, ErrorData> {
         let id = ReviewId(p.review_id);
-        let core_id = core.map(|c| c.id);
-        let old = try_app!(self.app.present(&id, terminal.clone(), core_id.clone()).await);
-        // Never touch a terminal from an earlier core whose short address got reused.
-        let old_terminal = old.terminal.as_deref().filter(|_| old.core_id.is_some() && old.core_id == core_id);
-        let replacement = match old_terminal.filter(|old| *old != terminal) {
-            Some(old) => try_app!(self.app.store().for_terminal(old, 200).await.map_err(AppError::from))
-                .into_iter()
-                .find(|(meta, _)| meta.core_id == core_id),
-            None => None,
+        if let Some(present_in) = p.present_in.as_deref() {
+            return self.present_to(id, present_in, p.view).await;
+        }
+        let Some((meta, _)) = try_app!(self.app.store().review(&id).await.map_err(AppError::from)) else {
+            return fail(format!("No review {}.", id.0));
         };
-        let labelled = hc.move_label(old_terminal, &terminal, &id.0, replacement.as_ref().map(|(meta, _)| meta.id.0.as_str())).await;
+        let Some(terminal) = meta.terminal else {
+            return fail("This review isn't presented in any Herdr terminal: pass present_in.");
+        };
+        let core = self.herdr.core().await;
+        // A short address from a replaced core may now name someone else's terminal.
+        let herdr = match core.as_ref() {
+            None => Shown::absent(NO_CORE),
+            Some(core) if meta.core_id.as_deref() != Some(core.id.as_str()) => Shown::replaced(core, &terminal),
+            // `present` checks the core's id again on the connection it writes on.
+            Some(core) => self.herdr.present(&core.id, &terminal, &id.0, p.view, None).await,
+        };
         self.remember(&id);
-        ok(&serde_json::json!({ "review_id": id.0, "present_in": terminal, "core_id": core_id, "labelled": labelled }))
+        ok(&serde_json::json!({ "review_id": id.0, "present_in": terminal, "herdr": herdr }))
     }
 
     #[tool(description = "Wait for the user's comments on the review, and return them. Returns as soon as the user has \
@@ -538,5 +620,138 @@ mod tests {
         assert_eq!(agent_name("rmcp/0.9"), None);
         assert_eq!(known_agent("claude-cli/2.1.283 (external, cli)").as_deref(), Some("Claude"));
         assert_eq!(known_agent("Mozilla/5.0 (X11; Linux x86_64)"), None);
+    }
+}
+
+/// The tools' Herdr side through a fake core: no core, a replaced core, one
+/// atomic publication, and the old terminal's repair.
+#[cfg(test)]
+mod herdr_tests {
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+    use std::time::Duration;
+
+    use serde_json::{Value, json};
+
+    use super::*;
+    use crate::adapters::difft::NoEngine;
+    use crate::adapters::git::GitCli;
+    use crate::adapters::herdr::{REPLACED, fake};
+    use crate::adapters::store::Store;
+    use crate::ports::SystemClock;
+
+    fn git(dir: &Path, args: &[&str]) {
+        assert!(Command::new("git").arg("-C").arg(dir).args(args).status().unwrap().success(), "git {args:?}");
+    }
+
+    /// A shared review, and the tools on `herdr`.
+    async fn tools(herdr: Herdr) -> (tempfile::TempDir, DiffdMcp, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().canonicalize().unwrap();
+        git(&path, &["init", "-q", "-b", "main"]);
+        git(&path, &["config", "user.email", "test@example.com"]);
+        git(&path, &["config", "user.name", "Test"]);
+        std::fs::write(path.join("a.rs"), "fn a() {}\n").unwrap();
+        git(&path, &["add", "-A"]);
+        git(&path, &["commit", "-q", "-m", "init"]);
+        std::fs::write(path.join("a.rs"), "fn a() { b() }\n").unwrap();
+        let store = Store::open("sqlite::memory:").await.unwrap();
+        let app = App::new(store, Arc::new(GitCli), Arc::new(NoEngine), Arc::new(SystemClock), "http://localhost:3433".into());
+        let req = ShareRequest {
+            repo_path: path.to_string_lossy().into_owned(),
+            from: "HEAD".into(),
+            title: "Shown".into(),
+            ..Default::default()
+        };
+        let id = app.share(req).await.unwrap().review_id;
+        (dir, DiffdMcp::with_herdr(app, herdr), id)
+    }
+
+    fn answer(result: Result<CallToolResult, ErrorData>) -> Value {
+        let result = result.unwrap();
+        let text = serde_json::to_value(&result.content[0]).unwrap()["text"].as_str().unwrap().to_owned();
+        assert_ne!(result.is_error, Some(true), "{text}");
+        serde_json::from_str(&text).unwrap()
+    }
+
+    async fn present(mcp: &DiffdMcp, id: &str, to: &str) -> Value {
+        answer(mcp.present_review(Parameters(PresentParams { review_id: id.into(), present_in: to.into(), view: HerdrView::Open })).await)
+    }
+
+    async fn show(mcp: &DiffdMcp, id: &str, view: HerdrView) -> Value {
+        answer(mcp.show_in_herdr(Parameters(ShowInHerdrParams { review_id: id.into(), view, present_in: None })).await)
+    }
+
+    fn on(socket: PathBuf) -> Herdr {
+        Herdr::for_tests(socket, PathBuf::from("/no/such/hc"), Duration::from_millis(300))
+    }
+
+    #[tokio::test]
+    async fn without_a_core_the_target_is_kept_and_no_terminal_is_touched() {
+        let scratch = tempfile::tempdir().unwrap();
+        let socket = scratch.path().join("none.sock");
+        let (_dir, mcp, id) = tools(on(socket.clone())).await;
+        let moved = present(&mcp, &id, "tmanager").await;
+        assert_eq!(moved["labelled"], false);
+        assert_eq!(moved["herdr"]["herdr"], false, "{moved}");
+        let meta = mcp.app.store().review(&ReviewId(id.clone())).await.unwrap().unwrap().0;
+        assert_eq!(meta.terminal.as_deref(), Some("tmanager"), "the target is still recorded");
+        assert_eq!(show(&mcp, &id, HerdrView::Badge).await["herdr"]["herdr"], false);
+        assert!(mcp.present_shared(None, "tmanager", &id, HerdrView::Open).await == Shown::absent(NO_CORE));
+        assert!(!socket.exists(), "no core was started");
+    }
+
+    #[tokio::test]
+    async fn a_move_publishes_review_and_request_together_and_repairs_the_old_terminal() {
+        let scratch = tempfile::tempdir().unwrap();
+        let core = fake::core("core-1");
+        let (_dir, mcp, id) = tools(on(fake::listen(scratch.path(), core.clone()))).await;
+        assert_eq!(present(&mcp, &id, "tworker").await["labelled"], true);
+        let moved = present(&mcp, &id, "tmanager").await;
+        assert_eq!(moved["labelled"], true);
+        assert_eq!(moved["herdr"]["shown"], "pending", "no app answers here");
+        let seq = moved["herdr"]["seq"].as_u64().unwrap();
+        let labels = fake::calls(&core, "terminal.label");
+        assert_eq!(
+            labels[1],
+            json!({ "terminal": "tmanager", "labels": { "diffd.review": id, "diffd.show": format!("open:{id}:{seq}") } })
+        );
+        assert_eq!(labels[2], json!({ "terminal": "tworker", "labels": { "diffd.review": "" } }), "the old pane is cleared after");
+        assert_eq!(labels.len(), 3);
+        assert_eq!(fake::label(&core, "tworker", "diffd.review"), None);
+        let shared = mcp.present_shared(Some(&Core { id: "core-1".into(), name: "server".into() }), "tnew", &id, HerdrView::None).await;
+        assert_eq!(shared.shown.as_deref(), Some("none"));
+        assert!(fake::label(&core, "tnew", "diffd.show").unwrap().starts_with(&format!("none:{id}:")));
+        assert_eq!(fake::label(&core, "tnew", "diffd.review").as_deref(), Some(id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn a_core_replaced_between_the_check_and_the_write_gets_no_label() {
+        let scratch = tempfile::tempdir().unwrap();
+        let core = fake::core("core-1");
+        // The tool's check sees core-1; by the write, core-2 answers.
+        core.lock().unwrap().ids = ["core-1", "core-2"].map(String::from).into();
+        let (_dir, mcp, id) = tools(on(fake::listen(scratch.path(), core.clone()))).await;
+        let moved = present(&mcp, &id, "tmanager").await;
+        assert_eq!(moved["labelled"], false);
+        assert_eq!(moved["herdr"]["reason"], REPLACED);
+        assert!(fake::calls(&core, "terminal.label").is_empty() && fake::calls(&core, "terminal.get").is_empty());
+    }
+
+    #[tokio::test]
+    async fn show_in_herdr_reports_the_window_and_refuses_a_replaced_core() {
+        let scratch = tempfile::tempdir().unwrap();
+        let core = fake::core("core-1");
+        core.lock().unwrap().app = Some(("open", Duration::from_millis(50)));
+        let (_dir, mcp, id) = tools(on(fake::listen(scratch.path(), core.clone()))).await;
+        present(&mcp, &id, "tmanager").await;
+        let shown = show(&mcp, &id, HerdrView::Front).await;
+        assert_eq!(shown["present_in"], "tmanager");
+        assert_eq!(shown["herdr"]["shown"], "open");
+        let before = fake::calls(&core, "terminal.label").len();
+        core.lock().unwrap().ids = ["core-2"].map(String::from).into();
+        let replaced = show(&mcp, &id, HerdrView::Close).await;
+        assert_eq!(replaced["herdr"]["reason"], REPLACED);
+        assert_eq!(fake::calls(&core, "terminal.label").len(), before, "nothing written on the new core");
     }
 }
