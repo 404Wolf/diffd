@@ -35,7 +35,17 @@ export interface Cursor {
 export type Mode = { readonly kind: "diff" } | { readonly kind: "file"; readonly file: number };
 
 export type Composer =
-  | { readonly kind: "new"; readonly anchor: Anchor; readonly quote: string }
+  | {
+      readonly kind: "new";
+      readonly anchor: Anchor;
+      readonly quote: string;
+      /**
+       * The line the range was started from (the first tap, or where a drag
+       * began): tapping another line moves the range's other end. Drafts saved
+       * before this existed don't have it; they start from `anchor.start`.
+       */
+      readonly from?: number;
+    }
   | { readonly kind: "reply"; readonly threadId: ThreadId; readonly label: string };
 
 export interface PickerItem {

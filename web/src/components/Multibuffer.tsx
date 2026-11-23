@@ -150,7 +150,7 @@ export function Multibuffer(props: Props) {
   return (
     <>
       {/* The header of the file at the top of the screen, over its rows. */}
-      <div class="sticky top-0 z-[3] h-0">
+      <div class="sticky top-0 z-[3] h-0" data-sticky-head>
         <Show when={sticky()}>
           {(s) => (
             <div style={{ transform: `translateY(${s().shift}px)` }}>

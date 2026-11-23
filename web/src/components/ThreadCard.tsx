@@ -104,7 +104,7 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
       </For>
       <div class="flex gap-0.5 border-t border-line px-1 py-px">
         <FootButton onClick={() => props.cmd.replyTo(t())}>
-          Reply <kbd>r</kbd>
+          Reply <kbd class="touch:hidden">r</kbd>
         </FootButton>
         {match(t().kind.type)
           .with("comment", () => (
@@ -114,7 +114,7 @@ export function ThreadCard(props: { thread: Thread; review: Review; cmd: Command
           ))
           .with("note", () => (
             <FootButton onClick={() => props.cmd.noteJump(1)}>
-              Next note <kbd>]a</kbd>
+              Next note <kbd class="touch:hidden">]a</kbd>
             </FootButton>
           ))
           .exhaustive()}
@@ -127,7 +127,7 @@ function FootButton(props: { onClick: () => void; children: import("solid-js").J
   return (
     <button
       type="button"
-      class="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px] text-muted hover:bg-hover hover:text-fg"
+      class="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px] text-muted hover:bg-hover hover:text-fg touch:min-h-11 touch:px-3 touch:text-sm"
       onClick={props.onClick}
     >
       {props.children}
